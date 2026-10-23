@@ -22,10 +22,12 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test: Galata panel.spec.ts: hide the sidebar, execute `running:show-panel`, assert panel visible
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
-- [ ] `ACC-PANEL-4-OTHERS` **Sections of other extensions** - HIGH; a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items
-  - test: Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there
+- [ ] `ACC-PANEL-4-OTHERS` **Sections of other extensions** - HIGH; a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace
+  - test: Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
+  - log: 2026-10-23T23:03:47Z @kj amended text "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items" -> "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:48Z @kj edited test "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there" -> "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section"; reason: analyst review round 1 (wf_be2467c8-b64)
 - [ ] `ACC-PANEL-5-ICON` **Own sidebar icon** - MEDIUM; the sidebar tab shows the extension's own one-colour LabIcon, four panes in a 2 by 2 grid with the top-left one filled, never `ui-components:running`
   - test: Galata panel.spec.ts: assert the tab svg `data-icon` names the extension's icon
   - test-tags: FUNCTIONAL
@@ -39,10 +41,14 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test: Jest panel.spec.ts: fake timers, hold the requests, assert disabled and turning class, release, assert enabled after 500 ms
   - test-tags: UNIT
   - log: 2026-10-23T13:58:15Z @kj added
-- [ ] `ACC-PANEL-8-POLL` **Reload while visible** - MEDIUM; while the panel is visible it reloads every 10 s, without the turning icon
-  - test: Jest panel.spec.ts: fake timers, advance 10 s, assert one reload and no turning class
-  - test-tags: UNIT
+- [ ] `ACC-PANEL-8-POLL` **Reload while visible** - MEDIUM; while the panel is visible it reloads every 10 s, without the turning icon; a reload, by the poll or the refresh button, keeps the scroll position, the keyboard focus, the open card and an open menu
+  - test: Jest panel.spec.ts: fake timers, advance 10 s, assert one reload and no turning class; with the list scrolled, a row focused, a card open and the ... menu open, advance 10 s, assert all four kept; Galata panel.spec.ts: PUT enough workspaces to scroll the panel, scroll it, wait 10 s, assert scrollTop unchanged; focus the refresh button, press Enter, after the reload assert the focus on the refresh button
+  - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
+  - log: 2026-10-23T23:03:48Z @kj amended text "while the panel is visible it reloads every 10 s, without the turning icon" -> "while the panel is visible it reloads every 10 s, without the turning icon; a reload, by the poll or the refresh button, keeps the scroll position, the keyboard focus, the open card and an open menu"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:48Z @kj edited test "Jest panel.spec.ts: fake timers, advance 10 s, assert one reload and no turning class" -> "Jest panel.spec.ts: fake timers, advance 10 s, assert one reload and no turning class; with the list scrolled, a row focused, a card open and the ... menu open, advance 10 s, assert all four kept"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:19:52Z @kj edited test "Jest panel.spec.ts: fake timers, advance 10 s, assert one reload and no turning class; with the list scrolled, a row focused, a card open and the ... menu open, advance 10 s, assert all four kept" -> "Jest panel.spec.ts: fake timers, advance 10 s, assert one reload and no turning class; with the list scrolled, a row focused, a card open and the ... menu open, advance 10 s, assert all four kept; Galata panel.spec.ts: PUT enough workspaces to scroll the panel, scroll it, wait 10 s, assert scrollTop unchanged; focus the refresh button, press Enter, after the reload assert the focus on the refresh button"; reason: analyst review round 2 (wf_0ab9c6d9-e04)
+  - log: 2026-10-23T23:20:02Z @kj edited test-tags "UNIT" -> "UNIT, FUNCTIONAL"; reason: analyst review round 2 (wf_0ab9c6d9-e04)
 - [ ] `ACC-PANEL-9-POLL-HIDDEN` **No reload while hidden** - LOW; while the panel is hidden it does not reload; it reloads once when shown
   - test: Jest panel.spec.ts: hide, advance 60 s, assert no request; show, assert one
   - test-tags: UNIT
@@ -107,9 +113,10 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-23T22:13:50Z @kj added
   - log: 2026-10-23T22:21:16Z @kj rejected: the + button for a new workspace comes first and Search tabs follows refresh; replaced by ACC-PANEL-147-HEADER-ORDER
 - [ ] `ACC-PANEL-137-OTHERS-CLOSED` **Other sessions closed at load** - LOW; the Other sessions card is closed at load and shows the number of sections it holds
-  - test: Galata panel.spec.ts: load, assert the card closed and its count equals the registered sections
+  - test: Galata panel.spec.ts: load, assert the card closed and its count equals the registered sections minus Open Tabs, Kernels, Terminals and Workspaces
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T22:13:50Z @kj added
+  - log: 2026-10-23T23:03:48Z @kj edited test "Galata panel.spec.ts: load, assert the card closed and its count equals the registered sections" -> "Galata panel.spec.ts: load, assert the card closed and its count equals the registered sections minus Open Tabs, Kernels, Terminals and Workspaces"; reason: analyst review round 1 (wf_be2467c8-b64)
 - [ ] `ACC-PANEL-138-ICON-LABELS` **Icon buttons named** - LOW; every icon button in the panel has a tooltip and an `aria-label` naming its action
   - test: Galata keyboard.spec.ts: assert `title` and `aria-label` on every button without text
   - test-tags: FUNCTIONAL
@@ -161,15 +168,17 @@ The workspace panel in place of the built-in Running panel, its header and its r
 
 One card per workspace: colour, purpose, age, counts, actions, menu
 
-- [ ] `ACC-ACCORD-10-PER-WORKSPACE` **One section per workspace** - CRITICAL; every workspace jupyterlab_server lists has one section, except hidden ones
+- [ ] `ACC-ACCORD-10-PER-WORKSPACE` **One section per workspace** - CRITICAL; every workspace jupyterlab_server lists has one section, except hidden ones other than this window's
   - test: Galata sections.spec.ts: PUT 3 workspaces, refresh, assert 4 sections with their names
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:25Z @kj added
-- [ ] `ACC-ACCORD-11-ONE-OPEN` **One card open at a time** - CRITICAL; opening a section closes the section that was open
+  - log: 2026-10-23T23:19:52Z @kj amended text "every workspace jupyterlab_server lists has one section, except hidden ones" -> "every workspace jupyterlab_server lists has one section, except hidden ones other than this window's"; reason: analyst review round 2 (wf_0ab9c6d9-e04)
+- [ ] `ACC-ACCORD-11-ONE-OPEN` **One card open at a time** - CRITICAL; outside a filter, opening a section closes the section that was open
   - test: Galata sections.spec.ts: click header of a closed section, assert it is open and the previous one closed
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:25Z @kj added
   - log: 2026-10-23T21:31:51Z @kj amended title "Exactly one section open" -> "One card open at a time"
+  - log: 2026-10-23T23:03:48Z @kj amended text "opening a section closes the section that was open" -> "outside a filter, opening a section closes the section that was open"; reason: analyst review round 1 (wf_be2467c8-b64)
 - [-] `ACC-ACCORD-12-START-OPEN` **Current workspace open at load** - HIGH; at load the section of this window's workspace is open
   - overridden-by: ACC-ACCORD-68-START-CLOSED
   - test: Galata sections.spec.ts: load `/lab/workspaces/<id>`, assert that section open
@@ -241,10 +250,13 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - test: Galata sections.spec.ts: workspace with a terminal, close all, assert dialog text, cancel leaves the layout unchanged
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:37Z @kj added
-- [ ] `ACC-ACCORD-28-CLOSE-ELSEWHERE` **Edge: workspace open in another window** - HIGH; close all tabs is refused for a workspace that another browser window shows, and the message says so
-  - test: Galata sections.spec.ts: second page on workspace X, close all on X from the first page, assert refusal and layout unchanged
+- [ ] `ACC-ACCORD-28-CLOSE-ELSEWHERE` **Edge: workspace open in another window** - HIGH; Close all tabs, Delete workspace, Open workspace (the button, the header icon and the menu item), Open in new browser tab and a row click are refused for a workspace that another browser window shows, and the message says so
+  - test: Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged; then from the first page use Open in new browser tab on a third workspace Y; in the new page try Close all tabs and Delete workspace on the first page's workspace; assert both refused
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:37Z @kj added
+  - log: 2026-10-23T23:03:47Z @kj amended text "close all tabs is refused for a workspace that another browser window shows, and the message says so" -> "Close all tabs, Delete workspace, Open workspace (the button, the header icon and the menu item), Open in new browser tab and a row click are refused for a workspace that another browser window shows, and the message says so"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:47Z @kj edited test "Galata sections.spec.ts: second page on workspace X, close all on X from the first page, assert refusal and layout unchanged" -> "Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:19:52Z @kj edited test "Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged" -> "Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged; then from the first page use Open in new browser tab on a third workspace Y; in the new page try Close all tabs and Delete workspace on the first page's workspace; assert both refused"; reason: analyst review round 2 (wf_0ab9c6d9-e04)
 - [ ] `ACC-ACCORD-29-MENU` **Workspace menu** - HIGH; the ... button opens the menu: Open workspace, Open in new browser tab, Close all tabs, Set description, Colour, Hide workspace, Delete workspace
   - test: Galata menu.spec.ts: click ..., assert the seven labels in this order
   - test-tags: FUNCTIONAL
@@ -258,22 +270,25 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - test: Jest menu.spec.ts: arm, click with detail 2 within 600 ms, assert not deleted; Galata: two clicks delete, GET answers 404
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:38Z @kj added
-- [ ] `ACC-ACCORD-32-DELETE-CURRENT` **Edge: delete this window's workspace** - HIGH; Delete workspace is disabled on this window's workspace
-  - test: Galata menu.spec.ts: open the menu of the current section, assert the item disabled
+- [ ] `ACC-ACCORD-32-DELETE-CURRENT` **Edge: delete this window's workspace** - HIGH; Delete workspace and Open in new browser tab are disabled on this window's workspace
+  - test: Galata menu.spec.ts: open the menu of the current section, assert Delete workspace and Open in new browser tab disabled
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:38Z @kj added
+  - log: 2026-10-23T23:03:47Z @kj amended text "Delete workspace is disabled on this window's workspace" -> "Delete workspace and Open in new browser tab are disabled on this window's workspace"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:47Z @kj edited test "Galata menu.spec.ts: open the menu of the current section, assert the item disabled" -> "Galata menu.spec.ts: open the menu of the current section, assert Delete workspace and Open in new browser tab disabled"; reason: analyst review round 1 (wf_be2467c8-b64)
 - [ ] `ACC-ACCORD-68-START-CLOSED` **No card open at load** - HIGH; at load no card is open, the card of this window's workspace included
   - overrides: ACC-ACCORD-12-START-OPEN
   - test: Galata sections.spec.ts: load `/lab/workspaces/<id>`, assert no card has the open class
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:31:50Z @kj added
-- [ ] `ACC-ACCORD-69-CARD` **Workspace card** - MEDIUM; each workspace is a card whose header is tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour
+- [ ] `ACC-ACCORD-69-CARD` **Workspace card** - MEDIUM; each card other than this window's has a header tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour
   - test: Galata sections.spec.ts: two workspaces, assert header backgrounds differ and the open card's border colour
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:31:50Z @kj added
   - log: 2026-10-23T21:46:24Z @kj amended text "each workspace is a card whose header is tinted with the workspace colour; an open card has a border in that colour" -> "each workspace is a card whose header is tinted with the workspace colour; an open card other than this window's has a border in that colour"
   - log: 2026-10-23T21:59:20Z @kj amended text "each workspace is a card whose header is tinted with the workspace colour; an open card other than this window's has a border in that colour" -> "each workspace is a card whose header has the workspace colour as background; an open card other than this window's has a neutral body and a border in that colour"
   - log: 2026-10-23T22:05:52Z @kj amended text "each workspace is a card whose header has the workspace colour as background; an open card other than this window's has a neutral body and a border in that colour" -> "each workspace is a card whose header is tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour"
+  - log: 2026-10-23T23:03:48Z @kj amended text "each workspace is a card whose header is tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour" -> "each card other than this window's has a header tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour"; reason: analyst review round 1 (wf_be2467c8-b64)
 - [ ] `ACC-ACCORD-70-COUNT-TABS` **Tab count** - HIGH; the card header shows the number of tabs listed under Tabs
   - test: Galata sections.spec.ts: workspace with 2 documents, assert tab count 2
   - test-tags: FUNCTIONAL
@@ -326,10 +341,12 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - log: 2026-10-23T21:53:30Z @kj added
   - log: 2026-10-23T22:25:39Z @kj amended text "a purpose holds at most 200 characters; the dialog does not accept more" -> "a purpose holds at most 100 characters; the dialogs do not accept more"
   - log: 2026-10-23T22:25:39Z @kj edited test "Galata menu.spec.ts: type 250 characters, assert 200 saved; pytest: PATCH 201 characters answers 400" -> "Galata menu.spec.ts: type 150 characters, assert 100 saved; pytest: PATCH 101 characters answers 400"
-- [ ] `ACC-ACCORD-101-PURPOSE-TEXT` **Purpose shown as text** - HIGH; a purpose is displayed as plain text: markup in it is shown, never interpreted
-  - test: Jest panel.spec.ts: purpose `<img src=x onerror=alert(1)>`, assert no img element and the text shown
+- [ ] `ACC-ACCORD-101-PURPOSE-TEXT` **Text shown as text** - HIGH; a workspace name, purpose, tab title, path and process name is displayed as plain text: markup in it is shown, never interpreted
+  - test: Jest panel.spec.ts: purpose `<img src=x onerror=alert(1)>`, assert no img element and the text shown; the same for a terminal tab title and a file name holding that markup
   - test-tags: UNIT
   - log: 2026-10-23T21:53:30Z @kj added
+  - log: 2026-10-23T23:32:31Z @kj amended title "Purpose shown as text" -> "Text shown as text"; text "a purpose is displayed as plain text: markup in it is shown, never interpreted" -> "a workspace name, purpose, tab title, path and process name is displayed as plain text: markup in it is shown, never interpreted"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
+  - log: 2026-10-23T23:32:31Z @kj edited test "Jest panel.spec.ts: purpose `<img src=x onerror=alert(1)>`, assert no img element and the text shown" -> "Jest panel.spec.ts: purpose `<img src=x onerror=alert(1)>`, assert no img element and the text shown; the same for a terminal tab title and a file name holding that markup"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
 - [ ] `ACC-ACCORD-102-COLOUR-CHECK` **Present colour marked** - LOW; the Colour submenu marks the workspace's present colour
   - test: Galata menu.spec.ts: open Colour, assert the checked item is the card's colour
   - test-tags: FUNCTIONAL
@@ -422,10 +439,12 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - test: Jest model.spec.ts: one terminal in two layouts, assert both rows and marks; Galata: both rows visible
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:38Z @kj added
-- [ ] `ACC-LISTS-38-NO-WORKSPACE` **Edge: in no workspace** - HIGH; terminals and kernels in no workspace are listed in the section In no workspace, after the last workspace
-  - test: Galata content.spec.ts: create a terminal by REST in no layout, assert it under In no workspace
+- [ ] `ACC-LISTS-38-NO-WORKSPACE` **Edge: in no workspace** - HIGH; terminals and kernels in no workspace are listed in the section In no workspace, after the last workspace; a row click or Enter on a terminal there opens it in a tab of this window
+  - test: Galata content.spec.ts: create a terminal by REST in no layout, assert it under In no workspace; click its row, assert a terminal tab of that name active in this window
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:38Z @kj added
+  - log: 2026-10-23T23:03:48Z @kj amended text "terminals and kernels in no workspace are listed in the section In no workspace, after the last workspace" -> "terminals and kernels in no workspace are listed in the section In no workspace, after the last workspace; a row click or Enter on a terminal there opens it in a tab of this window"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:48Z @kj edited test "Galata content.spec.ts: create a terminal by REST in no layout, assert it under In no workspace" -> "Galata content.spec.ts: create a terminal by REST in no layout, assert it under In no workspace; click its row, assert a terminal tab of that name active in this window"; reason: analyst review round 1 (wf_be2467c8-b64)
 - [ ] `ACC-LISTS-39-ROW-CURRENT` **Row click in this window's workspace** - HIGH; a row click on a tab or terminal of this window's workspace activates its tab
   - test: Galata content.spec.ts: two terminals open, click the inactive one's row, assert its tab active
   - test-tags: FUNCTIONAL
@@ -544,6 +563,11 @@ What a kernel row shows
   - test: Jest model.spec.ts: one kernel per state, assert the dot class
   - test-tags: UNIT
   - log: 2026-10-23T22:13:50Z @kj added
+- [ ] `ACC-KERNEL-151-ROW-CLICK` **Kernel row opens its notebook** - MEDIUM; a click or Enter on a kernel row opens its notebook: in this window's workspace it activates the notebook's tab; in another workspace it opens that workspace in this window; under In no workspace it opens the notebook in this window when the kernel's session has a path
+  - test: Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; click A's kernel row, assert A's tab active
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T23:32:31Z @kj added; reason: Star Colonel's choices on the review deferrals, 2026-10-24
+  - log: 2026-10-23T23:39:36Z @kj edited test "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click A's kernel row, assert A's tab active; click B's kernel row, assert B open in an active tab" -> "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; click A's kernel row, assert A's tab active"; reason: analyst review round 5 (wf_866e427b-435)
 
 ## Hidden workspaces `HIDDEN`
 
@@ -574,10 +598,12 @@ The hide toggle of a workspace and the header button that shows hidden workspace
   - test: Jest model.spec.ts: hidden workspace with a terminal, assert the terminal in no visible group
   - test-tags: UNIT
   - log: 2026-10-23T13:58:39Z @kj added
-- [ ] `ACC-HIDDEN-87-NOT-CURRENT` **This window's workspace stays shown** - MEDIUM; Hide workspace is disabled on this window's workspace
-  - test: Galata hidden.spec.ts: open the menu of this window's card, assert Hide workspace disabled
+- [ ] `ACC-HIDDEN-87-NOT-CURRENT` **This window's workspace stays shown** - MEDIUM; this window's workspace always has its card, whatever its hidden state; Hide workspace is disabled on it
+  - test: Galata hidden.spec.ts: open the menu of this window's card, assert Hide workspace disabled; from a second page hide the first page's workspace, refresh the first page, assert its card shown first
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:53:29Z @kj added
+  - log: 2026-10-23T23:03:48Z @kj amended text "Hide workspace is disabled on this window's workspace" -> "this window's workspace always has its card, whatever its hidden state; Hide workspace is disabled on it"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:48Z @kj edited test "Galata hidden.spec.ts: open the menu of this window's card, assert Hide workspace disabled" -> "Galata hidden.spec.ts: open the menu of this window's card, assert Hide workspace disabled; from a second page hide the first page's workspace, refresh the first page, assert its card shown first"; reason: analyst review round 1 (wf_be2467c8-b64)
 
 ## Filter `FILTER`
 
@@ -595,22 +621,29 @@ The filter field that finds anything in the panel, as in the AI assistants panel
   - test: Jest filter.spec.ts: one query per field, assert a match for each
   - test-tags: UNIT
   - log: 2026-10-23T13:58:39Z @kj added
-- [ ] `ACC-FILTER-59-ROWS` **Only matches shown** - HIGH; with a filter, only matching rows are shown and a workspace without a match is not shown
-  - test: Galata filter.spec.ts: query `claude` with one claude terminal, assert one row and one section
+- [ ] `ACC-FILTER-59-ROWS` **Only matches shown** - HIGH; with a filter, only matching rows are shown and a workspace without a match is not shown; a workspace whose name or description matches shows its card with all its rows
+  - test: Galata filter.spec.ts: query `claude` with one claude terminal, assert one row and one section; query a workspace's name, assert its card open with all its rows
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
-- [ ] `ACC-FILTER-60-MATCH-COUNT` **Match counts** - MEDIUM; with a filter, a section header reads N of M
-  - test: Galata filter.spec.ts: 1 of 2 terminals match, assert `1 of 2`
+  - log: 2026-10-23T23:32:31Z @kj amended text "with a filter, only matching rows are shown and a workspace without a match is not shown" -> "with a filter, only matching rows are shown and a workspace without a match is not shown; a workspace whose name or description matches shows its card with all its rows"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
+  - log: 2026-10-23T23:32:31Z @kj edited test "Galata filter.spec.ts: query `claude` with one claude terminal, assert one row and one section" -> "Galata filter.spec.ts: query `claude` with one claude terminal, assert one row and one section; query a workspace's name, assert its card open with all its rows"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
+- [ ] `ACC-FILTER-60-MATCH-COUNT` **Match counts** - MEDIUM; with a filter, a section header reads N of M, where N is the number of rows the card shows
+  - test: Galata filter.spec.ts: 1 of 2 terminals match, assert `1 of 2`; query the name of a workspace with 2 terminals, assert `2 of 2`
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:45Z @kj added
+  - log: 2026-10-23T23:39:36Z @kj amended text "with a filter, a section header reads N of M" -> "with a filter, a section header reads N of M, where N is the number of rows the card shows"; reason: analyst review round 5 (wf_866e427b-435)
+  - log: 2026-10-23T23:39:36Z @kj edited test "Galata filter.spec.ts: 1 of 2 terminals match, assert `1 of 2`" -> "Galata filter.spec.ts: 1 of 2 terminals match, assert `1 of 2`; query the name of a workspace with 2 terminals, assert `2 of 2`"; reason: analyst review round 5 (wf_866e427b-435)
 - [ ] `ACC-FILTER-61-CLEAR` **Clear button** - MEDIUM; the clear button empties the field, keeps the caret in it and shows every row again
   - test: Galata filter.spec.ts: clear, assert focus in the field and all rows
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:45Z @kj added
-- [ ] `ACC-FILTER-82-OPEN-MATCHES` **Matching cards open** - HIGH; while a filter is active, every card with a match is open
-  - test: Galata filter.spec.ts: two workspaces with a match, assert both cards open
+- [ ] `ACC-FILTER-82-OPEN-MATCHES` **Matching cards open** - HIGH; while a filter is active, every card with a match is open; a header click then opens or closes that card only, and the filter stays
+  - test: Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged; click the same header again, assert both cards open
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:53:29Z @kj added
+  - log: 2026-10-23T23:32:31Z @kj amended text "while a filter is active, every card with a match is open" -> "while a filter is active, every card with a match is open; a header click then opens or closes that card only, and the filter stays"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
+  - log: 2026-10-23T23:32:31Z @kj edited test "Galata filter.spec.ts: two workspaces with a match, assert both cards open" -> "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
+  - log: 2026-10-23T23:39:36Z @kj edited test "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged" -> "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged; click the same header again, assert both cards open"; reason: analyst review round 5 (wf_866e427b-435)
 - [ ] `ACC-FILTER-83-RESTORE` **Open card returns** - MEDIUM; clearing the filter returns the cards to the open state they had before the filter
   - test: Galata filter.spec.ts: open card A, filter, clear, assert only A open
   - test-tags: FUNCTIONAL
@@ -640,10 +673,14 @@ Endpoints of the server extension
   - test: `make test` runs `check_auth.py`; pytest: each route without token answers 403
   - test-tags: UNIT
   - log: 2026-10-23T13:58:45Z @kj added
-- [ ] `ACC-SERVER-64-PRESENCE` **Open workspaces per window** - HIGH; each browser window reports its workspace every 30 s; the server answers which workspaces another window reported in the last 90 s
-  - test: pytest test_presence.py: two clients, fake clock, assert the 90 s window
-  - test-tags: UNIT
+- [ ] `ACC-SERVER-64-PRESENCE` **Open workspaces per window** - HIGH; each browser window reports its workspace at load and every 30 s under an id unique to its browser tab, kept across a reload of that tab and never shared with a browser tab it opens; a report replaces that window's previous one; the server answers which workspaces another window reported in the last 90 s
+  - test: pytest test_presence.py: two clients, fake clock, assert the 90 s window; client 1 reports X then Y, assert X no longer reported to client 2; Galata sections.spec.ts: with fresh workspace names, page 1 on W and page 2 on V; page 1 uses Open workspace on Z and waits until Z has loaded; page 2 presses refresh, then uses Open workspace on W; assert it is not refused and page 2's URL ends in /lab/workspaces/W
+  - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:45Z @kj added
+  - log: 2026-10-23T23:03:47Z @kj amended text "each browser window reports its workspace every 30 s; the server answers which workspaces another window reported in the last 90 s" -> "each browser window reports its workspace at load and every 30 s under an id that lasts as long as its browser tab; a report replaces that window's previous one; the server answers which workspaces another window reported in the last 90 s"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:03:47Z @kj edited test "pytest test_presence.py: two clients, fake clock, assert the 90 s window" -> "pytest test_presence.py: two clients, fake clock, assert the 90 s window; client 1 reports X then Y, assert X no longer reported to client 2"; reason: analyst review round 1 (wf_be2467c8-b64)
+  - log: 2026-10-23T23:19:52Z @kj amended text "each browser window reports its workspace at load and every 30 s under an id that lasts as long as its browser tab; a report replaces that window's previous one; the server answers which workspaces another window reported in the last 90 s" -> "each browser window reports its workspace at load and every 30 s under an id unique to its browser tab, kept across a reload of that tab and never shared with a browser tab it opens; a report replaces that window's previous one; the server answers which workspaces another window reported in the last 90 s"; reason: analyst review round 2 (wf_0ab9c6d9-e04)
+  - log: 2026-10-23T23:27:01Z @kj edited test "pytest test_presence.py: two clients, fake clock, assert the 90 s window; client 1 reports X then Y, assert X no longer reported to client 2" -> "pytest test_presence.py: two clients, fake clock, assert the 90 s window; client 1 reports X then Y, assert X no longer reported to client 2; Galata sections.spec.ts: with fresh workspace names, page 1 on W and page 2 on V; page 1 uses Open workspace on Z and waits until Z has loaded; page 2 presses refresh, then uses Open workspace on W; assert it is not refused and page 2's URL ends in /lab/workspaces/W"; test-tags "UNIT" -> "UNIT, FUNCTIONAL"; reason: analyst review round 3 (wf_ec44088e-904)
 - [ ] `ACC-SERVER-84-META-FILE` **Records in the extension's own file** - HIGH; purpose, colour and hidden state live in `workspace-manager.json` in the workspaces directory, never inside a workspace file
   - test: pytest test_meta.py: set all three, assert the file's content and every workspace file unchanged
   - test-tags: UNIT
