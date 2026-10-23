@@ -29,6 +29,10 @@ The Star Colonel's requirements, in his order.
 
 - A refresh button. Added by the Star Colonel on 2026-10-23
 - A filter that finds anything in the panel, the same concept as the filter of `../jupyterlab_ai_code_assistants_extension`. Added by the Star Colonel on 2026-10-23
+- A + button that adds a new workspace; it asks for the name and an optional description. Added by the Star Colonel on 2026-10-24: "and + for adding new workspace; asks for name and description (optional)"
+- The description is short: at most 100 characters, in a larger field with a character counter. Added by the Star Colonel on 2026-10-24: "also update design to show short description (100 characters max)", "larger input box for desc", "char counter - 45/100"
+- Every item of the workspace menu has an icon. Added by the Star Colonel on 2026-10-24: "and menu must have icons"
+- The colour swatches of the workspace menu look like those of the coloured tabs. Added by the Star Colonel on 2026-10-24: "colour swatvches - same style as for tabds in coloured tabs extension"
 
 ### Terminals
 

@@ -26,10 +26,11 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test: Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
-- [ ] `ACC-PANEL-5-ICON` **Own sidebar icon** - MEDIUM; the sidebar tab shows the extension's own one-colour LabIcon, never `ui-components:running`
+- [ ] `ACC-PANEL-5-ICON` **Own sidebar icon** - MEDIUM; the sidebar tab shows the extension's own one-colour LabIcon, four panes in a 2 by 2 grid with the top-left one filled, never `ui-components:running`
   - test: Galata panel.spec.ts: assert the tab svg `data-icon` names the extension's icon
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
+  - log: 2026-10-23T21:46:24Z @kj amended text "the sidebar tab shows the extension's own one-colour LabIcon, never `ui-components:running`" -> "the sidebar tab shows the extension's own one-colour LabIcon, four panes in a 2 by 2 grid with the top-left one filled, never `ui-components:running`"
 - [ ] `ACC-PANEL-6-REFRESH` **Refresh button** - HIGH; the refresh button reloads workspaces, terminals, sessions and process names
   - test: Galata panel.spec.ts: create a terminal by REST, click refresh within 2 s, assert its row appears
   - test-tags: FUNCTIONAL
@@ -46,31 +47,145 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test: Jest panel.spec.ts: hide, advance 60 s, assert no request; show, assert one
   - test-tags: UNIT
   - log: 2026-10-23T13:58:15Z @kj added
+- [ ] `ACC-PANEL-73-TEXT-CONTRAST` **Text contrast** - HIGH; every text in the panel has a contrast of at least 4.5:1 to its background in Galaxa Dark Theme - Steel and in JupyterLab Light
+  - test: Galata legibility.spec.ts: per theme, walk every text node, compute contrast of computed colour and background, assert >= 4.5
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:31:50Z @kj added
+- [ ] `ACC-PANEL-74-TEXT-SIZE` **Text size** - MEDIUM; no text is smaller than `--jp-ui-font-size1` except the group labels, which use `--jp-ui-font-size0`
+  - test: Galata legibility.spec.ts: assert computed font sizes of all text nodes
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:31:50Z @kj added
+  - log: 2026-10-23T21:40:53Z @kj amended text "no text is smaller than `--jp-ui-font-size1` except the current chip and the group labels, which use `--jp-ui-font-size0`" -> "no text is smaller than `--jp-ui-font-size1` except the group labels, which use `--jp-ui-font-size0`"
+- [ ] `ACC-PANEL-75-NO-ITALIC` **No italic text** - LOW; no text in the panel is set in italics
+  - test: Galata legibility.spec.ts: assert no computed `font-style: italic`
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:31:50Z @kj added
+- [ ] `ACC-PANEL-80-WS-COUNT` **Workspace count** - MEDIUM; the panel header shows the number of workspace cards shown, next to its title
+  - test: Galata panel.spec.ts: 4 workspaces, hide 1, assert 3; press the header eye, assert 4
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:28Z @kj added
+- [ ] `ACC-PANEL-88-STATUSBAR` **Status bar item** - MEDIUM; a click on the status bar item of running terminals and kernels shows the workspace panel
+  - test: Galata panel.spec.ts: hide the sidebar, click the status bar item, assert the panel visible
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-89-SEARCH-TABS` **Search tabs button** - LOW; the Search tabs button that `@jupyterlab/running-extension:search-tabs` adds is in the panel header and opens its dialog
+  - test: Galata panel.spec.ts: click the button, assert the search dialog
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-90-SCROLL` **Card list scrolls** - MEDIUM; with more cards than fit, the card list scrolls while the panel header and the filter field stay in place
+  - test: Galata panel.spec.ts: PUT 30 workspaces, scroll the list, assert the header's position unchanged
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-91-KEYBOARD` **Card headers by keyboard** - HIGH; a card header is a button: Tab reaches it, Enter or Space opens or closes the card, and `aria-expanded` follows the state
+  - test: Galata keyboard.spec.ts: Tab to a header, press Enter, assert open and `aria-expanded` true; Space closes
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-92-ROW-KEYS` **Rows by keyboard** - MEDIUM; inside an open card the arrow keys move between rows and Enter opens the row's item
+  - test: Galata keyboard.spec.ts: focus a row, ArrowDown, Enter, assert the second item activated
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-93-FOCUS` **Focus outline** - LOW; keyboard focus shows a 1px `--jp-brand-color1` outline; a mouse click shows none
+  - test: Galata keyboard.spec.ts: assert outline after Tab and none after a click
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-94-THEME` **Theme change** - MEDIUM; switching between a dark and a light theme repaints the panel at once, without a reload
+  - test: Galata legibility.spec.ts: switch theme, assert the card background and text colours change
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-PANEL-95-SERVER-ABSENT` **Without the server extension** - HIGH; when the extension's endpoints answer 404, the panel still lists workspaces, terminals by name and kernels
+  - test: Jest panel.spec.ts: endpoints answer 404, assert cards and rows rendered without process names
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-PANEL-96-LOAD-ERROR` **Failed reload** - MEDIUM; a failed reload shows one line naming the failure above the cards and keeps the last content; the next good reload removes the line
+  - test: Jest panel.spec.ts: fail one reload, assert the line and old rows; succeed, assert the line gone
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:30Z @kj added
+- [-] `ACC-PANEL-136-HEADER-BUTTONS` **Header button order** - LOW; the panel header shows its buttons in this order: filter, show hidden, refresh; each is 24px square
+  - overridden-by: ACC-PANEL-147-HEADER-ORDER
+  - test: Galata panel.spec.ts: assert the order and size of the header buttons
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:50Z @kj added
+  - log: 2026-10-23T22:21:16Z @kj rejected: the + button for a new workspace comes first and Search tabs follows refresh; replaced by ACC-PANEL-147-HEADER-ORDER
+- [ ] `ACC-PANEL-137-OTHERS-CLOSED` **Other sessions closed at load** - LOW; the Other sessions card is closed at load and shows the number of sections it holds
+  - test: Galata panel.spec.ts: load, assert the card closed and its count equals the registered sections
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:50Z @kj added
+- [ ] `ACC-PANEL-138-ICON-LABELS` **Icon buttons named** - LOW; every icon button in the panel has a tooltip and an `aria-label` naming its action
+  - test: Galata keyboard.spec.ts: assert `title` and `aria-label` on every button without text
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:50Z @kj added
+- [ ] `ACC-PANEL-140-NEW-BUTTON` **New workspace button** - HIGH; the panel header has a + button, tooltip New workspace, that opens the New workspace dialog
+  - test: Galata new.spec.ts: click +, assert the dialog titled New workspace
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:21:15Z @kj added
+- [ ] `ACC-PANEL-141-NEW-DIALOG` **New workspace dialog** - HIGH; the dialog has the fields Name, with the keyboard focus, and Short description (optional), a box of three lines that wraps its text, and the buttons Cancel and Create; Enter creates, Escape closes without a change
+  - test: Galata new.spec.ts: assert both fields and the focus on Name; Escape, assert no new workspace; fill in, Enter, assert created
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:21:15Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended text "the dialog has the fields Name, with the keyboard focus, and Purpose (optional), and the buttons Cancel and Create; Enter creates, Escape closes without a change" -> "the dialog has the fields Name, with the keyboard focus, and Short description (optional), a box of three lines that wraps its text, and the buttons Cancel and Create; Enter creates, Escape closes without a change"
+- [ ] `ACC-PANEL-142-NEW-NAME` **Workspace name rule** - HIGH; a name holds only letters, digits, `-` and `_`, JupyterLab's own rule for workspace names; an empty or other name keeps Create disabled and the rule shows under the field
+  - test: Jest new.spec.ts: `fb-review` enables Create; ``, `a b`, `a/b`, `a.b` keep it disabled
+  - test-tags: UNIT
+  - log: 2026-10-23T22:21:15Z @kj added
+- [ ] `ACC-PANEL-143-NEW-TAKEN` **Existing name refused** - CRITICAL; a name an existing workspace has keeps Create disabled and shows `A workspace named <name> exists`; an existing workspace is never overwritten
+  - test: Jest new.spec.ts: workspaces list holds auto-6, assert Create disabled and the message; Galata new.spec.ts: PUT auto-6 with a layout, type auto-6, assert its layout unchanged
+  - test-tags: UNIT, FUNCTIONAL
+  - mechanism: 2026-10-23T22:21:15Z @kj the dialog checks the name against a fresh `GET /lab/api/workspaces` before the PUT; JupyterLab's own create saves over an existing workspace
+  - log: 2026-10-23T22:21:15Z @kj added
+- [ ] `ACC-PANEL-144-NEW-PURPOSE` **Short description of a new workspace** - MEDIUM; the Short description field holds at most 100 characters and takes no more and no line break; an empty field stores no purpose
+  - test: Jest new.spec.ts: type 101 characters, assert 100 kept; paste a line break, assert none kept; create with an empty field, assert no purpose in the PATCH
+  - test-tags: UNIT
+  - log: 2026-10-23T22:21:15Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended title "Purpose of a new workspace" -> "Short description of a new workspace"; text "the Purpose field holds at most 200 characters and does not accept more; an empty purpose stores no purpose" -> "the Short description field holds at most 100 characters and takes no more and no line break; the line `At most 100 characters` stands under it; an empty field stores no purpose"
+  - log: 2026-10-23T22:25:39Z @kj edited test "Jest new.spec.ts: type 201 characters, assert 200 kept; create with an empty purpose, assert no purpose in the PATCH" -> "Jest new.spec.ts: type 101 characters, assert 100 kept; paste a line break, assert none kept; create with an empty field, assert no purpose in the PATCH"
+  - log: 2026-10-23T22:26:06Z @kj amended text "the Short description field holds at most 100 characters and takes no more and no line break; the line `At most 100 characters` stands under it; an empty field stores no purpose" -> "the Short description field holds at most 100 characters and takes no more and no line break; an empty field stores no purpose"
+- [ ] `ACC-PANEL-145-NEW-CREATE` **Create a workspace** - CRITICAL; Create saves an empty workspace through `PUT /lab/api/workspaces/<name>` and stores the purpose and the next colour of the rotation; the new card shows age now
+  - test: Galata new.spec.ts: create fb-review with a purpose, assert `GET /lab/api/workspaces/fb-review` answers 200, the card with the purpose, age now and the next colour
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:21:15Z @kj added
+- [ ] `ACC-PANEL-146-NEW-STAY` **Window stays after create** - MEDIUM; after Create this window stays in its workspace; the new card is open and scrolled into view
+  - test: Galata new.spec.ts: create a workspace, assert the page URL unchanged and the new card open and visible
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:21:15Z @kj added
+- [ ] `ACC-PANEL-147-HEADER-ORDER` **Header button order** - LOW; the panel header shows its buttons in this order: new workspace, filter, show hidden, refresh, then the buttons other extensions add, such as Search tabs; each is 24px square
+  - overrides: ACC-PANEL-136-HEADER-BUTTONS
+  - test: Galata panel.spec.ts: assert the order and size of the header buttons
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:21:15Z @kj added
+- [ ] `ACC-PANEL-149-DESC-COUNT` **Character counter** - MEDIUM; under the Short description field of the New workspace and Set description dialogs a counter reads `<n>/100`, the characters typed, and changes with every keystroke
+  - test: Jest new.spec.ts: empty field reads 0/100; type 45 characters, assert 45/100; delete 5, assert 40/100
+  - test-tags: UNIT
+  - log: 2026-10-23T22:26:06Z @kj added
 
 ## Workspace sections `ACCORD`
 
-One accordion section per workspace: colour, purpose, age, counts, actions, menu
+One card per workspace: colour, purpose, age, counts, actions, menu
 
 - [ ] `ACC-ACCORD-10-PER-WORKSPACE` **One section per workspace** - CRITICAL; every workspace jupyterlab_server lists has one section, except hidden ones
   - test: Galata sections.spec.ts: PUT 3 workspaces, refresh, assert 4 sections with their names
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:25Z @kj added
-- [ ] `ACC-ACCORD-11-ONE-OPEN` **Exactly one section open** - CRITICAL; opening a section closes the section that was open
+- [ ] `ACC-ACCORD-11-ONE-OPEN` **One card open at a time** - CRITICAL; opening a section closes the section that was open
   - test: Galata sections.spec.ts: click header of a closed section, assert it is open and the previous one closed
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:25Z @kj added
-- [ ] `ACC-ACCORD-12-START-OPEN` **Current workspace open at load** - HIGH; at load the section of this window's workspace is open
+  - log: 2026-10-23T21:31:51Z @kj amended title "Exactly one section open" -> "One card open at a time"
+- [-] `ACC-ACCORD-12-START-OPEN` **Current workspace open at load** - HIGH; at load the section of this window's workspace is open
+  - overridden-by: ACC-ACCORD-68-START-CLOSED
   - test: Galata sections.spec.ts: load `/lab/workspaces/<id>`, assert that section open
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:26Z @kj added
+  - log: 2026-10-23T21:31:51Z @kj rejected: Star Colonel 2026-10-23: this window's workspace is not expanded by default; replaced by ACC-ACCORD-68-START-CLOSED
 - [ ] `ACC-ACCORD-13-ORDER` **Section order** - MEDIUM; this window's workspace first, then the others by `last_modified` newest first, then In no workspace, then Other sessions
   - test: Jest model.spec.ts: three workspaces with known times, assert order
   - test-tags: UNIT
   - log: 2026-10-23T13:58:26Z @kj added
-- [ ] `ACC-ACCORD-14-CURRENT` **Current workspace marked** - MEDIUM; the section of this window's workspace carries the mark current; no other section does
+- [-] `ACC-ACCORD-14-CURRENT` **Current workspace marked** - MEDIUM; the section of this window's workspace carries the mark current; no other section does
+  - overridden-by: ACC-ACCORD-76-OUTLINE
   - test: Galata sections.spec.ts: assert one `jp-mod-current` section and that it is this window's
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:26Z @kj added
+  - log: 2026-10-23T21:40:53Z @kj rejected: Star Colonel 2026-10-23: no current mark; a brand colour 2 outline instead; replaced by ACC-ACCORD-76-OUTLINE
 - [ ] `ACC-ACCORD-15-STRIP` **Colour strip** - HIGH; each section shows a strip in its workspace colour on its left edge
   - test: Galata sections.spec.ts: two workspaces, assert their strips' computed colours are two different palette colours
   - test-tags: FUNCTIONAL
@@ -87,18 +202,21 @@ One accordion section per workspace: colour, purpose, age, counts, actions, menu
   - test: Galata sections.spec.ts: set purpose on one of two workspaces, assert text on one header only
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:26Z @kj added
-- [ ] `ACC-ACCORD-19-SET-PURPOSE` **Set purpose** - HIGH; menu item Set purpose sets, changes or clears the purpose; the value survives a reload
+- [ ] `ACC-ACCORD-19-SET-PURPOSE` **Set description** - HIGH; menu item Set description sets, changes or clears the purpose; the value survives a reload
   - test: Galata menu.spec.ts: set, reload, assert; clear, reload, assert gone
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:26Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended title "Set purpose" -> "Set description"; text "menu item Set purpose sets, changes or clears the purpose; the value survives a reload" -> "menu item Set description sets, changes or clears the purpose; the value survives a reload"
 - [ ] `ACC-ACCORD-20-AGE` **Workspace age** - HIGH; the header shows the time since the workspace's `metadata.last_modified` as now, Nm, Nh or Nd
   - test: Jest age.spec.ts: 30 s, 5 min, 3 h, 2 d against a fixed clock; Galata: age label present
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:26Z @kj added
-- [ ] `ACC-ACCORD-21-AGE-NOW` **Age now in brand colour** - LOW; an age under 60 s reads now and takes `--jp-brand-color1`
+- [-] `ACC-ACCORD-21-AGE-NOW` **Age now in brand colour** - LOW; an age under 60 s reads now and takes `--jp-brand-color1`
+  - overridden-by: ACC-ACCORD-130-NOW-DOT
   - test: Jest age.spec.ts: 59 s gives now and the recent class, 60 s gives 1m without it
   - test-tags: UNIT
   - log: 2026-10-23T13:58:26Z @kj added
+  - log: 2026-10-23T22:13:50Z @kj rejected: no brand token passes 4.5:1 in both themes, so now is colour 0 with a brand colour 2 dot; replaced by ACC-ACCORD-130-NOW-DOT
 - [ ] `ACC-ACCORD-22-COUNTS` **Terminal and kernel counts** - HIGH; the header shows the number of terminals and the number of kernels of the workspace
   - test: Galata sections.spec.ts: workspace with 2 terminal tabs and 1 notebook with a kernel, assert counts 2 and 1
   - test-tags: FUNCTIONAL
@@ -127,10 +245,11 @@ One accordion section per workspace: colour, purpose, age, counts, actions, menu
   - test: Galata sections.spec.ts: second page on workspace X, close all on X from the first page, assert refusal and layout unchanged
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:37Z @kj added
-- [ ] `ACC-ACCORD-29-MENU` **Workspace menu** - HIGH; the ... button opens the menu: Open workspace, Open in new browser tab, Close all tabs, Set purpose, Colour, Hide workspace, Delete workspace
+- [ ] `ACC-ACCORD-29-MENU` **Workspace menu** - HIGH; the ... button opens the menu: Open workspace, Open in new browser tab, Close all tabs, Set description, Colour, Hide workspace, Delete workspace
   - test: Galata menu.spec.ts: click ..., assert the seven labels in this order
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:37Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended text "the ... button opens the menu: Open workspace, Open in new browser tab, Close all tabs, Set purpose, Colour, Hide workspace, Delete workspace" -> "the ... button opens the menu: Open workspace, Open in new browser tab, Close all tabs, Set description, Colour, Hide workspace, Delete workspace"
 - [ ] `ACC-ACCORD-30-SET-COLOUR` **Change colour** - MEDIUM; submenu Colour sets one of the six colours; the strip changes at once and the colour survives a reload
   - test: Galata menu.spec.ts: choose mint, assert strip colour, reload, assert again
   - test-tags: FUNCTIONAL
@@ -143,6 +262,141 @@ One accordion section per workspace: colour, purpose, age, counts, actions, menu
   - test: Galata menu.spec.ts: open the menu of the current section, assert the item disabled
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:38Z @kj added
+- [ ] `ACC-ACCORD-68-START-CLOSED` **No card open at load** - HIGH; at load no card is open, the card of this window's workspace included
+  - overrides: ACC-ACCORD-12-START-OPEN
+  - test: Galata sections.spec.ts: load `/lab/workspaces/<id>`, assert no card has the open class
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:31:50Z @kj added
+- [ ] `ACC-ACCORD-69-CARD` **Workspace card** - MEDIUM; each workspace is a card whose header is tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour
+  - test: Galata sections.spec.ts: two workspaces, assert header backgrounds differ and the open card's border colour
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:31:50Z @kj added
+  - log: 2026-10-23T21:46:24Z @kj amended text "each workspace is a card whose header is tinted with the workspace colour; an open card has a border in that colour" -> "each workspace is a card whose header is tinted with the workspace colour; an open card other than this window's has a border in that colour"
+  - log: 2026-10-23T21:59:20Z @kj amended text "each workspace is a card whose header is tinted with the workspace colour; an open card other than this window's has a border in that colour" -> "each workspace is a card whose header has the workspace colour as background; an open card other than this window's has a neutral body and a border in that colour"
+  - log: 2026-10-23T22:05:52Z @kj amended text "each workspace is a card whose header has the workspace colour as background; an open card other than this window's has a neutral body and a border in that colour" -> "each workspace is a card whose header is tinted 8% with the workspace colour; an open card other than this window's has a neutral body and a border in that colour"
+- [ ] `ACC-ACCORD-70-COUNT-TABS` **Tab count** - HIGH; the card header shows the number of tabs listed under Tabs
+  - test: Galata sections.spec.ts: workspace with 2 documents, assert tab count 2
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:31:50Z @kj added
+- [ ] `ACC-ACCORD-71-COUNT-ICONS` **Three count icons** - MEDIUM; the counts carry three different glyphs: JupyterLab's `tabIcon` for tabs, the terminal glyph for terminals, JupyterLab's `kernelIcon` for kernels
+  - test: Jest panel.spec.ts: render a header, assert the three `data-icon` names
+  - test-tags: UNIT
+  - log: 2026-10-23T21:31:50Z @kj added
+- [ ] `ACC-ACCORD-76-OUTLINE` **This window's workspace outlined** - MEDIUM; the card of this window's workspace has an outline in `--jp-brand-color2`; no other card has one
+  - overrides: ACC-ACCORD-14-CURRENT
+  - test: Galata sections.spec.ts: assert exactly one card with the outline class and its computed outline colour equals `--jp-brand-color2`
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:40:53Z @kj added
+- [ ] `ACC-ACCORD-77-CARET` **Open and close triangle** - HIGH; each card header shows a triangle pointing right while the card is closed and down while it is open
+  - test: Galata sections.spec.ts: assert the header's `aria-expanded` and the triangle direction before and after a click
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:40:53Z @kj added
+- [ ] `ACC-ACCORD-78-CLOSE-OPEN` **Close the open card** - MEDIUM; a click on the header of the open card closes it, leaving no card open
+  - test: Galata sections.spec.ts: open a card, click its header, assert no card open
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:40:53Z @kj added
+- [-] `ACC-ACCORD-79-CURRENT-TINT` **Stronger tint for this window's workspace** - MEDIUM; the header of this window's workspace is tinted 16% with its colour; every other header is tinted 8%, open or closed
+  - overridden-by: ACC-ACCORD-124-CURRENT-SHADE
+  - test: Galata sections.spec.ts: compute both header backgrounds against `--jp-layout-color1` and the workspace colour, assert 16% and 8%
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:46:24Z @kj added
+  - log: 2026-10-23T21:59:20Z @kj rejected: Star Colonel 2026-10-23: tint not strong enough, use the shades of the coloured tabs; replaced by ACC-ACCORD-124-CURRENT-SHADE
+- [ ] `ACC-ACCORD-86-OWN-PALETTE` **Own palette** - MEDIUM; card colours come from the extension's own palette, which starts from the colourful tab extension's active tab shades, never from that extension's variables
+  - test: Jest palette.spec.ts: assert the stylesheet defines the six colours and names no `--jp-colourful-tab-` variable
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:29Z @kj added
+  - log: 2026-10-23T21:59:20Z @kj amended text "strip and tint colours come from the extension's own six-colour palette for each theme, never from the colourful tab extension's variables" -> "card shades and strip colours come from the extension's own palette, which starts from the colourful tab extension's inactive and active values, never from that extension's variables"
+  - log: 2026-10-23T22:05:52Z @kj amended text "card shades and strip colours come from the extension's own palette, which starts from the colourful tab extension's inactive and active values, never from that extension's variables" -> "card colours come from the extension's own palette, which starts from the colourful tab extension's active tab shades, never from that extension's variables"
+- [ ] `ACC-ACCORD-97-ELLIPSIS` **Long names and purposes** - MEDIUM; a name or purpose too long for the card ends in an ellipsis; the header's tooltip shows the full name and purpose
+  - test: Galata sections.spec.ts: 80-character name, assert overflow ellipsis and the full text in `title`
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-ACCORD-98-HOVER-ACTIONS` **Header icons on hover** - MEDIUM; the open and close-all-tabs icons of a closed card show while the pointer is over its header or the header has keyboard focus
+  - test: Galata sections.spec.ts: assert icons hidden, hover, assert visible; Tab focus, assert visible
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-ACCORD-99-PURPOSE-DIALOG` **Description dialog** - MEDIUM; Set description opens a dialog with the three-line Short description field holding the current purpose and the keyboard focus; Enter saves
+  - test: Galata menu.spec.ts: open the dialog, assert value and focus, type, Enter, assert the header text
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended title "Purpose dialog" -> "Description dialog"; text "Set purpose opens a dialog with one text field holding the current purpose and the keyboard focus in it; Enter saves" -> "Set description opens a dialog with the three-line Short description field holding the current purpose and the keyboard focus; Enter saves"
+- [ ] `ACC-ACCORD-100-PURPOSE-LENGTH` **Purpose length** - MEDIUM; a purpose holds at most 100 characters; the dialogs do not accept more
+  - test: Galata menu.spec.ts: type 150 characters, assert 100 saved; pytest: PATCH 101 characters answers 400
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended text "a purpose holds at most 200 characters; the dialog does not accept more" -> "a purpose holds at most 100 characters; the dialogs do not accept more"
+  - log: 2026-10-23T22:25:39Z @kj edited test "Galata menu.spec.ts: type 250 characters, assert 200 saved; pytest: PATCH 201 characters answers 400" -> "Galata menu.spec.ts: type 150 characters, assert 100 saved; pytest: PATCH 101 characters answers 400"
+- [ ] `ACC-ACCORD-101-PURPOSE-TEXT` **Purpose shown as text** - HIGH; a purpose is displayed as plain text: markup in it is shown, never interpreted
+  - test: Jest panel.spec.ts: purpose `<img src=x onerror=alert(1)>`, assert no img element and the text shown
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-ACCORD-102-COLOUR-CHECK` **Present colour marked** - LOW; the Colour submenu marks the workspace's present colour
+  - test: Galata menu.spec.ts: open Colour, assert the checked item is the card's colour
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-ACCORD-103-DELETE-DISARM` **Armed delete lapses** - MEDIUM; an armed Confirm delete lapses after 4 s or when the menu closes; the next click arms it again
+  - test: Jest menu.spec.ts: arm, advance 4 s, assert disarmed; arm, close the menu, assert disarmed
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:30Z @kj added
+- [-] `ACC-ACCORD-124-CURRENT-SHADE` **Active shade for this window's workspace** - HIGH; header and body of this window's card take the active shade of its colour; every other card header takes the inactive shade, as the colourful tab extension marks active and inactive tabs
+  - overrides: ACC-ACCORD-79-CURRENT-TINT
+  - overridden-by: ACC-ACCORD-125-SELECTED-SHADE
+  - test: Galata sections.spec.ts: per theme, assert computed backgrounds equal the active and inactive shade values
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:59:19Z @kj added
+  - log: 2026-10-23T22:05:52Z @kj rejected: Star Colonel 2026-10-24: only the selected card strong, unselected as before, selected body weaker than its header; replaced by ACC-ACCORD-125-SELECTED-SHADE
+- [ ] `ACC-ACCORD-125-SELECTED-SHADE` **Only this window's card strong** - HIGH; the header of this window's card takes the active tab shade of its colour and its body a 40% mix of that shade into `--jp-layout-color1`; every other card header keeps an 8% tint of its colour
+  - overrides: ACC-ACCORD-124-CURRENT-SHADE
+  - test: Galata sections.spec.ts: per theme, assert the computed header and body backgrounds of this window's card and the 8% tint of another
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:05:52Z @kj added
+- [-] `ACC-ACCORD-126-STRIP-SAME` **Strip of this window's card unchanged** - MEDIUM; the colour strip of this window's card has the width and colour of every other card's strip; a 2px gap of panel colour separates it from the stronger background, and the outline keeps 1px clear of the card
+  - overridden-by: ACC-ACCORD-128-STRIP-PLAIN
+  - test: Galata sections.spec.ts: compare the strip's computed width and colour on two cards; assert the gap and the outline offset
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:06:54Z @kj added
+  - log: 2026-10-23T22:12:57Z @kj rejected: Star Colonel 2026-10-24: no spacing between strip and background; replaced by ACC-ACCORD-128-STRIP-PLAIN
+- [-] `ACC-ACCORD-127-FIT` **Card drawn as one shape** - MEDIUM; strip, gap and backgrounds of a card stay inside its rounded corners with no notch or seam, and the outline of this window's card runs concentric 1px outside it
+  - overridden-by: ACC-ACCORD-129-FLUSH
+  - test: Galata sections.spec.ts: screenshot the card edge at 4x device scale, assert no pixel of strip or shade outside the corner arc and a 1px gap to the outline
+  - test-tags: FUNCTIONAL
+  - mechanism: 2026-10-23T22:11:28Z @kj card `border-radius: 3px; overflow: hidden` clips square layers; `outline: 2px solid var(--jp-brand-color2); outline-offset: 1px` follows the radius
+  - log: 2026-10-23T22:11:28Z @kj added
+  - log: 2026-10-23T22:12:58Z @kj rejected: Star Colonel 2026-10-24: the outline must fit with no spacing; replaced by ACC-ACCORD-129-FLUSH
+- [ ] `ACC-ACCORD-128-STRIP-PLAIN` **Strip of this window's card unchanged** - MEDIUM; the colour strip of this window's card has the width and colour of every other card's strip and meets the stronger background directly, with no gap
+  - overrides: ACC-ACCORD-126-STRIP-SAME
+  - test: Galata sections.spec.ts: compare the strip's computed width and colour on two cards; assert the shade starts at the strip's right edge
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:12:57Z @kj added
+- [ ] `ACC-ACCORD-129-FLUSH` **Card and outline fit exactly** - MEDIUM; strip and backgrounds stay inside the card's rounded corners with no notch or seam, and the outline of this window's card lies against the card's edge, following its corners, with no space between
+  - overrides: ACC-ACCORD-127-FIT
+  - test: Galata sections.spec.ts: screenshot the card edge at 4x device scale, assert no pixel of strip or shade outside the corner arc and no panel pixel between card and outline
+  - test-tags: FUNCTIONAL
+  - mechanism: 2026-10-23T22:12:58Z @kj card `border-radius: 3px; overflow: hidden` clips square layers; `outline: 2px solid var(--jp-brand-color2); outline-offset: 0` follows the radius
+  - log: 2026-10-23T22:12:58Z @kj added
+- [ ] `ACC-ACCORD-130-NOW-DOT` **Age now with an activity dot** - MEDIUM; an age under 60 s reads now in `--jp-ui-font-color0` semibold, with a `--jp-brand-color2` dot before it; 60 s or more reads 1m without the dot
+  - overrides: ACC-ACCORD-21-AGE-NOW
+  - test: Jest age.spec.ts: 59 s gives now, the semibold class and the dot; 60 s gives 1m without them
+  - test-tags: UNIT
+  - log: 2026-10-23T22:13:49Z @kj added
+- [ ] `ACC-ACCORD-131-OPEN-BUTTONS` **Buttons of an open card** - MEDIUM; an open card ends with the buttons Open and Close all tabs; Open is disabled on this window's card
+  - test: Galata sections.spec.ts: open this window's card and another, assert both buttons and Open disabled only on the first
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:49Z @kj added
+- [ ] `ACC-ACCORD-132-NAME-SIZE` **Workspace name size** - LOW; a workspace name is set in `--jp-ui-font-size2`, semibold
+  - test: Galata legibility.spec.ts: assert the computed font size and weight of a name
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:49Z @kj added
+- [ ] `ACC-ACCORD-148-MENU-ICONS` **Icons in the workspace menu** - MEDIUM; every workspace menu item has a 16px icon before its label; Open workspace and Close all tabs use the card header's icons; Colour shows the swatch of the workspace's colour; only the bin of Delete workspace takes `--jp-error-color1`, its label stays `--jp-ui-font-color0`
+  - test: Galata menu.spec.ts: open the menu, assert an svg in each of the seven items, the Colour swatch's fill equal to the strip colour and the Delete label colour
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:25:39Z @kj added
+  - log: 2026-10-23T22:28:12Z @kj amended text "every workspace menu item has a 16px icon before its label; Open workspace and Close all tabs use the card header's icons; Colour shows a dot in the workspace's colour; only the bin of Delete workspace takes `--jp-error-color1`, its label stays `--jp-ui-font-color0`" -> "every workspace menu item has a 16px icon before its label; Open workspace and Close all tabs use the card header's icons; Colour shows the swatch of the workspace's colour; only the bin of Delete workspace takes `--jp-error-color1`, its label stays `--jp-ui-font-color0`"
+  - log: 2026-10-23T22:28:12Z @kj edited test "Galata menu.spec.ts: open the menu, assert an svg in each of the seven items, the Colour dot's fill equal to the strip colour and the Delete label colour" -> "Galata menu.spec.ts: open the menu, assert an svg in each of the seven items, the Colour swatch's fill equal to the strip colour and the Delete label colour"
+- [ ] `ACC-ACCORD-150-COLOUR-SWATCH` **Colour swatches as on tabs** - MEDIUM; the Colour submenu matches the Tab Colour menu of `jupyterlab_colourful_tab_extension`: before each of Red, Orange, Yellow, Green, Blue, Purple a 12px square swatch, 2px corners, 1px `--jp-layout-color4` border, filled with that strip colour
+  - test: Galata menu.spec.ts: open Colour, assert six labels in this order and each swatch's size, radius, border and fill
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:28:12Z @kj added
 
 ## Section content `LISTS`
 
@@ -184,6 +438,46 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - test: Galata content.spec.ts: PUT an empty workspace, open its section, assert the line
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:38Z @kj added
+- [ ] `ACC-LISTS-81-ONCE` **Each tab listed once** - HIGH; each tab is listed once: documents and other widgets under Tabs, terminal tabs under Terminals, the kernels of notebook and console tabs under Kernels
+  - test: Jest model.spec.ts: layout with a document, a terminal and a notebook, assert each in one group only
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-LISTS-104-ROW-MENU` **Row actions in a context menu** - MEDIUM; row actions are in a context menu opened by right-click or the context-menu key; rows carry no inline buttons
+  - test: Galata content.spec.ts: right-click a row, assert the menu; assert no button inside rows
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-LISTS-105-DOC-ICON` **Document icons** - MEDIUM; a row under Tabs shows the document's file-type icon from the document registry
+  - test: Galata content.spec.ts: open a notebook and a markdown file, assert their rows carry the notebook and markdown icons
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-LISTS-106-CLOSE-TAB` **Close one tab** - HIGH; the context menu of a tab row of this window's workspace closes that tab; an unsaved document asks first
+  - test: Galata content.spec.ts: close one of two documents from its row, assert one tab left
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:30Z @kj added
+- [ ] `ACC-LISTS-107-TAB-OTHER` **Close one tab of another workspace** - MEDIUM; the context menu of a tab row of another workspace removes that tab from the saved layout; refused while another window shows that workspace
+  - test: Galata content.spec.ts: PUT a workspace with two tabs, close one, GET, assert one tab key left
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-LISTS-108-PATH-TOOLTIP` **Path tooltip** - LOW; a row's tooltip shows the full path of its document
+  - test: Galata content.spec.ts: document in a subfolder, assert `title` holds the path
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-LISTS-109-CONSOLE` **Console kernels** - MEDIUM; the kernel of a console tab is listed under Kernels with the console's name as its detail
+  - test: Jest model.spec.ts: layout with a console and its session, assert the kernel row and detail
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-LISTS-110-SHUTDOWN-ALL` **Shut down all without a workspace** - MEDIUM; the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals and kernels
+  - test: Galata content.spec.ts: two terminals in no workspace, Shut down all, confirm, assert `/api/terminals` empty of them
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-LISTS-134-GROUP-COUNT` **Group labels** - LOW; inside an open card each group starts with its name in capitals and the number of its rows
+  - test: Galata content.spec.ts: assert `TABS 3`, `TERMINALS 5`, `KERNELS 1` for a known workspace
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:50Z @kj added
+- [ ] `ACC-LISTS-135-NOWS-COUNTS` **Counts without a workspace** - LOW; the In no workspace card counts terminals and kernels and shows no tab count
+  - test: Galata content.spec.ts: two terminals in no layout, assert terminal count 2, kernel count 0, no tab count
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:50Z @kj added
 
 ## Terminal rows `TERM`
 
@@ -213,6 +507,18 @@ What a terminal row shows and where each value comes from
   - test: Galata terminals.spec.ts: send an OSC 2 title, assert the row's title attribute
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
+- [ ] `ACC-TERM-111-SHUTDOWN` **Shut down a terminal** - HIGH; the context menu of a terminal row shuts the terminal down, and its row leaves every card
+  - test: Galata terminals.spec.ts: shut down from the row, assert the terminal gone from `/api/terminals` and the panel
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-TERM-112-SHUTDOWN-SHARED` **Edge: terminal of two workspaces** - MEDIUM; shutting down a terminal that another workspace also holds asks first and names that workspace
+  - test: Galata terminals.spec.ts: terminal in two layouts, shut down, assert the dialog names the other workspace
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-TERM-113-PROCESS-LIVE` **Process name follows the program** - MEDIUM; after the program in a terminal changes, its row shows the new process name at the next reload
+  - test: pytest test_terminals.py: run `sleep 30`, assert sleep; end it, assert the shell; Galata: row text changes
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
 
 ## Kernel rows `KERNEL`
 
@@ -226,6 +532,18 @@ What a kernel row shows
   - test: Jest model.spec.ts: idle and busy kernels, assert dot classes
   - test-tags: UNIT
   - log: 2026-10-23T13:58:39Z @kj added
+- [ ] `ACC-KERNEL-72-GLYPH` **Kernel icon** - MEDIUM; a kernel row shows JupyterLab's `kernelIcon`, never a notebook icon
+  - test: Jest panel.spec.ts: render a kernel row, assert `data-icon` is the kernel icon
+  - test-tags: UNIT
+  - log: 2026-10-23T21:31:50Z @kj added
+- [ ] `ACC-KERNEL-114-SHUTDOWN` **Shut down a kernel** - HIGH; the context menu of a kernel row shuts the kernel down; its notebook stays open without a kernel
+  - test: Galata kernels.spec.ts: shut down from the row, assert `/api/kernels` without it and the notebook tab still open
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-KERNEL-133-STATE-OTHER` **Edge: other kernel states** - LOW; a kernel that is neither idle nor busy (starting, restarting, dead, unknown) shows its dot in `--jp-layout-color4`
+  - test: Jest model.spec.ts: one kernel per state, assert the dot class
+  - test-tags: UNIT
+  - log: 2026-10-23T22:13:50Z @kj added
 
 ## Hidden workspaces `HIDDEN`
 
@@ -239,10 +557,11 @@ The hide toggle of a workspace and the header button that shows hidden workspace
   - test: Galata hidden.spec.ts: hide 2, assert 2 hidden workspaces; show both, assert no line
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
-- [ ] `ACC-HIDDEN-52-SHOW-HIDDEN` **Show hidden workspaces** - HIGH; the eye button in the header shows the hidden workspaces among the others, name in italics, with an eye button
+- [ ] `ACC-HIDDEN-52-SHOW-HIDDEN` **Show hidden workspaces** - HIGH; the eye button in the header shows the hidden workspaces among the others, each with the word hidden and an eye button
   - test: Galata hidden.spec.ts: hide 1, press the header eye, assert its section with the hidden class
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
+  - log: 2026-10-23T21:31:51Z @kj amended text "the eye button in the header shows the hidden workspaces among the others, name in italics, with an eye button" -> "the eye button in the header shows the hidden workspaces among the others, each with the word hidden and an eye button"
 - [ ] `ACC-HIDDEN-53-UNHIDE` **Show a workspace again** - HIGH; the eye button of a hidden workspace makes it a shown workspace again
   - test: Galata hidden.spec.ts: unhide, release the header eye, assert the section stays
   - test-tags: FUNCTIONAL
@@ -255,6 +574,10 @@ The hide toggle of a workspace and the header button that shows hidden workspace
   - test: Jest model.spec.ts: hidden workspace with a terminal, assert the terminal in no visible group
   - test-tags: UNIT
   - log: 2026-10-23T13:58:39Z @kj added
+- [ ] `ACC-HIDDEN-87-NOT-CURRENT` **This window's workspace stays shown** - MEDIUM; Hide workspace is disabled on this window's workspace
+  - test: Galata hidden.spec.ts: open the menu of this window's card, assert Hide workspace disabled
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
 
 ## Filter `FILTER`
 
@@ -284,6 +607,26 @@ The filter field that finds anything in the panel, as in the AI assistants panel
   - test: Galata filter.spec.ts: clear, assert focus in the field and all rows
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:45Z @kj added
+- [ ] `ACC-FILTER-82-OPEN-MATCHES` **Matching cards open** - HIGH; while a filter is active, every card with a match is open
+  - test: Galata filter.spec.ts: two workspaces with a match, assert both cards open
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-FILTER-83-RESTORE` **Open card returns** - MEDIUM; clearing the filter returns the cards to the open state they had before the filter
+  - test: Galata filter.spec.ts: open card A, filter, clear, assert only A open
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-FILTER-115-NO-MATCH` **Nothing matches** - MEDIUM; a filter without any match shows one line saying that nothing matches
+  - test: Galata filter.spec.ts: query `zzzz`, assert the line and no card
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-FILTER-116-HIDDEN-SEARCH` **Hidden workspaces in the filter** - MEDIUM; the filter searches hidden workspaces only while the header's eye button shows them
+  - test: Jest filter.spec.ts: match only in a hidden workspace, assert no card; eye on, assert its card
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:03Z @kj added
+- [ ] `ACC-FILTER-139-UNMATCHED` **Workspaces without a match** - LOW; with a filter, a line under the cards gives the number of workspaces without a match
+  - test: Galata filter.spec.ts: 6 workspaces, 2 with a match, assert the line reads 4
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-23T22:13:50Z @kj added
 
 ## Server extension `SERVER`
 
@@ -301,6 +644,39 @@ Endpoints of the server extension
   - test: pytest test_presence.py: two clients, fake clock, assert the 90 s window
   - test-tags: UNIT
   - log: 2026-10-23T13:58:45Z @kj added
+- [ ] `ACC-SERVER-84-META-FILE` **Records in the extension's own file** - HIGH; purpose, colour and hidden state live in `workspace-manager.json` in the workspaces directory, never inside a workspace file
+  - test: pytest test_meta.py: set all three, assert the file's content and every workspace file unchanged
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:29Z @kj added
+- [ ] `ACC-SERVER-117-META-READ` **Read the records** - HIGH; `GET jupyterlab-workspace-manager-extension/meta` returns the purpose, colour and hidden state of every workspace that has a record
+  - test: pytest test_meta.py: two records, assert both returned
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
+- [ ] `ACC-SERVER-118-META-PATCH` **Change one record** - HIGH; `PATCH .../meta/<id>` changes only the fields it names for that one workspace; the records of other workspaces stay as they were
+  - test: pytest test_meta.py: two PATCH calls for two workspaces in one second, assert both records kept
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
+- [ ] `ACC-SERVER-119-META-VALIDATE` **Refuse bad values** - HIGH; PATCH answers 400 for a colour outside the six names, a purpose over 100 characters, or a hidden value that is not true or false
+  - test: pytest test_meta.py: one bad value per field, assert 400 and the record unchanged
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
+  - log: 2026-10-23T22:25:39Z @kj amended text "PATCH answers 400 for a colour outside the six names, a purpose over 200 characters, or a hidden value that is not true or false" -> "PATCH answers 400 for a colour outside the six names, a purpose over 100 characters, or a hidden value that is not true or false"
+- [ ] `ACC-SERVER-120-META-ATOMIC` **Whole-file writes** - MEDIUM; the records file is written to a temporary file and renamed into place, so a crash leaves the old or the new file, never part of one
+  - test: pytest test_meta.py: make the rename raise, assert the old file intact
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
+- [ ] `ACC-SERVER-121-META-CORRUPT` **Edge: unreadable records file** - MEDIUM; an unreadable records file is moved to `workspace-manager.json.bad` and an empty one starts; the server log names the move
+  - test: pytest test_meta.py: write invalid JSON, GET, assert empty records, the .bad file and the log line
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
+- [ ] `ACC-SERVER-122-WORKSPACES-DIR` **Same workspaces directory as the lab** - MEDIUM; the extension uses the workspaces directory of the running lab (`LabApp.workspaces_dir`), as the culler does
+  - test: pytest test_meta.py: server with a custom workspaces_dir, assert the records file there
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
+- [ ] `ACC-SERVER-123-NO-TERMINALS` **Edge: server without terminals** - LOW; on a server without terminals the terminals endpoint answers 200 with an empty list
+  - test: pytest test_terminals.py: terminals disabled, assert 200 and []
+  - test-tags: UNIT
+  - log: 2026-10-23T21:54:04Z @kj added
 
 ## Culler sibling `CULLER`
 
@@ -318,4 +694,8 @@ Working beside jupyterlab_kernel_terminal_workspace_culler_extension in the same
   - test: Galata culler.spec.ts: panel open 30 s with polling, assert terminals, kernels and workspaces unchanged
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:45Z @kj added
+- [ ] `ACC-CULLER-85-NO-MTIME` **Culler clock untouched** - HIGH; hide, purpose and colour changes leave the workspace file's modification time unchanged
+  - test: pytest test_meta.py: record mtime, PATCH all three fields, assert mtime equal
+  - test-tags: UNIT
+  - log: 2026-10-23T21:53:29Z @kj added
 

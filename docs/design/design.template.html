@@ -46,12 +46,11 @@
 </head>
 <body>
 <main>
-
 <h1>Workspace manager - design proposal</h1>
-<p class="status">Draft for the Star Colonel's approval, 2026-10-23. No code of the panel exists yet. The functional requirements are filed as acceptance criteria in <code>docs/acc-crit.md</code>; the criteria that depend on an open choice are filed after the choice.</p>
+<p class="status">Design B selected by the Star Colonel on 2026-10-23 and refined to his notes. No code of the panel exists yet. The functional requirements are acceptance criteria in <code>docs/acc-crit.md</code>.</p>
 
 <div class="note">
-  The extension replaces the built-in panel "Running Terminals and Kernels" with a panel built on workspaces. Each JupyterLab workspace is one section of an accordion: its colour, purpose, age, counts and actions in the header, then its tabs, terminals and kernels. Three visual alternatives follow; the data rules, the header tools and the workspace menu are the same for all three.
+  The extension replaces the built-in panel "Running Terminals and Kernels" with a panel built on workspaces. Each JupyterLab workspace is a card: its colour, purpose, age, counts and actions in the header, then its tabs, terminals and kernels when the card is open. The dark models use the token values of the live lab's theme, Galaxa Dark Theme - Steel; the light models use stock JupyterLab Light.
 </div>
 
 <h2>1. The panel it replaces</h2>
@@ -71,12 +70,31 @@
 <h2>2. Decided by the Star Colonel</h2>
 <ul>
   <li>The extension replaces the built-in panel completely ("our extension completely replaces the old one")</li>
-  <li>Each workspace has a toggle "hidden" with an eye icon, to hide workspaces that would bother the user</li>
-  <li>A "..." button in the section header opens the workspace's menu</li>
+  <li>Design B, the tinted cards, is the starting point ("design B - refine it, we will start from this")</li>
+  <li>This window's workspace is not expanded by default ("selected workspace would not be expanded by default")</li>
+  <li>Three counts in the card header - tabs, terminals, notebooks - each with its own icon; the terminal icon stays, tabs and notebooks get new ones ("tabs must have different icon; terminals ok; notebooks is ok, but must use different icon for that (kernel?)")</li>
+  <li>Better legibility ("improve legibility")</li>
+  <li>This window's workspace carries no "current" mark; a <code>--jp-brand-color2</code> outline goes around its card ("selected will not be 'current', just brand 2 outline around it")</li>
+  <li>Every card has an open and close triangle ("there must be open / close triangle for the workspace")</li>
+  <li>The card of this window's workspace has a stronger background colour ("the bg colour must get stronger too for the selected one")</li>
+  <li>Sidebar icon 4, the four panes ("icon - 4 panels")</li>
+  <li>Colours are given automatically and the user can change them ("autocolours, but user can change"); the extension's own palette, not the colourful tab's variables</li>
+  <li>The stronger tint is the hint that marks the selected workspace; the edge colours stay ("it is about hinting with stronger tint that this is the selected workspace")</li>
+  <li>The hint is as strong as the coloured tabs make it between an inactive and an active tab ("tint is not strong enough; look at the coloured tabs - that we make a difference between inactive vs active tab")</li>
+  <li>Only this window's card is strong; the other cards stay as they were, and the card's body is weaker than its header ("only selected one strong, keep unselected ones as you had them before; and the selected one is too strong now, keep that strength for the workspace header")</li>
+  <li>The colour strip of this window's card looks as on every other card ("keep the edge coloured tab same style as the inactive ones")</li>
+  <li>The card's parts fit exactly ("must do perfect fit")</li>
+  <li>No spacing between the outline and the card, nor between the strip and the background ("outline must fit perfectly, those spacings that I shown must not be")</li>
+  <li>The remaining recommendations stand ("ok, start filling up acc crits"): section 9</li>
+  <li>Each workspace has a toggle "hidden" with an eye icon; a "..." button in the header opens the workspace's menu</li>
   <li>The panel has a refresh button and a filter that finds anything, the same concept as the filter of <code>jupyterlab_ai_code_assistants_extension</code></li>
+  <li>A + button adds a new workspace and asks for its name and an optional description, which is the purpose shown on the card ("and + for adding new workspace; asks for name and description (optional)")</li>
+  <li>The description is short, at most 100 characters, in a larger field with a character counter ("also update design to show short description (100 characters max)", "larger input box for desc", "char counter - 45/100")</li>
+  <li>Every item of the workspace menu has an icon ("and menu must have icons")</li>
+  <li>The colour swatches look like those of the coloured tabs ("colour swatvches - same style as for tabds in coloured tabs extension")</li>
+  <li>The open icon is candidate 2, the arrow in a circle ("open looks like exit (icon)", "different icon", then "ok" to the recommendation)</li>
   <li>A new sidebar icon replaces the old one</li>
   <li>The functional requirements are written as acceptance criteria and defects through pm-tools, author <code>@kj</code></li>
-  <li>No code before the design is approved</li>
 </ul>
 
 <h2>3. Where the data comes from</h2>
@@ -146,87 +164,111 @@
   </tr>
 </table>
 
-<h2>4. Three alternatives</h2>
-<p>The same content in each: workspace <code>default</code> open (this window's workspace, sky), four other workspaces closed, the section "In no workspace", "Other sessions", and the line for three hidden workspaces. The second section shows the hover state with the two header actions of the brief (open the workspace, close all its tabs). Names and terminals are the real ones of this server; the purposes and the documents are examples.</p>
 
-<div class="alt">
-<h3>A. Accordion with a colour strip <span class="rec">recommended</span></h3>
-{{svg:alt-a}}
+<h2>4. Design B, refined</h2>
+<h3>At load: no card is open</h3>
+{{svg:b2-closed}}
+<h3>After a click on the card of this window's workspace</h3>
+{{svg:b2-open}}
+<h3>Icons</h3>
+{{svg:b2-legend}}
 <ul>
-  <li>Each section is a full-width band; a 4px strip in the workspace colour runs down the left edge of the header and, when open, of the whole section</li>
-  <li>Header: caret, name, a "current" chip on this window's workspace, the age, the "..." button; the second line holds the purpose and the counts of documents, terminals and kernels</li>
-  <li>Inside: three groups, Tabs, Terminals, Kernels, in 24px rows; a terminal row reads process name, then terminal name, then the time since its last activity</li>
-  <li>Strength: closest to the brief and to the design system's sections; densest of the three, about 18 rows visible at 1000px height</li>
-  <li>Weakness: with many workspaces the closed headers take the height; the hidden toggle is the answer</li>
+  <li><strong>No card open at load</strong>, the card of this window's workspace included; a click opens a card and closes the one that was open</li>
+  <li><strong>Triangle</strong> before every name: pointing right on a closed card, down on the open one; a click anywhere on the header toggles the card, and a click on the open card's header leaves no card open</li>
+  <li><strong>This window's workspace</strong> has a 2px <code>--jp-brand-color2</code> outline lying against its card's edge. Its header takes the <strong>active shade</strong> of its colour, the shade <code>jupyterlab_colourful_tab_extension</code> gives an active tab, and its body a 40% mix of that shade into the panel colour, so the header is the strongest part. Every other card header keeps its 8% tint. The colour strip is the same on every card and meets the background directly. It is also the first card</li>
+  <li><strong>Fit</strong>: each card is one rounded shape (3px radius) that clips everything inside it - the strip and the backgrounds are square layers, so the strip follows the corners and no seam or notch shows; the outline lies against the card's edge and follows its corners. In CSS: <code>border-radius: 3px; overflow: hidden</code> on the card and <code>outline: 2px solid var(--jp-brand-color2); outline-offset: 0</code>, which follows the radius</li>
+  <li>In Light the strip has the colour of this window's active header, so on that card it shows against the paler body only</li>
+  <li><strong>Tabs count</strong> uses JupyterLab's own <code>tabIcon</code> (a window with a tab); the rows under Tabs keep the file-type icon of each document, as JupyterLab's tabs do</li>
+  <li><strong>Notebooks count and kernel rows</strong> use JupyterLab's own <code>kernelIcon</code> (the chip of the status bar); the count is the number of kernels of the workspace's notebooks and consoles</li>
+  <li><strong>Terminal glyph</strong> stays as approved; it is the extension's own outline glyph, because JupyterLab's <code>terminalIcon</code> is a filled block that draws heavier than the two others</li>
+  <li><strong>Kernel state</strong> is a dot before the time: <code>--jp-success-color1</code> idle, <code>--jp-brand-color2</code> busy, <code>--jp-layout-color4</code> unknown</li>
+  <li><strong>Card actions</strong>: a closed card shows open (an arrow in a circle; the candidates are under Workspace menu) and close-all-tabs as icons on hover; an open card ends with the buttons Open and Close all tabs; Open is disabled on this window's workspace</li>
 </ul>
-</div>
 
-<div class="alt">
-<h3>B. Tinted cards</h3>
-{{svg:alt-b}}
+<h3>Legibility</h3>
+<p>Measured as WCAG contrast ratio of text to its background; WCAG AA asks 4.5:1 for text under 18px. Galaxa Dark Theme - Steel sets <code>--jp-ui-font-size1</code> to 11px and its colour 2 (<code>#7d8791</code>) reads 3.3:1 even on the plain panel, so the refined cards keep colour 2 out of every text. Each value is the lowest of the six workspace colours.</p>
+<table>
+  <tr><th>Text</th><th>First draft of B</th><th>Refined</th><th>Galaxa Steel</th><th>Light</th></tr>
+  <tr><td>Workspace name</td><td>12px, colour 1, 12% tint</td><td><code>--jp-ui-font-size2</code> (13.2px), semibold, colour 0, 8% tint</td><td>3.7 → 5.6</td><td>14.8 → 19.8</td></tr>
+  <tr><td>Purpose</td><td>11px italic, colour 2</td><td>size 1 (11px), regular, colour 0</td><td>2.5 → 5.6</td><td>4.2 → 19.8</td></tr>
+  <tr><td>Age and counts</td><td>11px, colour 2</td><td>size 1, colour 0; glyphs colour 1</td><td>2.5 → 5.6</td><td>4.2 → 19.8</td></tr>
+  <tr><td>Header of this window's workspace</td><td>colour 2 on 22% tint (open card)</td><td>colour 0 on the active shade</td><td>2.0 → 6.7</td><td>4.0 → 9.9</td></tr>
+  <tr><td>Row detail (terminal name, notebook)</td><td>11px, colour 2</td><td>size 1, colour 1 on a neutral body</td><td>3.3 → 4.8</td><td>4.6 → 16.1</td></tr>
+  <tr><td>Row detail in this window's open card</td><td>colour 2</td><td>colour 1 on the body (40% of the active shade)</td><td>3.3 → 4.8</td><td>4.6 → 12.6</td></tr>
+  <tr><td>Row detail on a hovered row</td><td>colour 2 on layout 2</td><td>colour 0 under a 12% veil of the text colour</td><td>2.4 → 5.2</td><td>4.0 → 7.7</td></tr>
+  <tr><td>"now"</td><td>brand colour 1</td><td>colour 0, semibold, plus a brand colour 2 dot</td><td>3.8 → 5.6</td><td>4.6 → 19.8</td></tr>
+</table>
 <ul>
-  <li>Each workspace is a card with an 8px margin; the header is tinted with the workspace colour, the open card also has a border in that colour</li>
-  <li>No group headings inside the card; thin lines separate documents, terminals and kernels, and the card ends with its action buttons</li>
-  <li>Strength: the most visibly separated workspaces, and the action is a labelled button, not only an icon</li>
-  <li>Weakness: about 25% less content per height than A; the tints need checking in every theme</li>
+  <li>No italics anywhere; no text below size 1 except the group labels (size 0, uppercase, semibold)</li>
+  <li>The brand colour 2 outline reads 5.4:1 against the panel in Galaxa Steel but 2.65:1 in Light, under the 3:1 WCAG asks for a graphic that carries meaning; in Light the card's place at the top of the list carries the same fact</li>
+  <li>Every other card header keeps an 8% tint of its colour. This window's header takes the active tab shade, its body a 40% mix of it: in Light the body is a paler form of the header; in Galaxa Steel the active shades sit at the panel's own brightness and differ from it by hue, as on the tabs</li>
+  <li>The body of another open card stays neutral (<code>--jp-layout-color1</code>)</li>
+  <li>A hovered row lays a 12% veil of the text colour over its background, so it reads on a neutral body and on the active shade alike</li>
+  <li>Buttons are filled with <code>--jp-layout-color2</code>: Galaxa Steel's border colour 2 is the same <code>#404b54</code>, which left the outlined buttons of the first draft at 1.4:1 to the panel</li>
+  <li>Brand colour 2 alone would give "now" 2.65:1 in Light and brand colour 1 3.8:1 in Galaxa Steel, so the word is colour 0 and the colour moves to the dot, the activity marker of the design language</li>
 </ul>
-</div>
 
-<div class="alt">
-<h3>C. Colour rail</h3>
-{{svg:alt-c}}
-<ul>
-  <li>A 44px rail on the left holds one coloured tab per workspace (initials of the name); the selected tab opens that workspace in the pane on the right, so exactly one is open by construction</li>
-  <li>The pane shows name, purpose, age, counts, two labelled buttons and the three groups</li>
-  <li>Strength: many workspaces fit without scrolling; the colour is placed on the side, as the brief describes the strip</li>
-  <li>Weakness: names show only in the open pane and in tooltips; two-letter initials repeat (<code>fb-exp-*</code> gives <code>FE</code> three times on this server)</li>
-</ul>
-</div>
-
-<h2>5. Behaviour common to every alternative</h2>
+<h2>5. Behaviour common to the panel</h2>
 <h3>Panel header</h3>
 <ul>
   <li>Title "WORKSPACES" and the number of workspaces shown</li>
-  <li>Three 24px buttons, in this order: filter (shows or hides the filter field), show hidden (eye; shows the hidden workspaces), refresh</li>
+  <li>Four 24px buttons, in this order: new workspace (+), filter (shows or hides the filter field), show hidden (eye; shows the hidden workspaces), refresh. Buttons that other extensions add to the panel's toolbar follow them; JupyterLab's Search tabs is one</li>
   <li>Refresh reloads workspaces, terminals, sessions and process names; its icon turns for at least 500 ms and the button is disabled until the requests return</li>
   <li>While the panel is visible it reloads by itself every 10 s, without the turning icon</li>
 </ul>
 
+<h3>New workspace</h3>
+{{svg:b2-new}}
+<ul>
+  <li>The + button opens the dialog "New workspace": Name, with the keyboard focus, and Short description (optional), the purpose the card shows; Enter creates, Escape closes without a change</li>
+  <li>The name follows JupyterLab's own rule for workspace names: letters, digits, <code>-</code> and <code>_</code>, because the name becomes the address <code>/lab/workspaces/&lt;name&gt;</code>. Create stays disabled until the name follows the rule</li>
+  <li>A name that a workspace already has is refused. JupyterLab's own Create New Workspace saves over such a workspace and its layout is lost; the dialog checks the name against a fresh list of workspaces before it saves</li>
+  <li>The short description is a box of three lines that wraps the text, with a counter under it (<code>64/100</code>) that changes with every keystroke. It holds at most 100 characters and no line break, so Enter still creates; it is shown as plain text; left empty, none is stored. Set description... in the workspace menu uses the same field</li>
+  <li>Create saves an empty layout through JupyterLab's workspaces API and stores the purpose and the next colour of the rotation in the extension's records file. The new card is second in the list, after this window's card, open and with the age "now"</li>
+  <li>This window stays in its workspace; the new card's Open button, or Open in new browser tab in its menu, goes to the new workspace</li>
+  <li>The dialog is JupyterLab's own Dialog, so its buttons take the theme's colours. An error is a line of colour 0 after a dot in the error colour, because the error colour reads 3.2:1 as text in Galaxa Steel</li>
+</ul>
+
 <h3>Filter</h3>
-{{svg:state-filter}}
+{{svg:b2-filter}}
 <ul>
   <li>As in the AI assistants panel: the filter button shows a field under the header; hiding the field clears the filter; a clear button sits inside the field</li>
   <li>The match is the AI panel's: case, accents and separators (<code>- _ . /</code> and spaces) are ignored, then a substring match with a 5% edit tolerance for queries of 10 or more characters</li>
   <li>Searched: workspace name, purpose, tab names and paths, process names, terminal names and tab titles, kernel names and their notebooks</li>
-  <li>Only rows that match are shown, and a workspace without a match is not shown; its header counts read "N of M"</li>
-  <li>Proposed: while a filter is active, every section with a match is open, and the accordion state returns when the filter is cleared (open choice 2)</li>
+  <li>Only rows that match are shown, and a workspace without a match is not shown; the card header reads "N of M"</li>
+  <li>While a filter is active, every card with a match is open, and the open card of before returns when the filter is cleared</li>
 </ul>
 
 <h3>Workspace menu</h3>
-{{svg:state-menu}}
+{{svg:b2-menu}}
 <ul>
-  <li>Items: Open workspace, Open in new browser tab, Close all tabs, Set purpose..., Colour (the six colours), Hide workspace, Delete workspace</li>
+  <li>Items: Open workspace, Open in new browser tab, Close all tabs, Set description..., Colour (the six colours), Hide workspace, Delete workspace</li>
+  <li>Each item has a 16px icon before its label: Open workspace an arrow in a circle, the same icon as on the card header; Open in new browser tab an arrow out of a box; Close all tabs the card header's icon; Set description a pencil; Colour the swatch of the workspace's colour; Hide workspace an eye with a stroke; Delete workspace a bin</li>
+  <li>Only the bin takes the error colour; the label Delete workspace stays colour 0, because the error colour reads 3.2:1 as text in Galaxa Steel</li>
+  <li>The Colour submenu matches the Tab Colour menu of <code>jupyterlab_colourful_tab_extension</code>: before each name - Red, Orange, Yellow, Green, Blue, Purple - a 12px square swatch with 2px corners and a 1px grey border. The border is <code>--jp-layout-color4</code> where the tab extension writes <code>#888</code>, because this extension styles through JupyterLab variables only. The swatch takes the strip colour, so it shows the colour the card will carry</li>
   <li>Delete workspace is the design system's two-step action: the first click arms "Confirm delete", the second click deletes; it never runs on this window's workspace</li>
   <li>Close all tabs asks once when the workspace holds terminals, because the culler may then shut those terminals down after its idle time</li>
 </ul>
+<p>Candidates for the Open workspace icon, each as a hover button beside close-all-tabs and enlarged. Decided by the Star Colonel: 2, the arrow in a circle. An arrow into a box read as exit, and two opposite arrows were rejected.</p>
+{{svg:open-icons}}
 
 <h3>Hidden workspaces</h3>
-{{svg:state-hidden}}
+{{svg:b2-hidden}}
 <ul>
-  <li>Hide workspace removes the section from the panel; the line under the last section reads "N hidden workspaces"</li>
-  <li>The eye button in the header shows the hidden workspaces among the others, name in italics, with an eye button that shows the workspace again</li>
+  <li>Hide workspace removes the card from the panel; the line under the last card reads "N hidden workspaces"</li>
+  <li>The eye button in the header shows the hidden workspaces among the others, with the word "hidden" and an eye button that shows the workspace again</li>
   <li>The terminals and kernels of a hidden workspace are not moved to "In no workspace"; they stay hidden with it</li>
-  <li>This window's workspace is never hidden (open choice 8)</li>
+  <li>This window's workspace is never hidden</li>
 </ul>
 
-<h3>Rules of the sections</h3>
+<h3>Rules of the cards</h3>
 <ul>
-  <li>Exactly one section is open; opening a section closes the open one; a click on the header of the open section leaves it open (open choice 9)</li>
-  <li>At load the section of this window's workspace is open</li>
+  <li>At most one card is open; opening a card closes the open one; no card is open at load</li>
+  <li>A click on the header of the open card closes it, so that no card is open</li>
   <li>Order: this window's workspace first, then the others by age, newest first; then "In no workspace", then "Other sessions"</li>
-  <li>Each tab is listed once: documents and other widgets under Tabs, terminal tabs under Terminals, the kernels of notebook and console tabs under Kernels (open choice 4)</li>
+  <li>Each tab is listed once: documents and other widgets under Tabs, terminal tabs under Terminals, the kernels of notebook and console tabs under Kernels</li>
   <li>A row click opens the item: a document or terminal of this window's workspace is activated; one of another workspace opens that workspace</li>
-  <li>Ages use the design system's labels: <code>now</code>, <code>Nm</code>, <code>Nh</code>, <code>Nd</code>, with <code>now</code> under 60 s in the brand colour</li>
+  <li>Ages use the design system's labels: <code>now</code>, <code>Nm</code>, <code>Nh</code>, <code>Nd</code></li>
 </ul>
 
 <h2>6. Workspace colours</h2>
@@ -234,16 +276,18 @@
 <ul>
   <li>Six colours in the order of <code>jupyterlab_colourful_tab_extension</code>: rose, peach, lemon, mint, sky, lavender</li>
   <li>A new workspace takes the next colour after the last one given; the colour is stored, so deleting a workspace does not move the colours of the others; the menu changes it</li>
-  <li>Light theme: the colourful tab's active shades (<code>#e39fb1</code> rose ... <code>#bfa9da</code> lavender). Dark theme: its light pastels (<code>#e8bbc6</code> rose ... <code>#cfc1e1</code> lavender). The colourful tab's own dark shades are tab backgrounds (<code>#28394d</code> sky) and almost disappear as a 4px strip on a dark panel (<code>#303841</code>)</li>
-  <li>The palette is the one place where the extension defines colour values, as the colourful tab extension does; everything else is a <code>--jp-*</code> token (open choice 6)</li>
+  <li>Each colour has an active shade, the value <code>jupyterlab_colourful_tab_extension</code> gives an active tab, the same as in this lab's settings. Light: rose <code>#e39fb1</code> ... sky <code>#77bae0</code>. Galaxa Steel and dark themes: rose <code>#3a2328</code> ... sky <code>#1d2a38</code>. It colours only the header of this window's card and, mixed 40% into the panel, its body; other headers take an 8% tint of the strip colour</li>
+  <li>The 4px strip keeps the brighter values (light theme: the active shade; dark theme: the light pastel), because the dark shades almost disappear as a thin line on a dark panel</li>
+  <li>The palette is the one place where the extension defines colour values, as the colourful tab extension does; everything else is a <code>--jp-*</code> token</li>
 </ul>
 
 <h2>7. Working with the culler sibling</h2>
 <ul>
   <li>The age shown is the culler's own clock (<code>last_modified</code>), so a workspace near its idle timeout reads as old in the panel</li>
-  <li>Purpose, colour and hidden state are not written into the workspace file: a write there would reset the culler's clock and would race with a window that has the workspace open. They live in the extension's own file beside the workspaces (open choice 5)</li>
+  <li>Purpose, colour and hidden state are not written into the workspace file: a write there would reset the culler's clock and would race with a window that has the workspace open. They live in the extension's own file beside the workspaces</li>
   <li>Close all tabs on another workspace removes its <code>terminal:&lt;name&gt;</code> keys; the culler then treats those terminals as in no workspace</li>
   <li>A workspace, terminal or kernel the culler removes leaves the panel at the next reload; the extension drops the stored record of a deleted workspace</li>
+  <li>A new workspace that nobody opens ages like any other: the culler deletes it after its workspace idle time (7 days by default)</li>
   <li>The extension shuts down nothing by itself; every shutdown and every delete is a click of the user</li>
 </ul>
 
@@ -251,25 +295,63 @@
 {{svg:icons}}
 <ul>
   <li>Four candidates, drawn in one colour as the design system asks for the rail</li>
-  <li>Recommended: 3, the accordion with one open section and its strip, because it shows what the panel is</li>
+  <li>Decided by the Star Colonel: 4, four panes in a 2 by 2 grid with the top-left one filled</li>
 </ul>
 
-<h2>9. Open choices for the Star Colonel</h2>
-<ol>
-  <li>Alternative A, B or C. <span class="rec">Recommended: A</span></li>
-  <li>Filter: open every section with a match while the filter is active, or keep one section open and show the match counts in the closed headers. <span class="rec">Recommended: open every section with a match</span></li>
-  <li>Counts in the section header. The brief reads "number of terminals workspaces and kernels in the section header". Proposed: documents, terminals and kernels in each section header, and the number of workspaces in the panel header. <span class="rec">Confirm or correct</span></li>
-  <li>Tab list: each tab once (documents under Tabs, terminal tabs under Terminals), or every tab under Tabs in tab order and the terminals and kernels again below. <span class="rec">Recommended: each tab once</span></li>
-  <li>Where purpose, colour and hidden live: the extension's own file beside the workspaces, or inside each workspace file. <span class="rec">Recommended: own file</span></li>
-  <li>Strip colours: the extension's own values above, or the colourful tab's variables where that extension is installed. <span class="rec">Recommended: own values</span></li>
-  <li>Sidebar icon 1, 2, 3 or 4. <span class="rec">Recommended: 3</span></li>
-  <li>May this window's workspace be hidden? <span class="rec">Recommended: no</span></li>
-  <li>A click on the header of the open section: leaves it open, or closes it so that no section is open. <span class="rec">Recommended: leaves it open, as "exactly one section is open" says</span></li>
-</ol>
+<h2>9. Choices, all decided on 2026-10-23</h2>
+<table>
+  <tr><th>Choice</th><th>Decision</th></tr>
+  <tr><td>1. Visual design</td><td>B, tinted cards, refined</td></tr>
+  <tr><td>2. Filter</td><td>every card with a match is open while the filter is active (recommendation, accepted with "ok")</td></tr>
+  <tr><td>3. Counts</td><td>tabs, terminals, notebooks in each card header; the number of cards in the panel header</td></tr>
+  <tr><td>4. Tab list</td><td>each tab once (recommendation, accepted with "ok")</td></tr>
+  <tr><td>5. Records</td><td>the extension's own file beside the workspaces (recommendation, accepted with "ok")</td></tr>
+  <tr><td>6. Colours</td><td>given automatically from the extension's own palette, which starts from the colourful tab's active tab shades; the user changes them in the workspace menu</td></tr>
+  <tr><td>7. Sidebar icon</td><td>4, four panes</td></tr>
+  <tr><td>8. Hide this window's workspace</td><td>not possible (recommendation, accepted with "ok")</td></tr>
+  <tr><td>9. Click on the open card</td><td>closes it; a triangle shows the state</td></tr>
+</table>
+
+<h2>11. Added while filling the criteria</h2>
+<p>A complete replacement of the Running panel needs these; they are filed as criteria and wait for the Star Colonel's veto.</p>
+<ul>
+  <li><strong>Row actions</strong> in a context menu (right-click or the context-menu key), as the design system prescribes for rows that open something: close one tab, shut down a terminal, shut down a kernel; shutting down a terminal that another workspace holds asks first</li>
+  <li><strong>Shut down all</strong> in the ... menu of "In no workspace", asking once with the number of terminals and kernels</li>
+  <li><strong>JupyterLab's own entry points keep working</strong>: the status bar item of running terminals and kernels opens the panel, and the Search tabs button stays in the panel header</li>
+  <li><strong>Keyboard</strong>: Tab reaches each card header, Enter or Space toggles it, arrow keys move between rows, a 1px brand colour 1 outline shows keyboard focus only</li>
+  <li><strong>Description dialog</strong> (Set description...): the three-line Short description field with its counter, focused, Enter saves; at most 100 characters; shown as plain text, never as markup</li>
+  <li><strong>Records file</strong>: <code>workspace-manager.json</code> in the lab's workspaces directory; one workspace changed per request; written whole through a temporary file; an unreadable file is moved aside to <code>.bad</code></li>
+  <li><strong>Failures</strong>: without the server extension the panel still lists workspaces, terminals by name and kernels; a failed reload shows one line and keeps the last content; a filter without a match says so</li>
+  <li><strong>Long names</strong> end in an ellipsis with the full text in the tooltip; the card list scrolls under a fixed header</li>
+  <li><strong>After Create</strong> this window stays in its workspace and the new card opens in the list. The other way is to switch this window to the new workspace at once</li>
+</ul>
 
 <h2>10. Acceptance criteria</h2>
-<p>The behaviour above that no open choice changes is filed in <code>docs/acc-crit.md</code> through pm-tools as <code>@kj</code>: 67 criteria in 9 categories (Panel, Workspace sections, Section content, Terminal rows, Kernel rows, Hidden workspaces, Filter, Server extension, Culler sibling), 10 of them CRITICAL. Each names its test: 24 have a Jest or pytest test, 49 a Galata test. <code>pm-tools report docs/acc-crit.md</code> prints the status.</p>
-<p>Filed once the choice is made: choice 2 (sections while filtering), choice 3 (the documents count and the workspaces count), choice 4 (each tab once), choice 5 (where the records live, and that hide, purpose and colour leave the workspace file's time unchanged), choice 6 (strip colour values), choice 8 (hiding this window's workspace) and choice 9 (click on the open header).</p>
+<p>The criteria live in <code>docs/acc-crit.md</code>, written through pm-tools as <code>@kj</code>: 150 in 9 categories, 142 open and 8 rejected. Importance of the open ones: 14 CRITICAL, 53 HIGH, 56 MEDIUM, 19 LOW. Each names its test: 50 with a Jest or pytest test, 101 with a Galata test (a criterion with both counts twice). <code>pm-tools report docs</code> prints the status.</p>
+<ul>
+  <li>Rejected and replaced: <code>ACC-ACCORD-12-START-OPEN</code> by <code>ACC-ACCORD-68-START-CLOSED</code>; <code>ACC-ACCORD-14-CURRENT</code> by <code>ACC-ACCORD-76-OUTLINE</code>; <code>ACC-ACCORD-79-CURRENT-TINT</code> (16% tint) by <code>ACC-ACCORD-124-CURRENT-SHADE</code> (shades on every card), which in turn was replaced by <code>ACC-ACCORD-125-SELECTED-SHADE</code> (only this window's card strong); <code>ACC-ACCORD-126-STRIP-SAME</code> and <code>ACC-ACCORD-127-FIT</code> (both with spacing) by <code>ACC-ACCORD-128-STRIP-PLAIN</code> and <code>ACC-ACCORD-129-FLUSH</code>; <code>ACC-ACCORD-21-AGE-NOW</code> (brand colour 1) by <code>ACC-ACCORD-130-NOW-DOT</code>; <code>ACC-PANEL-136-HEADER-BUTTONS</code> (three buttons) by <code>ACC-PANEL-147-HEADER-ORDER</code></li>
+  <li>Filed for the + button: <code>ACC-PANEL-140-NEW-BUTTON</code> to <code>ACC-PANEL-146-NEW-STAY</code> - the button, the dialog, the name rule, an existing name refused, the purpose, the saved workspace, this window staying where it is</li>
+  <li>Changed for the short description: at most 100 characters in <code>ACC-ACCORD-100-PURPOSE-LENGTH</code>, <code>ACC-SERVER-119-META-VALIDATE</code> and <code>ACC-PANEL-144-NEW-PURPOSE</code>; the menu item Set description in <code>ACC-ACCORD-19</code>, <code>29</code> and <code>99</code>; added <code>ACC-ACCORD-148-MENU-ICONS</code>, <code>ACC-PANEL-149-DESC-COUNT</code> and <code>ACC-ACCORD-150-COLOUR-SWATCH</code></li>
+  <li>Filed after an audit of this page against the criteria: <code>ACC-ACCORD-131-OPEN-BUTTONS</code> to <code>ACC-FILTER-139-UNMATCHED</code> - the buttons of an open card, the name size, other kernel states, group labels, the counts of In no workspace, the header button order, Other sessions closed at load, labels on icon buttons, the line of workspaces without a match</li>
+  <li>Filed for the decided choices: <code>ACC-PANEL-80-WS-COUNT</code> onwards, among them <code>ACC-LISTS-81-ONCE</code>, <code>ACC-FILTER-82-OPEN-MATCHES</code>, <code>ACC-SERVER-84-META-FILE</code>, <code>ACC-CULLER-85-NO-MTIME</code>, <code>ACC-ACCORD-86-OWN-PALETTE</code>, <code>ACC-HIDDEN-87-NOT-CURRENT</code></li>
+  <li>Filed for the additions of section 11: <code>ACC-PANEL-88-STATUSBAR</code> to <code>ACC-SERVER-123-NO-TERMINALS</code></li>
+</ul>
+
+
+<h2>Appendix - the alternatives compared on 2026-10-23</h2>
+<p>The first drafts, kept as the record of the choice; they are not maintained.</p>
+<div class="alt">
+<h3>A. Accordion with a colour strip</h3>
+{{svg:alt-a}}
+</div>
+<div class="alt">
+<h3>B. Tinted cards, first draft (selected)</h3>
+{{svg:alt-b}}
+</div>
+<div class="alt">
+<h3>C. Colour rail</h3>
+{{svg:alt-c}}
+</div>
 
 </main>
 </body>
