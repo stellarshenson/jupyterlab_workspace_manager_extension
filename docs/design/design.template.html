@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace Manager Design</title>
+<style>
+  :root {
+    --bg: #252b32; --surface: #2a313a; --line: #363f49; --text: #c3c3c3;
+    --strong: #e6e6e6; --muted: #7d8791; --link: #64b5f6; --accent: #2196f3;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f5f5f5; --surface: #ffffff; --line: #e0e0e0; --text: rgba(0,0,0,.87);
+      --strong: #000; --muted: rgba(0,0,0,.54); --link: #1976d2; --accent: #1976d2;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 1060px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { color: var(--strong); font-size: 24px; margin: 8px 0 4px; }
+  h2 { color: var(--strong); font-size: 18px; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { color: var(--strong); font-size: 15px; margin: 24px 0 6px; }
+  a { color: var(--link); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--strong); }
+  .status { color: var(--muted); margin: 0 0 16px; }
+  .note { background: var(--surface); border-left: 3px solid var(--accent); padding: 10px 14px; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; background: var(--surface); }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left; }
+  th { color: var(--strong); font-weight: 600; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+  td:first-child { width: 22%; color: var(--strong); }
+  .pair { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .mock { margin: 0; }
+  .mock svg { display: block; border: 1px solid var(--line); max-width: 100%; height: auto; }
+  .mock figcaption { color: var(--muted); font-size: 12px; padding-top: 4px; }
+  .shot { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .shot img { border: 1px solid var(--line); max-width: 100%; }
+  .shot > div { flex: 1 1 320px; }
+  .alt { background: var(--surface); border: 1px solid var(--line); padding: 4px 16px 12px; margin: 16px 0; }
+  .rec { color: var(--accent); font-weight: 600; }
+  ol li, ul li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Workspace manager - design proposal</h1>
+<p class="status">Draft for the Star Colonel's approval, 2026-10-23. No code of the panel exists yet. The functional requirements are filed as acceptance criteria in <code>docs/acc-crit.md</code>; the criteria that depend on an open choice are filed after the choice.</p>
+
+<div class="note">
+  The extension replaces the built-in panel "Running Terminals and Kernels" with a panel built on workspaces. Each JupyterLab workspace is one section of an accordion: its colour, purpose, age, counts and actions in the header, then its tabs, terminals and kernels. Three visual alternatives follow; the data rules, the header tools and the workspace menu are the same for all three.
+</div>
+
+<h2>1. The panel it replaces</h2>
+<div class="shot">
+  <img src="assets/running-panel-current.png" alt="Built-in Running panel of the live lab, 2026-10-23" width="250">
+  <div>
+    <p>Screenshot of the live lab on 2026-10-23 (JupyterLab 4.6.4), taken in a scratch workspace that was deleted afterwards.</p>
+    <ul>
+      <li>Seven sections in one column: Open Tabs, Kernels, Language servers, Recently Closed, Workspaces, Terminals, Launcher application</li>
+      <li>The 16 terminals of this server read <code>terminals/1</code> to <code>terminals/16</code>; none shows the program that runs in it or when it was last used</li>
+      <li>Workspaces are a flat list of names; nothing shows which terminal or kernel belongs to which workspace</li>
+      <li>Sidebar icon today: <img src="assets/running-icon-current.png" alt="current icon" height="24" style="vertical-align:middle;border:0"> (a circle with a square); the extension brings its own, section 8</li>
+    </ul>
+  </div>
+</div>
+
+<h2>2. Decided by the Star Colonel</h2>
+<ul>
+  <li>The extension replaces the built-in panel completely ("our extension completely replaces the old one")</li>
+  <li>Each workspace has a toggle "hidden" with an eye icon, to hide workspaces that would bother the user</li>
+  <li>A "..." button in the section header opens the workspace's menu</li>
+  <li>The panel has a refresh button and a filter that finds anything, the same concept as the filter of <code>jupyterlab_ai_code_assistants_extension</code></li>
+  <li>A new sidebar icon replaces the old one</li>
+  <li>The functional requirements are written as acceptance criteria and defects through pm-tools, author <code>@kj</code></li>
+  <li>No code before the design is approved</li>
+</ul>
+
+<h2>3. Where the data comes from</h2>
+<p>The five open questions of the brief, each answered from the JupyterLab 4.6.4 source and from probes on this server.</p>
+<table>
+  <tr><th>Question</th><th>Answer</th><th>Evidence</th></tr>
+  <tr>
+    <td>How is a terminal or a kernel assigned to a workspace? Where does one show that belongs to no workspace, or to two?</td>
+    <td>
+      <ul>
+        <li>A terminal belongs to a workspace when the workspace's saved layout holds the key <code>terminal:&lt;name&gt;</code></li>
+        <li>A kernel belongs to a workspace when a notebook or console tab of that workspace has a session on that kernel (<code>GET /api/sessions</code>: session path → kernel id)</li>
+        <li>For the workspace of this window the panel reads the live tabs of the window, not the saved file</li>
+        <li>In two workspaces: the row appears in both sections with the mark "also in &lt;name&gt;", and each count includes it</li>
+        <li>In no workspace: the section "In no workspace" after the last workspace</li>
+      </ul>
+    </td>
+    <td>16 terminals on this server: workspace <code>default</code> holds 5 (7, 11, 13, 14, 15), <code>auto-6</code> holds 1 (1), 10 are in no workspace. The culler sibling reads the same <code>terminal:&lt;name&gt;</code> keys to protect terminals.</td>
+  </tr>
+  <tr>
+    <td>Where does the "last accessed" time of a workspace come from?</td>
+    <td>
+      <ul>
+        <li><code>metadata.last_modified</code> of the workspace, which jupyterlab_server reads from the file's modification time</li>
+        <li>JupyterLab writes the workspace 500 ms after any state change of a window that shows it, and once when a window opens it</li>
+        <li>The age in the header is therefore the time since a window last opened or changed the workspace</li>
+        <li>Limit: a window left open with no change does not move the time</li>
+      </ul>
+    </td>
+    <td>Probe 2026-10-23: a workspace with its time set 2 days back was opened in a headless browser; with no click, its <code>last_modified</code> became the load time. Source: <code>apputils-extension</code> state plugin, a 500 ms debouncer around <code>workspaces.save</code>. The culler deletes a workspace when this same time is older than its idle timeout (7 days by default; never <code>default</code>), so the age is also the culler's clock.</td>
+  </tr>
+  <tr>
+    <td>Where do the last activity time and the process name of a terminal come from?</td>
+    <td>
+      <ul>
+        <li>Last activity: <code>last_activity</code> of <code>GET /api/terminals</code>; jupyter_server_terminals sets it on each output read and each input message</li>
+        <li>Process name: a new endpoint of the server extension reads the foreground process group of the terminal's pty (<code>os.tcgetpgrp</code> on the pty, then <code>/proc/&lt;pgid&gt;/comm</code>)</li>
+        <li>The tab name is the title the program sets with the OSC 0 or 2 escape; JupyterLab copies it into the tab label and never stores it, so only a window that shows the terminal knows it</li>
+        <li>The row shows the process name for every terminal, and the tab title as the row's tooltip when this window shows that terminal</li>
+      </ul>
+    </td>
+    <td>The REST model of a terminal is <code>{name, last_activity}</code> only. Probe 2026-10-23: the foreground process of each terminal shell of this server reads <code>claude</code> or <code>fish</code> from <code>/proc</code>. Source: <code>terminal/src/widget.ts</code>, <code>onTitleChange</code> sets <code>title.label</code>.</td>
+  </tr>
+  <tr>
+    <td>How are the tabs of a workspace that is not the current one read and closed?</td>
+    <td>
+      <ul>
+        <li>Read: <code>GET /lab/api/workspaces/&lt;id&gt;</code>; <code>data["layout-restorer:data"].main.dock</code> lists the tab keys (<code>terminal:7</code>, <code>notebook:&lt;path&gt;</code>, <code>editor:&lt;path&gt;</code>)</li>
+        <li>Close all: the extension removes those keys from the layout and from <code>data</code>, and writes the workspace back with <code>PUT</code>; a terminal or kernel keeps running</li>
+        <li>A browser window that has that workspace open keeps its own copy and writes it back on its next change. Each window reports its workspace to the server extension every 30 s, so the panel knows which workspaces are open elsewhere and refuses "Close all tabs" for them, naming the reason</li>
+        <li>Open: this window navigates to <code>/lab/workspaces/&lt;id&gt;</code> and JupyterLab loads that workspace with its tabs; the menu also offers "Open in new browser tab"</li>
+      </ul>
+    </td>
+    <td>Saved layout of <code>default</code> on 2026-10-23: <code>main.dock.widgets</code> = <code>terminal:14, terminal:11, terminal:13, terminal:15, terminal:7</code>, each with a <code>data</code> entry <code>{"name": "&lt;n&gt;"}</code>. The built-in Workspaces section reads the tab count the same way.</td>
+  </tr>
+  <tr>
+    <td>Replace the built-in panel or add a panel?</td>
+    <td>
+      <ul>
+        <li>Decided: replace</li>
+        <li><code>package.json</code> disables only <code>@jupyterlab/running-extension:sidebar</code> (<code>jupyterlab.disabledExtensions</code>); <code>@jupyterlab/running-extension:plugin</code> stays, so other extensions still register their sections</li>
+        <li>The new panel provides <code>IRunningSessionSidebar</code>, keeps the id <code>jp-running-sessions</code> and the restorer name <code>running-sessions</code> (saved layouts open it in the same place) and registers <code>running:show-panel</code> again</li>
+        <li>Sections that other extensions add (here: Language servers, Recently Closed, Launcher application) are listed under "Other sessions"</li>
+      </ul>
+    </td>
+    <td>Source of <code>running-extension</code> 4.6.4: the sidebar is its own plugin, <code>restorer.add(running, 'running-sessions')</code>; jupyterlab_server reads <code>disabledExtensions</code> from an extension's <code>package.json</code> (<code>config.py</code>, lines 170 to 173).</td>
+  </tr>
+</table>
+
+<h2>4. Three alternatives</h2>
+<p>The same content in each: workspace <code>default</code> open (this window's workspace, sky), four other workspaces closed, the section "In no workspace", "Other sessions", and the line for three hidden workspaces. The second section shows the hover state with the two header actions of the brief (open the workspace, close all its tabs). Names and terminals are the real ones of this server; the purposes and the documents are examples.</p>
+
+<div class="alt">
+<h3>A. Accordion with a colour strip <span class="rec">recommended</span></h3>
+{{svg:alt-a}}
+<ul>
+  <li>Each section is a full-width band; a 4px strip in the workspace colour runs down the left edge of the header and, when open, of the whole section</li>
+  <li>Header: caret, name, a "current" chip on this window's workspace, the age, the "..." button; the second line holds the purpose and the counts of documents, terminals and kernels</li>
+  <li>Inside: three groups, Tabs, Terminals, Kernels, in 24px rows; a terminal row reads process name, then terminal name, then the time since its last activity</li>
+  <li>Strength: closest to the brief and to the design system's sections; densest of the three, about 18 rows visible at 1000px height</li>
+  <li>Weakness: with many workspaces the closed headers take the height; the hidden toggle is the answer</li>
+</ul>
+</div>
+
+<div class="alt">
+<h3>B. Tinted cards</h3>
+{{svg:alt-b}}
+<ul>
+  <li>Each workspace is a card with an 8px margin; the header is tinted with the workspace colour, the open card also has a border in that colour</li>
+  <li>No group headings inside the card; thin lines separate documents, terminals and kernels, and the card ends with its action buttons</li>
+  <li>Strength: the most visibly separated workspaces, and the action is a labelled button, not only an icon</li>
+  <li>Weakness: about 25% less content per height than A; the tints need checking in every theme</li>
+</ul>
+</div>
+
+<div class="alt">
+<h3>C. Colour rail</h3>
+{{svg:alt-c}}
+<ul>
+  <li>A 44px rail on the left holds one coloured tab per workspace (initials of the name); the selected tab opens that workspace in the pane on the right, so exactly one is open by construction</li>
+  <li>The pane shows name, purpose, age, counts, two labelled buttons and the three groups</li>
+  <li>Strength: many workspaces fit without scrolling; the colour is placed on the side, as the brief describes the strip</li>
+  <li>Weakness: names show only in the open pane and in tooltips; two-letter initials repeat (<code>fb-exp-*</code> gives <code>FE</code> three times on this server)</li>
+</ul>
+</div>
+
+<h2>5. Behaviour common to every alternative</h2>
+<h3>Panel header</h3>
+<ul>
+  <li>Title "WORKSPACES" and the number of workspaces shown</li>
+  <li>Three 24px buttons, in this order: filter (shows or hides the filter field), show hidden (eye; shows the hidden workspaces), refresh</li>
+  <li>Refresh reloads workspaces, terminals, sessions and process names; its icon turns for at least 500 ms and the button is disabled until the requests return</li>
+  <li>While the panel is visible it reloads by itself every 10 s, without the turning icon</li>
+</ul>
+
+<h3>Filter</h3>
+{{svg:state-filter}}
+<ul>
+  <li>As in the AI assistants panel: the filter button shows a field under the header; hiding the field clears the filter; a clear button sits inside the field</li>
+  <li>The match is the AI panel's: case, accents and separators (<code>- _ . /</code> and spaces) are ignored, then a substring match with a 5% edit tolerance for queries of 10 or more characters</li>
+  <li>Searched: workspace name, purpose, tab names and paths, process names, terminal names and tab titles, kernel names and their notebooks</li>
+  <li>Only rows that match are shown, and a workspace without a match is not shown; its header counts read "N of M"</li>
+  <li>Proposed: while a filter is active, every section with a match is open, and the accordion state returns when the filter is cleared (open choice 2)</li>
+</ul>
+
+<h3>Workspace menu</h3>
+{{svg:state-menu}}
+<ul>
+  <li>Items: Open workspace, Open in new browser tab, Close all tabs, Set purpose..., Colour (the six colours), Hide workspace, Delete workspace</li>
+  <li>Delete workspace is the design system's two-step action: the first click arms "Confirm delete", the second click deletes; it never runs on this window's workspace</li>
+  <li>Close all tabs asks once when the workspace holds terminals, because the culler may then shut those terminals down after its idle time</li>
+</ul>
+
+<h3>Hidden workspaces</h3>
+{{svg:state-hidden}}
+<ul>
+  <li>Hide workspace removes the section from the panel; the line under the last section reads "N hidden workspaces"</li>
+  <li>The eye button in the header shows the hidden workspaces among the others, name in italics, with an eye button that shows the workspace again</li>
+  <li>The terminals and kernels of a hidden workspace are not moved to "In no workspace"; they stay hidden with it</li>
+  <li>This window's workspace is never hidden (open choice 8)</li>
+</ul>
+
+<h3>Rules of the sections</h3>
+<ul>
+  <li>Exactly one section is open; opening a section closes the open one; a click on the header of the open section leaves it open (open choice 9)</li>
+  <li>At load the section of this window's workspace is open</li>
+  <li>Order: this window's workspace first, then the others by age, newest first; then "In no workspace", then "Other sessions"</li>
+  <li>Each tab is listed once: documents and other widgets under Tabs, terminal tabs under Terminals, the kernels of notebook and console tabs under Kernels (open choice 4)</li>
+  <li>A row click opens the item: a document or terminal of this window's workspace is activated; one of another workspace opens that workspace</li>
+  <li>Ages use the design system's labels: <code>now</code>, <code>Nm</code>, <code>Nh</code>, <code>Nd</code>, with <code>now</code> under 60 s in the brand colour</li>
+</ul>
+
+<h2>6. Workspace colours</h2>
+{{svg:palette}}
+<ul>
+  <li>Six colours in the order of <code>jupyterlab_colourful_tab_extension</code>: rose, peach, lemon, mint, sky, lavender</li>
+  <li>A new workspace takes the next colour after the last one given; the colour is stored, so deleting a workspace does not move the colours of the others; the menu changes it</li>
+  <li>Light theme: the colourful tab's active shades (<code>#e39fb1</code> rose ... <code>#bfa9da</code> lavender). Dark theme: its light pastels (<code>#e8bbc6</code> rose ... <code>#cfc1e1</code> lavender). The colourful tab's own dark shades are tab backgrounds (<code>#28394d</code> sky) and almost disappear as a 4px strip on a dark panel (<code>#303841</code>)</li>
+  <li>The palette is the one place where the extension defines colour values, as the colourful tab extension does; everything else is a <code>--jp-*</code> token (open choice 6)</li>
+</ul>
+
+<h2>7. Working with the culler sibling</h2>
+<ul>
+  <li>The age shown is the culler's own clock (<code>last_modified</code>), so a workspace near its idle timeout reads as old in the panel</li>
+  <li>Purpose, colour and hidden state are not written into the workspace file: a write there would reset the culler's clock and would race with a window that has the workspace open. They live in the extension's own file beside the workspaces (open choice 5)</li>
+  <li>Close all tabs on another workspace removes its <code>terminal:&lt;name&gt;</code> keys; the culler then treats those terminals as in no workspace</li>
+  <li>A workspace, terminal or kernel the culler removes leaves the panel at the next reload; the extension drops the stored record of a deleted workspace</li>
+  <li>The extension shuts down nothing by itself; every shutdown and every delete is a click of the user</li>
+</ul>
+
+<h2>8. Sidebar icon</h2>
+{{svg:icons}}
+<ul>
+  <li>Four candidates, drawn in one colour as the design system asks for the rail</li>
+  <li>Recommended: 3, the accordion with one open section and its strip, because it shows what the panel is</li>
+</ul>
+
+<h2>9. Open choices for the Star Colonel</h2>
+<ol>
+  <li>Alternative A, B or C. <span class="rec">Recommended: A</span></li>
+  <li>Filter: open every section with a match while the filter is active, or keep one section open and show the match counts in the closed headers. <span class="rec">Recommended: open every section with a match</span></li>
+  <li>Counts in the section header. The brief reads "number of terminals workspaces and kernels in the section header". Proposed: documents, terminals and kernels in each section header, and the number of workspaces in the panel header. <span class="rec">Confirm or correct</span></li>
+  <li>Tab list: each tab once (documents under Tabs, terminal tabs under Terminals), or every tab under Tabs in tab order and the terminals and kernels again below. <span class="rec">Recommended: each tab once</span></li>
+  <li>Where purpose, colour and hidden live: the extension's own file beside the workspaces, or inside each workspace file. <span class="rec">Recommended: own file</span></li>
+  <li>Strip colours: the extension's own values above, or the colourful tab's variables where that extension is installed. <span class="rec">Recommended: own values</span></li>
+  <li>Sidebar icon 1, 2, 3 or 4. <span class="rec">Recommended: 3</span></li>
+  <li>May this window's workspace be hidden? <span class="rec">Recommended: no</span></li>
+  <li>A click on the header of the open section: leaves it open, or closes it so that no section is open. <span class="rec">Recommended: leaves it open, as "exactly one section is open" says</span></li>
+</ol>
+
+<h2>10. Acceptance criteria</h2>
+<p>The behaviour above that no open choice changes is filed in <code>docs/acc-crit.md</code> through pm-tools as <code>@kj</code>: 67 criteria in 9 categories (Panel, Workspace sections, Section content, Terminal rows, Kernel rows, Hidden workspaces, Filter, Server extension, Culler sibling), 10 of them CRITICAL. Each names its test: 24 have a Jest or pytest test, 49 a Galata test. <code>pm-tools report docs/acc-crit.md</code> prints the status.</p>
+<p>Filed once the choice is made: choice 2 (sections while filtering), choice 3 (the documents count and the workspaces count), choice 4 (each tab once), choice 5 (where the records live, and that hide, purpose and colour leave the workspace file's time unchanged), choice 6 (strip colour values), choice 8 (hiding this window's workspace) and choice 9 (click on the open header).</p>
+
+</main>
+</body>
+</html>

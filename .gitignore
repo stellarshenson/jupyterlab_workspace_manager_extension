@@ -11,6 +11,9 @@ jupyterlab_workspace_manager_extension/labextension
 # Version file is handled by hatchling
 jupyterlab_workspace_manager_extension/_version.py
 
+# Jest test report
+junit.xml
+
 # Integration tests
 ui-tests/test-results/
 ui-tests/playwright-report/

@@ -55,14 +55,14 @@ The Makefile owns the whole build lifecycle. Never run `pip`, `jlpm`, `yarn`, `n
 `python -m build`, `twine`, or any build, publish or clean command directly - those bypass the
 project-local `.nodeenv/` toolchain the Makefile pins.
 
-| Target          | Effect                                                                         |
-| --------------- | ------------------------------------------------------------------------------ |
-| `make install`  | build and install the extension; raises the patch version on every run         |
+| Target          | Effect                                                                          |
+| --------------- | ------------------------------------------------------------------------------- |
+| `make install`  | build and install the extension; raises the patch version on every run          |
 | `make publish`  | release to npm and PyPI, committing and pushing first; needs approval each time |
-| `make clean`    | remove build artefacts                                                         |
-| `make mrproper` | remove all build and virtual-environment artefacts                             |
-| `make build`    | resolve `yarn.lock`, format, build the sdist and the wheel; the version stays  |
-| `make test`     | Jest, pytest and the endpoint authentication gate                              |
+| `make clean`    | remove build artefacts                                                          |
+| `make mrproper` | remove all build and virtual-environment artefacts                              |
+| `make build`    | resolve `yarn.lock`, format, build the sdist and the wheel; the version stays   |
+| `make test`     | Jest, pytest and the endpoint authentication gate                               |
 
 - **Makefile version check** - line 1 of the local Makefile declares its version. Compare it with
   `/home/lab/workspace/private/jupyterlab/@utils/jupyterlab-extensions/Makefile` at the start of any
@@ -105,6 +105,7 @@ project-local `.nodeenv/` toolchain the Makefile pins.
 - **Functional tests under `ui-tests/` are part of every feature**, not an afterthought, and run
   green before a release
 - Close a criterion only on evidence - the test that ran and what it showed
+- Author handle on every pm-tools write: `@kj` (Konrad Jelen)
 
 ## Tests
 
@@ -144,13 +145,13 @@ section "Agent Skill for a Shipped CLI" prescribes.
 
 ## Required Skills
 
-| Skill                                   | Use                                                                                    |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `jupyterlab-extension`                  | extension development guidelines, testing strategy, CI/CD, caveats                     |
+| Skill                                   | Use                                                                                   |
+| --------------------------------------- | ------------------------------------------------------------------------------------- |
+| `jupyterlab-extension`                  | extension development guidelines, testing strategy, CI/CD, caveats                    |
 | `my-browser`                            | browser automation for screenshots and UI verification against the running JupyterLab |
-| `project-management:project-management` | acceptance criteria and defects through the `pm-tools` CLI                             |
-| `graphify`                              | the codebase graph and the impact analysis that bounds every change                    |
-| `journal:journal`                       | the project journal through the `journal-tools` CLI                                    |
+| `project-management:project-management` | acceptance criteria and defects through the `pm-tools` CLI                            |
+| `graphify`                              | the codebase graph and the impact analysis that bounds every change                   |
+| `journal:journal`                       | the project journal through the `journal-tools` CLI                                   |
 
 ## Strengthened Rules
 

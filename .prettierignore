@@ -6,3 +6,6 @@ node_modules
 jupyterlab_workspace_manager_extension
 eslint.config.mjs
 .venv
+docs/acc-crit*.md
+docs/defects*.md
+.claude/JOURNAL.md

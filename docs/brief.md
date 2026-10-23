@@ -22,6 +22,14 @@ The Star Colonel's requirements, in his order.
   - close all tabs in the workspace
 - Inside a section: an optional list of the tabs open in the workspace, then the list of terminals and kernels
 
+- A workspace has a toggle "hidden" (eye icon), so that the user can hide other workspaces that would bother them. Added by the Star Colonel on 2026-10-23
+- The section header may carry a "..." icon that opens the workspace's menu, holding such actions. Added by the Star Colonel on 2026-10-23: "maybe through ... icon that gets workspace the menu"
+
+### Panel
+
+- A refresh button. Added by the Star Colonel on 2026-10-23
+- A filter that finds anything in the panel, the same concept as the filter of `../jupyterlab_ai_code_assistants_extension`. Added by the Star Colonel on 2026-10-23
+
 ### Terminals
 
 - Each terminal shows when it was last active
@@ -30,6 +38,7 @@ The Star Colonel's requirements, in his order.
 ### Look
 
 - Modern look, built on the design system of the `jupyterlab-extension` skill
+- A new sidebar icon in place of the Running panel's icon (circle with a square, `docs/design/assets/running-icon-current.png`); the design proposes candidates. Added by the Star Colonel on 2026-10-23
 
 ## Design before implementation
 
@@ -37,7 +46,7 @@ The Star Colonel wants a design proposal before any implementation.
 
 1. Take screenshots of the current "Running Terminals and Kernels" panel in the running lab with the `my-browser` skill
 2. Model the new panel in SVG
-3. Write the design proposal as HTML in `docs/design/`, built from the screenshots and the SVG models
+3. Write the design proposal as HTML in `docs/design/`, built from the screenshots and the SVG models. It presents a few design alternatives (Star Colonel, 2026-10-23: "figure out few alternatives for the design")
 4. Stop and report. Acceptance criteria and implementation wait for the Star Colonel's approval of the design
 
 ## Questions the design must answer
@@ -49,6 +58,7 @@ These are open. Investigate them and present the answer in the design proposal.
 - Where do the last activity time and the process name of a terminal come from?
 - How are the tabs of a workspace that is not the current one read and closed?
 - Does the extension replace the built-in Running panel or add its own sidebar panel? Present the choice to the Star Colonel; do not decide it alone
+  - Decided by the Star Colonel on 2026-10-23: "our extension completely replaces the old one"
 
 ## Read first
 
