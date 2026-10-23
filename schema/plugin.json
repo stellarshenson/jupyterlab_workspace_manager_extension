@@ -1,0 +1,8 @@
+{
+  "jupyter.lab.shortcuts": [],
+  "title": "jupyterlab_workspace_manager_extension",
+  "description": "jupyterlab_workspace_manager_extension settings.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
