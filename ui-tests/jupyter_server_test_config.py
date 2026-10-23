@@ -11,6 +11,14 @@ from jupyterlab.galata import configure_jupyter_server
 
 configure_jupyter_server(c)
 
+# A deleted path is removed, not sent to the platform trash. The server root is under /tmp
+# on this machine's overlay filesystem, where send2trash targets /.Trash-1000, which the
+# lab user cannot create: the DELETE of a test's scratch folder then answers 400.
+# The workstation image sets it on AsyncLargeFileManager, the server's own class, in
+# /opt/conda/etc/jupyter/jupyter_lab_config.py; that outranks a FileContentsManager line.
+c.FileContentsManager.delete_to_trash = False
+c.AsyncLargeFileManager.delete_to_trash = False
+
 # configure_jupyter_server moves the workspaces and the server root, not the user settings;
 # without this a settings write to the test server lands in ~/.jupyter/lab/user-settings
 c.LabApp.user_settings_dir = mkdtemp(prefix="galata-settings-")
