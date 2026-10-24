@@ -3,3 +3,605 @@
 
     https://jupyterlab.readthedocs.io/en/stable/developer/css.html
 */
+
+/*
+    The workspace palette, the one place with colour values. Each colour has the
+    strip colour and the active shade that jupyterlab_colourful_tab_extension
+    gives an active tab, which colours the header of this window's card. In a
+    dark theme the strip keeps the light pastel, as the dark shades disappear
+    as a thin line on a dark panel.
+*/
+:root {
+  --jp-workspace-manager-rose: #e39fb1;
+  --jp-workspace-manager-peach: #d2ab82;
+  --jp-workspace-manager-lemon: #bab56d;
+  --jp-workspace-manager-mint: #87c086;
+  --jp-workspace-manager-sky: #77bae0;
+  --jp-workspace-manager-lavender: #bfa9da;
+  --jp-workspace-manager-rose-active: #e39fb1;
+  --jp-workspace-manager-peach-active: #d2ab82;
+  --jp-workspace-manager-lemon-active: #bab56d;
+  --jp-workspace-manager-mint-active: #87c086;
+  --jp-workspace-manager-sky-active: #77bae0;
+  --jp-workspace-manager-lavender-active: #bfa9da;
+  --jp-workspace-manager-filter-background: color-mix(
+    in srgb,
+    var(--jp-layout-color1) 96%,
+    black
+  );
+}
+
+[data-jp-theme-light='false'] {
+  --jp-workspace-manager-rose: #e8bbc6;
+  --jp-workspace-manager-peach: #ddc2a7;
+  --jp-workspace-manager-lemon: #ccc8a6;
+  --jp-workspace-manager-mint: #b3cdb1;
+  --jp-workspace-manager-sky: #a5cce5;
+  --jp-workspace-manager-lavender: #cfc1e1;
+  --jp-workspace-manager-rose-active: #3a2328;
+  --jp-workspace-manager-peach-active: #3a3126;
+  --jp-workspace-manager-lemon-active: #3a3825;
+  --jp-workspace-manager-mint-active: #253b2a;
+  --jp-workspace-manager-sky-active: #1d2a38;
+  --jp-workspace-manager-lavender-active: #30253a;
+}
+
+/* The panel: header, filter field, and the card list that scrolls under them */
+.jp-WorkspaceManager {
+  background: var(--jp-layout-color1);
+  color: var(--jp-ui-font-color0);
+  font-size: var(--jp-ui-font-size1);
+}
+
+.jp-WorkspaceManager-count svg,
+.jp-WorkspaceManager-rowIcon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* One line: the title gives way before a button wraps */
+.jp-WorkspaceManager-header::part(positioning-region) {
+  flex-wrap: nowrap;
+}
+
+.jp-WorkspaceManager .jp-WorkspaceManager-header {
+  align-items: center;
+  gap: 0;
+  min-height: 32px;
+  padding: 0 4px 0 0;
+  border-bottom: var(--jp-border-width) solid var(--jp-border-color2);
+  box-shadow: none;
+}
+
+/* The word gives way to the buttons before the count does */
+.jp-WorkspaceManager-header > .jp-WorkspaceManager-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 14px;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-titleLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jp-WorkspaceManager-titleCount {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-header > .jp-Toolbar-item {
+  padding: 0;
+}
+
+/* Every header button, other extensions' included, is 24px square */
+.jp-WorkspaceManager-header .jp-WorkspaceManager-headerButton,
+.jp-WorkspaceManager-header .jp-ToolbarButtonComponent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.jp-WorkspaceManager-headerButton:hover:not(:disabled),
+.jp-WorkspaceManager-headerButton.jp-mod-active {
+  background: var(--jp-layout-color3);
+}
+
+.jp-WorkspaceManager-headerButton.jp-mod-active .jp-icon3[fill] {
+  fill: var(--jp-brand-color1);
+}
+
+.jp-WorkspaceManager-headerButton.jp-mod-active .jp-icon3[stroke] {
+  stroke: var(--jp-brand-color1);
+}
+
+.jp-WorkspaceManager-headerButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.jp-WorkspaceManager-headerButton.jp-mod-spinning svg {
+  animation: jp-workspace-manager-spin 0.9s linear infinite;
+}
+
+@keyframes jp-workspace-manager-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.jp-WorkspaceManager .jp-WorkspaceManager-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.jp-WorkspaceManager-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.jp-WorkspaceManager-filter {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 8px 4px;
+  padding: 0 2px 0 8px;
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 2px;
+  background: var(--jp-workspace-manager-filter-background);
+}
+
+.jp-WorkspaceManager-filter:focus-within {
+  border-color: var(--jp-brand-color1);
+}
+
+.jp-WorkspaceManager-filterInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--jp-ui-font-color0);
+  font-family: inherit;
+  font-size: var(--jp-ui-font-size1);
+}
+
+/* above `.jp-ThemedContainer input::placeholder`, whose colour 2 reads 3.4:1 in Galaxa Steel */
+.jp-WorkspaceManager .jp-WorkspaceManager-filterInput::placeholder {
+  color: var(--jp-ui-font-color1);
+}
+
+/* Keyboard focus only: a mouse click shows no outline */
+.jp-WorkspaceManager :focus-visible {
+  outline: 1px solid var(--jp-brand-color1);
+  outline-offset: -1px;
+}
+
+.jp-WorkspaceManager :focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* A card: one rounded shape that clips its strip and backgrounds */
+.jp-WorkspaceManager-card {
+  --wm-strip: transparent;
+  --wm-active: var(--jp-layout-color1);
+
+  position: relative;
+  margin: 4px 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--jp-layout-color1);
+}
+
+.jp-WorkspaceManager-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--wm-strip);
+}
+
+.jp-WorkspaceManager-card.jp-mod-rose {
+  --wm-strip: var(--jp-workspace-manager-rose);
+  --wm-active: var(--jp-workspace-manager-rose-active);
+}
+
+.jp-WorkspaceManager-card.jp-mod-peach {
+  --wm-strip: var(--jp-workspace-manager-peach);
+  --wm-active: var(--jp-workspace-manager-peach-active);
+}
+
+.jp-WorkspaceManager-card.jp-mod-lemon {
+  --wm-strip: var(--jp-workspace-manager-lemon);
+  --wm-active: var(--jp-workspace-manager-lemon-active);
+}
+
+.jp-WorkspaceManager-card.jp-mod-mint {
+  --wm-strip: var(--jp-workspace-manager-mint);
+  --wm-active: var(--jp-workspace-manager-mint-active);
+}
+
+.jp-WorkspaceManager-card.jp-mod-sky {
+  --wm-strip: var(--jp-workspace-manager-sky);
+  --wm-active: var(--jp-workspace-manager-sky-active);
+}
+
+.jp-WorkspaceManager-card.jp-mod-lavender {
+  --wm-strip: var(--jp-workspace-manager-lavender);
+  --wm-active: var(--jp-workspace-manager-lavender-active);
+}
+
+/* the border takes the margin's place, so opening moves nothing */
+.jp-WorkspaceManager-card.jp-mod-open:not(.jp-mod-current, .jp-mod-nobody) {
+  margin: 3px 7px;
+  border: 1px solid var(--wm-strip);
+}
+
+/* This window's card: the active tab shade, its body 40% of it, the outline */
+.jp-WorkspaceManager-card.jp-mod-current {
+  outline: 2px solid var(--jp-brand-color2);
+  outline-offset: 0;
+  background: color-mix(in srgb, var(--wm-active) 40%, var(--jp-layout-color1));
+}
+
+.jp-WorkspaceManager-card.jp-mod-nobody {
+  margin: 3px 7px;
+  border: 1px dashed var(--jp-border-color1);
+}
+
+.jp-WorkspaceManager-cardHeader {
+  padding: 6px 8px 6px 12px;
+  background: color-mix(in srgb, var(--wm-strip) 8%, var(--jp-layout-color1));
+  cursor: pointer;
+}
+
+.jp-WorkspaceManager-card.jp-mod-current > .jp-WorkspaceManager-cardHeader {
+  background: var(--wm-active);
+}
+
+.jp-WorkspaceManager-card.jp-mod-nobody > .jp-WorkspaceManager-cardHeader {
+  background: transparent;
+}
+
+.jp-WorkspaceManager-card.jp-mod-others > .jp-WorkspaceManager-cardHeader {
+  background: var(--jp-layout-color2);
+}
+
+.jp-WorkspaceManager-headerLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.jp-WorkspaceManager-headerLine + .jp-WorkspaceManager-headerLine {
+  padding-left: 22px;
+}
+
+.jp-WorkspaceManager-caret {
+  display: flex;
+  flex: 0 0 16px;
+}
+
+.jp-WorkspaceManager-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--jp-ui-font-size2);
+  font-weight: 600;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-purpose {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-counts,
+.jp-WorkspaceManager-count,
+.jp-WorkspaceManager-age,
+.jp-WorkspaceManager-hiddenWord {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: var(--jp-ui-font-color0);
+  white-space: nowrap;
+}
+
+.jp-WorkspaceManager-counts {
+  gap: 10px;
+}
+
+.jp-WorkspaceManager-age.jp-mod-now {
+  font-weight: 600;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.jp-WorkspaceManager-dot.jp-mod-idle {
+  background: var(--jp-success-color1);
+}
+
+.jp-WorkspaceManager-dot.jp-mod-busy {
+  background: var(--jp-brand-color2);
+}
+
+.jp-WorkspaceManager-dot.jp-mod-unknown {
+  background: var(--jp-layout-color4);
+}
+
+.jp-WorkspaceManager-iconButton {
+  display: flex;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.jp-WorkspaceManager-iconButton:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.jp-WorkspaceManager-iconButton:hover:not(:disabled) {
+  background: var(--jp-layout-color3);
+}
+
+/* The open and close-all-tabs icons of a closed card: on hover or focus */
+.jp-WorkspaceManager-hoverActions {
+  display: none;
+  gap: 2px;
+}
+
+.jp-WorkspaceManager-cardHeader:hover .jp-WorkspaceManager-hoverActions,
+.jp-WorkspaceManager-cardHeader:focus-within .jp-WorkspaceManager-hoverActions {
+  display: flex;
+}
+
+.jp-WorkspaceManager-cardBody {
+  padding: 4px 0 8px;
+}
+
+.jp-WorkspaceManager-groupLabel {
+  padding: 6px 8px 2px 16px;
+  font-size: var(--jp-ui-font-size0);
+  font-weight: 600;
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px 0 16px;
+  cursor: pointer;
+}
+
+.jp-WorkspaceManager-row:hover {
+  background: color-mix(in srgb, var(--jp-ui-font-color0) 12%, transparent);
+}
+
+.jp-WorkspaceManager-rowIcon {
+  display: flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.jp-WorkspaceManager-rowLabel {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-rowDetail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-row:hover .jp-WorkspaceManager-rowDetail {
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-row > .jp-WorkspaceManager-age {
+  margin-left: auto;
+}
+
+.jp-WorkspaceManager-empty,
+.jp-WorkspaceManager-note,
+.jp-WorkspaceManager-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-error::before {
+  content: '';
+  flex: 0 0 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--jp-error-color1);
+}
+
+.jp-WorkspaceManager-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 8px 8px 0 16px;
+}
+
+.jp-WorkspaceManager-button {
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 2px;
+  background: var(--jp-layout-color2);
+  color: var(--jp-ui-font-color0);
+  font-family: inherit;
+  font-size: var(--jp-ui-font-size1);
+  cursor: pointer;
+}
+
+/* without its fill, as colour 1 on the fill reads 3.6:1 in Galaxa Steel */
+.jp-WorkspaceManager-button:disabled {
+  background: transparent;
+  color: var(--jp-ui-font-color1);
+  cursor: default;
+}
+
+.jp-WorkspaceManager-button:hover:not(:disabled) {
+  background: var(--jp-layout-color3);
+}
+
+/* Menus: swatches as the colourful tab extension draws them, the red bin */
+.jp-WorkspaceManager-swatch {
+  stroke: var(--jp-layout-color4);
+  stroke-width: 1;
+}
+
+.jp-WorkspaceManager-swatch.jp-mod-rose {
+  fill: var(--jp-workspace-manager-rose);
+}
+
+.jp-WorkspaceManager-swatch.jp-mod-peach {
+  fill: var(--jp-workspace-manager-peach);
+}
+
+.jp-WorkspaceManager-swatch.jp-mod-lemon {
+  fill: var(--jp-workspace-manager-lemon);
+}
+
+.jp-WorkspaceManager-swatch.jp-mod-mint {
+  fill: var(--jp-workspace-manager-mint);
+}
+
+.jp-WorkspaceManager-swatch.jp-mod-sky {
+  fill: var(--jp-workspace-manager-sky);
+}
+
+.jp-WorkspaceManager-swatch.jp-mod-lavender {
+  fill: var(--jp-workspace-manager-lavender);
+}
+
+.jp-WorkspaceManager-menu .lm-Menu-item[data-command='delete'] .jp-icon3[fill] {
+  fill: var(--jp-error-color1);
+}
+
+/* The present colour keeps its swatch and takes a check after its name */
+.jp-WorkspaceManager-colourMenu
+  .lm-Menu-item.lm-mod-toggled
+  .lm-Menu-itemLabel::after {
+  content: ' \2713';
+}
+
+/* Dialogs: Name, the rule under it, the three-line description, its counter */
+.jp-WorkspaceManager-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 320px;
+}
+
+.jp-WorkspaceManager-fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-form .jp-mod-styled.jp-WorkspaceManager-name,
+.jp-WorkspaceManager-form .jp-mod-styled.jp-WorkspaceManager-area {
+  box-sizing: border-box;
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--jp-ui-font-size1);
+}
+
+.jp-WorkspaceManager-area {
+  resize: none;
+  white-space: pre-wrap;
+}
+
+.jp-WorkspaceManager-name.jp-mod-invalid {
+  border-color: var(--jp-error-color1);
+}
+
+.jp-WorkspaceManager-rule,
+.jp-WorkspaceManager-counter {
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-counter {
+  text-align: right;
+}
+
+.jp-WorkspaceManager-rule.jp-mod-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-rule.jp-mod-error::before {
+  content: '';
+  flex: 0 0 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--jp-error-color1);
+}

@@ -1,0 +1,326 @@
+import type { Kernel, Session, Workspace } from '@jupyterlab/services';
+import type { Colour } from './palette';
+
+/** A workspace's record in the extension's file, as `GET meta` returns it per id. */
+export interface IRecord {
+  purpose?: string;
+  colour?: Colour;
+  hidden?: boolean;
+}
+
+/** A terminal as the extension's `terminals` endpoint, or `/api/terminals`, gives it. */
+export interface ITerminal {
+  name: string;
+  last_activity?: string;
+  /** null or absent when the foreground process cannot be read */
+  process?: string | null;
+}
+
+/**
+ * A tab: its layout key (`terminal:7`, `notebook:<path>`, `console:<path>`,
+ * `editor:<path>`, ...), the path and name its saved data holds, and the label
+ * a live tab of this window shows.
+ */
+export interface ITab {
+  key: string;
+  path?: string;
+  name?: string;
+  title?: string;
+}
+
+/** A row under Tabs: a document or another widget. */
+export interface ITabRow extends ITab {
+  label: string;
+}
+
+export interface ITerminalRow {
+  name: string;
+  process: string | null;
+  lastActivity?: string;
+  /** the tab title, when this window shows the terminal */
+  title?: string;
+  /** the other workspaces that hold it */
+  alsoIn: string[];
+}
+
+export interface IKernelRow {
+  id: string;
+  name: string;
+  /** the session path of its notebook or console; empty without a session */
+  path: string;
+  /** the notebook's file name or the console's name */
+  detail: string;
+  lastActivity?: string;
+  dotClass: string;
+  alsoIn: string[];
+}
+
+export interface ISection {
+  /** the workspace id; null for In no workspace */
+  id: string | null;
+  current: boolean;
+  /** hidden by its record; never true for this window's workspace */
+  hidden: boolean;
+  purpose: string;
+  colour: Colour | null;
+  lastModified?: string;
+  tabs: ITabRow[];
+  terminals: ITerminalRow[];
+  kernels: IKernelRow[];
+}
+
+export interface IModelInput {
+  /** `GET /lab/api/workspaces` values */
+  workspaces: Workspace.IWorkspace[];
+  records: { [id: string]: IRecord };
+  terminals: ITerminal[];
+  kernels: Kernel.IModel[];
+  sessions: Session.IModel[];
+  /** this window's workspace id */
+  current: string;
+  /** the open tabs of this window, which stand for its workspace's saved layout */
+  liveTabs: ITab[];
+}
+
+/** The dot of a kernel row: idle, busy, or unknown for every other state. */
+export function kernelDot(state: string | undefined): string {
+  const dot = state === 'idle' || state === 'busy' ? state : 'unknown';
+  return `jp-WorkspaceManager-dot jp-mod-${dot}`;
+}
+
+/** The tabs a saved workspace holds, in the main area and the down area. */
+export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
+  const layout = data['layout-restorer:data'] as any;
+  const keys: string[] = areaKeys(layout?.main?.dock).concat(
+    layout?.down?.widgets ?? []
+  );
+  return keys.map(key => {
+    const saved = (data[key] as any)?.data ?? {};
+    return { key, path: saved.path, name: saved.name };
+  });
+}
+
+/**
+ * One section per workspace, hidden ones included and flagged: this window's
+ * workspace first, the others by `last_modified` newest first, then In no
+ * workspace when it holds a terminal or a kernel.
+ */
+export function buildSections(input: IModelInput): ISection[] {
+  const { records, current } = input;
+  let workspaces = input.workspaces;
+  if (!workspaces.some(w => w.metadata.id === current)) {
+    // this window's workspace has its card before its first save
+    workspaces = [{ data: {}, metadata: { id: current } }, ...workspaces];
+  }
+
+  const kernelById = new Map<string, Kernel.IModel>();
+  for (const session of input.sessions) {
+    if (session.kernel) {
+      kernelById.set(session.kernel.id, session.kernel);
+    }
+  }
+  for (const kernel of input.kernels) {
+    kernelById.set(kernel.id, kernel);
+  }
+  const titles = new Map<string, string | undefined>();
+  for (const tab of input.liveTabs) {
+    if (prefix(tab.key) === 'terminal') {
+      titles.set(suffix(tab.key), tab.title);
+    }
+  }
+
+  // What each workspace holds, and who holds each terminal and kernel
+  const termHolders = new Map<string, string[]>();
+  const kernelHolders = new Map<string, string[]>();
+  const held = workspaces.map(ws => {
+    const id = ws.metadata.id;
+    const tabs = id === current ? input.liveTabs : tabsOf(ws.data);
+    const terminals = new Set<string>();
+    const kernels = new Map<string, Session.IModel>();
+    const docs: ITabRow[] = [];
+    for (const tab of tabs) {
+      const kind = prefix(tab.key);
+      if (kind === 'terminal') {
+        terminals.add(suffix(tab.key));
+        continue;
+      }
+      const path = tab.path ?? suffix(tab.key);
+      docs.push({ ...tab, label: tab.name ?? tab.title ?? basename(path) });
+      if (kind !== 'notebook' && kind !== 'console') {
+        continue;
+      }
+      // a kernel belongs to the workspace whose notebook or console has a session on it
+      for (const session of input.sessions) {
+        if (
+          session.type === kind &&
+          session.path === path &&
+          session.kernel &&
+          !kernels.has(session.kernel.id)
+        ) {
+          kernels.set(session.kernel.id, session);
+        }
+      }
+    }
+    terminals.forEach(name => add(termHolders, name, id));
+    kernels.forEach((_, kernelId) => add(kernelHolders, kernelId, id));
+    return { ws, docs, terminals, kernels };
+  });
+
+  const terminalRow = (t: ITerminal, holders: string[], id: string | null) => ({
+    name: t.name,
+    process: t.process ?? null,
+    lastActivity: t.last_activity,
+    title: titles.get(t.name),
+    alsoIn: holders.filter(h => h !== id)
+  });
+  const kernelRow = (
+    k: Kernel.IModel,
+    session: Session.IModel | undefined,
+    holders: string[],
+    id: string | null
+  ) => ({
+    id: k.id,
+    name: k.name,
+    path: session?.path ?? '',
+    detail: !session
+      ? ''
+      : session.type === 'console'
+        ? session.name
+        : basename(session.path),
+    lastActivity: k.last_activity,
+    dotClass: kernelDot(k.execution_state),
+    alsoIn: holders.filter(h => h !== id)
+  });
+
+  const sections: ISection[] = held.map(({ ws, docs, terminals, kernels }) => {
+    const id = ws.metadata.id;
+    const record = records[id] ?? {};
+    const rows: IKernelRow[] = [];
+    kernels.forEach((session, kernelId) => {
+      const kernel = kernelById.get(kernelId);
+      if (kernel) {
+        rows.push(kernelRow(kernel, session, kernelHolders.get(kernelId)!, id));
+      }
+    });
+    return {
+      id,
+      current: id === current,
+      hidden: id !== current && !!record.hidden,
+      purpose: record.purpose ?? '',
+      colour: record.colour ?? null,
+      lastModified: ws.metadata.last_modified,
+      tabs: docs,
+      terminals: input.terminals
+        .filter(t => terminals.has(t.name))
+        .map(t => terminalRow(t, termHolders.get(t.name)!, id)),
+      kernels: rows
+    };
+  });
+
+  const time = (s: ISection) => Date.parse(s.lastModified ?? '') || 0;
+  sections.sort(
+    (a, b) => Number(b.current) - Number(a.current) || time(b) - time(a)
+  );
+
+  const nobody = {
+    terminals: input.terminals
+      .filter(t => !termHolders.has(t.name))
+      .map(t => terminalRow(t, [], null)),
+    kernels: Array.from(kernelById.values())
+      .filter(k => !kernelHolders.has(k.id))
+      .map(k =>
+        kernelRow(
+          k,
+          input.sessions.find(s => s.kernel?.id === k.id),
+          [],
+          null
+        )
+      )
+  };
+  if (nobody.terminals.length || nobody.kernels.length) {
+    sections.push({
+      id: null,
+      current: false,
+      hidden: false,
+      purpose: '',
+      colour: null,
+      tabs: [],
+      ...nobody
+    });
+  }
+  return sections;
+}
+
+/**
+ * The saved workspace without the tabs `keys`: gone from the main area, the
+ * down area and `data`, where the culler reads `terminal:<name>`. An emptied
+ * tab area leaves the layout; a terminal or kernel keeps running.
+ */
+export function withoutTabs(
+  ws: Workspace.IWorkspace,
+  keys: string[]
+): Workspace.IWorkspace {
+  const drop = new Set(keys);
+  const data: any = JSON.parse(JSON.stringify(ws.data));
+  const prune = (area: any): any => {
+    if (!area) {
+      return null;
+    }
+    if (area.type === 'tab-area') {
+      const widgets = (area.widgets ?? []).filter((k: string) => !drop.has(k));
+      return widgets.length
+        ? {
+            ...area,
+            widgets,
+            currentIndex: Math.min(area.currentIndex ?? 0, widgets.length - 1)
+          }
+        : null;
+    }
+    const kept = (area.children ?? [])
+      .map((child: any, i: number) => [prune(child), area.sizes?.[i]])
+      .filter(([child]: any[]) => child);
+    if (kept.length < 2) {
+      return kept.length ? kept[0][0] : null;
+    }
+    return {
+      ...area,
+      children: kept.map((k: any[]) => k[0]),
+      sizes: kept.map((k: any[]) => k[1])
+    };
+  };
+  const layout = data['layout-restorer:data'];
+  if (layout?.main) {
+    layout.main.dock = prune(layout.main.dock);
+    if (drop.has(layout.main.current)) {
+      delete layout.main.current;
+    }
+  }
+  if (layout?.down?.widgets) {
+    layout.down.widgets = layout.down.widgets.filter(
+      (k: string) => !drop.has(k)
+    );
+  }
+  keys.forEach(key => delete data[key]);
+  return { data, metadata: { id: ws.metadata.id } };
+}
+
+function areaKeys(area: any): string[] {
+  if (!area) {
+    return [];
+  }
+  if (area.type === 'tab-area') {
+    return area.widgets ?? [];
+  }
+  return (area.children ?? []).reduce(
+    (keys: string[], child: any) => keys.concat(areaKeys(child)),
+    []
+  );
+}
+
+function add(map: Map<string, string[]>, key: string, id: string): void {
+  map.set(key, (map.get(key) ?? []).concat(id));
+}
+
+const prefix = (key: string) => key.split(':')[0];
+const suffix = (key: string) => key.slice(key.indexOf(':') + 1);
+const basename = (path: string) => path.slice(path.lastIndexOf('/') + 1);

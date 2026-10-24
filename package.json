@@ -58,9 +58,18 @@
     },
     "dependencies": {
         "@jupyterlab/application": "^4.6.0",
+        "@jupyterlab/apputils": "^4.7.0",
         "@jupyterlab/coreutils": "^6.6.0",
+        "@jupyterlab/running": "^4.6.0",
         "@jupyterlab/services": "^7.6.0",
-        "@jupyterlab/settingregistry": "^4.6.0"
+        "@jupyterlab/ui-components": "^4.6.0",
+        "@lumino/commands": "^2.3.0",
+        "@lumino/coreutils": "^2.2.0",
+        "@lumino/messaging": "^2.0.0",
+        "@lumino/signaling": "^2.1.0",
+        "@lumino/widgets": "^2.8.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.0",
@@ -71,6 +80,7 @@
         "@types/json-schema": "^7.0.0",
         "@types/react": "^18.3.0",
         "@types/react-addons-linked-state-mixin": "^0.14.0",
+        "@types/react-dom": "^18.3.0",
         "eslint": "^9.39.0",
         "eslint-config-prettier": "^9.1.0",
         "eslint-plugin-prettier": "^5.5.0",
@@ -114,7 +124,10 @@
         },
         "extension": true,
         "outputDir": "jupyterlab_workspace_manager_extension/labextension",
-        "schemaDir": "schema"
+        "schemaDir": "schema",
+        "disabledExtensions": [
+            "@jupyterlab/running-extension:sidebar"
+        ]
     },
     "prettier": {
         "singleQuote": true,

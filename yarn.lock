@@ -2229,7 +2229,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@jupyterlab/apputils@npm:^4.7.4":
+"@jupyterlab/apputils@npm:^4.7.0, @jupyterlab/apputils@npm:^4.7.4":
   version: 4.7.4
   resolution: "@jupyterlab/apputils@npm:4.7.4"
   dependencies:
@@ -2663,6 +2663,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@jupyterlab/running@npm:^4.6.0":
+  version: 4.6.4
+  resolution: "@jupyterlab/running@npm:4.6.4"
+  dependencies:
+    "@jupyter/react-components": ^0.16.6
+    "@jupyterlab/apputils": ^4.7.4
+    "@jupyterlab/statedb": ^4.6.4
+    "@jupyterlab/translation": ^4.6.4
+    "@jupyterlab/ui-components": ^4.6.4
+    "@lumino/coreutils": ^2.2.2
+    "@lumino/disposable": ^2.1.5
+    "@lumino/domutils": ^2.0.4
+    "@lumino/messaging": ^2.0.4
+    "@lumino/signaling": ^2.1.5
+    "@lumino/widgets": ^2.8.0
+    react: ^18.2.0
+  checksum: fb19fc7f350c453cad8209c8b92bf7e06554eec0e0efa4b1c6f49b0382606d7fa99736bf1a030926628b3c0df600adab16eee61a625e1b8ec2c5049ae2d33047
+  languageName: node
+  linkType: hard
+
 "@jupyterlab/services@npm:^7.6.0, @jupyterlab/services@npm:^7.6.4":
   version: 7.6.4
   resolution: "@jupyterlab/services@npm:7.6.4"
@@ -2682,7 +2702,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@jupyterlab/settingregistry@npm:^4.6.0, @jupyterlab/settingregistry@npm:^4.6.4":
+"@jupyterlab/settingregistry@npm:^4.6.4":
   version: 4.6.4
   resolution: "@jupyterlab/settingregistry@npm:4.6.4"
   dependencies:
@@ -2802,7 +2822,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@jupyterlab/ui-components@npm:^4.6.4":
+"@jupyterlab/ui-components@npm:^4.6.0, @jupyterlab/ui-components@npm:^4.6.4":
   version: 4.6.4
   resolution: "@jupyterlab/ui-components@npm:4.6.4"
   dependencies:
@@ -3017,7 +3037,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lumino/commands@npm:^2.3.3, @lumino/commands@npm:^2.3.4":
+"@lumino/commands@npm:^2.3.0, @lumino/commands@npm:^2.3.3, @lumino/commands@npm:^2.3.4":
   version: 2.3.4
   resolution: "@lumino/commands@npm:2.3.4"
   dependencies:
@@ -3032,7 +3052,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lumino/coreutils@npm:^1.11.0 || ^2.0.0, @lumino/coreutils@npm:^1.11.0 || ^2.2.2, @lumino/coreutils@npm:^2.2.2, @lumino/coreutils@npm:^2.2.3":
+"@lumino/coreutils@npm:^1.11.0 || ^2.0.0, @lumino/coreutils@npm:^1.11.0 || ^2.2.2, @lumino/coreutils@npm:^2.2.0, @lumino/coreutils@npm:^2.2.2, @lumino/coreutils@npm:^2.2.3":
   version: 2.2.3
   resolution: "@lumino/coreutils@npm:2.2.3"
   dependencies:
@@ -3074,7 +3094,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lumino/messaging@npm:^2.0.4, @lumino/messaging@npm:^2.0.5":
+"@lumino/messaging@npm:^2.0.0, @lumino/messaging@npm:^2.0.4, @lumino/messaging@npm:^2.0.5":
   version: 2.0.5
   resolution: "@lumino/messaging@npm:2.0.5"
   dependencies:
@@ -3102,7 +3122,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lumino/signaling@npm:^1.10.0 || ^2.0.0, @lumino/signaling@npm:^2.1.5, @lumino/signaling@npm:^2.1.6":
+"@lumino/signaling@npm:^1.10.0 || ^2.0.0, @lumino/signaling@npm:^2.1.0, @lumino/signaling@npm:^2.1.5, @lumino/signaling@npm:^2.1.6":
   version: 2.1.6
   resolution: "@lumino/signaling@npm:2.1.6"
   dependencies:
@@ -3988,6 +4008,15 @@ __metadata:
     "@types/create-react-class": "*"
     "@types/react": "*"
   checksum: a78007698a236335a50c74ddd27669028213ff363219f97a6ea1f000ddb8714c83838002ea07c33024f964112a229e447127b457fa3f9b3db352dd41d6b8d328
+  languageName: node
+  linkType: hard
+
+"@types/react-dom@npm:^18.3.0":
+  version: 18.3.7
+  resolution: "@types/react-dom@npm:18.3.7"
+  peerDependencies:
+    "@types/react": ^18.0.0
+  checksum: c8b63ec944d2a68992b4dba474003fe55ee1d949c4b9c8fe97eecb2290de23f76acfb670b2f7ceb46a5fc8e46808d1745369b03edda48a7a0cf730eff4c5d315
   languageName: node
   linkType: hard
 
@@ -7639,14 +7668,22 @@ __metadata:
     "@jupyter/builder": ^1.2.0
     "@jupyter/eslint-plugin": ^1.4.0
     "@jupyterlab/application": ^4.6.0
+    "@jupyterlab/apputils": ^4.7.0
     "@jupyterlab/coreutils": ^6.6.0
+    "@jupyterlab/running": ^4.6.0
     "@jupyterlab/services": ^7.6.0
-    "@jupyterlab/settingregistry": ^4.6.0
     "@jupyterlab/testutils": ^4.6.0
+    "@jupyterlab/ui-components": ^4.6.0
+    "@lumino/commands": ^2.3.0
+    "@lumino/coreutils": ^2.2.0
+    "@lumino/messaging": ^2.0.0
+    "@lumino/signaling": ^2.1.0
+    "@lumino/widgets": ^2.8.0
     "@types/jest": ^29.5.0
     "@types/json-schema": ^7.0.0
     "@types/react": ^18.3.0
     "@types/react-addons-linked-state-mixin": ^0.14.0
+    "@types/react-dom": ^18.3.0
     eslint: ^9.39.0
     eslint-config-prettier: ^9.1.0
     eslint-plugin-prettier: ^5.5.0
@@ -7655,6 +7692,8 @@ __metadata:
     mkdirp: ^1.0.0
     npm-run-all2: ^7.0.0
     prettier: ^3.9.0
+    react: ^18.2.0
+    react-dom: ^18.2.0
     rimraf: ^5.0.0
     stylelint: ^15.11.0
     stylelint-config-recommended: ^13.0.0

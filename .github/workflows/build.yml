@@ -127,6 +127,10 @@ jobs:
         set -eux
         python -m pip install "jupyterlab>=4.6,<5" jupyterlab_workspace_manager_extension*.whl
 
+    - name: Install the Galaxa Steel dark theme
+      # the contrast test of legibility.spec.ts reads the panel in this theme
+      run: python -m pip install galaxalabs_jupyterlab_steel_dark_theme
+
     - name: Install dependencies
       working-directory: ui-tests
       env:

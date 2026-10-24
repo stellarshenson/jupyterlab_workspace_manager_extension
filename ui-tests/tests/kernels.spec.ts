@@ -1,0 +1,178 @@
+import { expect, test } from '@jupyterlab/galata';
+import type { Page } from '@playwright/test';
+
+import {
+  activeTab,
+  card,
+  cardHeader,
+  deleteWorkspaces,
+  dialog,
+  enterWorkspace,
+  fresh,
+  fromRowMenu,
+  group,
+  kernelIds,
+  layout,
+  NEXT_POLL,
+  nobodyCard,
+  openDocument,
+  putNotebook,
+  putWorkspace,
+  refresh,
+  rowOf,
+  serverList,
+  startSession,
+  UNDER_LOAD
+} from './helpers';
+
+// every test reads and writes the workspaces of the server
+test.use({ autoGoto: false, mockState: false });
+
+const ROW = '.jp-WorkspaceManager-row';
+
+/** The session the server runs for a notebook, once its kernel is up. */
+async function sessionOf(page: Page, path: string): Promise<any> {
+  let session: any;
+  await expect
+    .poll(async () => {
+      const sessions = await serverList(page, '/api/sessions');
+      session = sessions.find(s => s.path === path && s.kernel);
+      return !!session;
+    }, UNDER_LOAD)
+    .toBe(true);
+  return session;
+}
+
+test('ACC-KERNEL-48-ROW, ACC-KERNEL-114-SHUTDOWN: a kernel row shows name, notebook and age; Shut down kernel ends it and the notebook stays open', async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('kernel');
+  const notebook = `${tmpPath}/kernelled.ipynb`;
+  await putNotebook(page, notebook);
+  try {
+    await enterWorkspace(page, current);
+    await openDocument(page, notebook);
+    const session = await sessionOf(page, notebook);
+    await refresh(page);
+    await cardHeader(page, current).click();
+    const kernels = group(card(page, current), 'KERNELS');
+    const row = kernels.locator(ROW);
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
+      session.kernel.name
+    );
+    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+      'kernelled.ipynb'
+    );
+    await expect(row.locator('.jp-WorkspaceManager-age')).toHaveText('now');
+    // the age is the server's last_activity: a kernel idle for over 5 minutes shows 5m
+    const idle = new Date(Date.now() - 330000).toISOString();
+    const list = /\/api\/kernels(\?.*)?$/;
+    await page.route(list, async route => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        response,
+        json: response.ok()
+          ? json.map((k: any) =>
+              k.id === session.kernel.id ? { ...k, last_activity: idle } : k
+            )
+          : json
+      });
+    });
+    await refresh(page);
+    await expect(row.locator('.jp-WorkspaceManager-age')).toHaveText(
+      '5m',
+      NEXT_POLL
+    );
+    await page.unroute(list);
+
+    await fromRowMenu(row, 'Shut down kernel');
+    await expect
+      .poll(() => kernelIds(page), UNDER_LOAD)
+      .not.toContain(session.kernel.id);
+    await expect(kernels).toHaveCount(0, NEXT_POLL);
+    // the notebook tab stays, without a kernel, and nothing asks to close it
+    await expect
+      .poll(
+        () =>
+          page.evaluate(path => {
+            const tab: any = Array.from(
+              (window as any).jupyterapp.shell.widgets('main')
+            ).find((w: any) => w.context?.path === path);
+            const kernel = tab?.sessionContext.session?.kernel;
+            return !tab
+              ? 'closed'
+              : !kernel || kernel.isDisposed || kernel.status === 'dead'
+                ? 'no kernel'
+                : kernel.status;
+          }, notebook),
+        UNDER_LOAD
+      )
+      .toBe('no kernel');
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(
+      rowOf(group(card(page, current), 'TABS'), 'kernelled.ipynb')
+    ).toBeVisible();
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test.describe('kernels and sessions of the server', () => {
+  // Galata lists only the kernels and sessions its page started; this test starts one by REST
+  test.use({ kernels: null, sessions: null });
+
+  test('ACC-KERNEL-151-ROW-CLICK: a click or Enter on a kernel row opens its notebook: here, from In no workspace, or in its workspace', async ({
+    page,
+    tmpPath
+  }) => {
+    const tag = fresh('nb');
+    const [a, b, c] = ['a', 'b', 'c'].map(x => `${tmpPath}/${tag}-${x}.ipynb`);
+    for (const path of [a, b, c]) {
+      await putNotebook(page, path);
+    }
+    const current = fresh('kclick');
+    const other = `${current}-other`;
+    // B's session is in no workspace; C's notebook is a tab of another workspace
+    const sessionB = await startSession(page, b);
+    await startSession(page, c);
+    await putWorkspace(page, other, layout([`notebook:${c}`]));
+    try {
+      await enterWorkspace(page, current);
+      await openDocument(page, a);
+      await sessionOf(page, a);
+      await refresh(page);
+
+      await nobodyCard(page).locator('.jp-WorkspaceManager-cardHeader').click();
+      await rowOf(nobodyCard(page), `${tag}-b.ipynb`).click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(b);
+      // the tab of B runs on the kernel of its session
+      expect((await sessionOf(page, b)).kernel.id).toBe(sessionB.kernel.id);
+
+      await cardHeader(page, current).click();
+      const kernels = group(card(page, current), 'KERNELS');
+      await expect(rowOf(kernels, `${tag}-b.ipynb`)).toBeVisible();
+      await rowOf(kernels, `${tag}-a.ipynb`).focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(a);
+
+      await cardHeader(page, other).click();
+      await rowOf(
+        group(card(page, other), 'KERNELS'),
+        `${tag}-c.ipynb`
+      ).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+      );
+    } finally {
+      const sessions = await serverList(page, '/api/sessions');
+      for (const s of sessions.filter(s => s.path.startsWith(tmpPath))) {
+        await page.request.delete(`/api/sessions/${s.id}`);
+        await page.request.delete(`/api/kernels/${s.kernel.id}`);
+      }
+      await deleteWorkspaces(page, [current, other]);
+    }
+  });
+});
