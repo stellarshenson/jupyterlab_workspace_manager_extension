@@ -2,6 +2,32 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.17] - 2026-10-25
+
+### Added
+
+- A WORKSPACES header carrying the number of workspaces, with the workspace cards below it
+- KERNELS, TERMINALS and LANGUAGE SERVERS sections below the workspaces, for what belongs to no workspace, each with its count and a shut down all and each empty one hidden
+- The `jupyterlab-workspace` command line tool: `workspaces list`, `add`, `open`, `describe`, `remove` and `clean`, and `terminals` and `kernels` `list` and `kill`, against a running lab
+- An agent skill for the CLI at `.agents/skills/jupyterlab-workspace-manager-extension`, shipped in the wheel
+- A multiline tooltip on every row: a terminal's name, process and last activity, a kernel's kernelspec, session and state, a language server's id and language, a tab's full path
+
+### Changed
+
+- The panel header reads WORKBENCH on one line at the narrow sidebar width
+- The Other sessions and In no workspace cards are gone, so recently closed documents and other windows' sessions are no longer listed
+- A workspace purpose wraps and shows in full instead of ending in an ellipsis
+- One section is open at a time, and a section header opens or closes its section
+
+### Fixed
+
+- `workspaces clean --empty` deleted a workspace whose main area is split, because the layout walk read only flat docks
+- `workspaces clean` deleted a workspace another browser window was showing
+- `workspaces add` wrote a slash-prefixed record id, leaving two records for one workspace
+- The list output printed control characters raw, so a purpose could break the table or reach the terminal
+- `workspaces describe` wrote a record for a name that is not a workspace
+- The TABS column counted each terminal as a tab too
+
 ## [0.8.16] - 2026-10-25
 
 ### Added
