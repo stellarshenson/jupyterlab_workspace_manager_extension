@@ -10,7 +10,7 @@
 
 This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: one section per workspace, one section open at a time.
 
-![The workspace panel](https://raw.githubusercontent.com/stellarshenson/jupyterlab_workspace_manager_extension/main/docs/images/panel-full-window.png)
+![The workspace panel](docs/images/panel-full-window.png)
 
 _Fig 1 - The workspace panel beside a notebook of the workspace this window shows_
 

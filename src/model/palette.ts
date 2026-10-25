@@ -13,9 +13,9 @@ export const COLOURS = [
 
 export type Colour = (typeof COLOURS)[number];
 
-/** The palette colour after `last`; rose when none was given yet. */
+/** The palette colour after `last`; sky when none was given yet. */
 export function nextColour(last: Colour | null): Colour {
-  return COLOURS[last === null ? 0 : (COLOURS.indexOf(last) + 1) % 6];
+  return last === null ? 'sky' : COLOURS[(COLOURS.indexOf(last) + 1) % 6];
 }
 
 /**

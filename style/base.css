@@ -5,19 +5,19 @@
 */
 
 /*
-    The workspace palette, the one place with colour values. Each colour has the
-    strip colour and the active shade that jupyterlab_colourful_tab_extension
-    gives an active tab, which colours the header of this window's card. In a
-    dark theme the strip keeps the light pastel, as the dark shades disappear
-    as a thin line on a dark panel.
+    The workspace palette, the one place with colour values. The strip colour is
+    more saturated than the active shade so neighbouring workspaces are told
+    apart: the active shade keeps the value jupyterlab_colourful_tab_extension
+    gives an active tab and tints this window's card. In a dark theme the strip
+    stays light, as dark shades disappear as a thin line on a dark panel.
 */
 :root {
-  --jp-workspace-manager-rose: #e39fb1;
-  --jp-workspace-manager-peach: #d2ab82;
-  --jp-workspace-manager-lemon: #bab56d;
-  --jp-workspace-manager-mint: #87c086;
-  --jp-workspace-manager-sky: #77bae0;
-  --jp-workspace-manager-lavender: #bfa9da;
+  --jp-workspace-manager-rose: #ee7796;
+  --jp-workspace-manager-peach: #f1a350;
+  --jp-workspace-manager-lemon: #9c9421;
+  --jp-workspace-manager-mint: #3fc23d;
+  --jp-workspace-manager-sky: #2ba7ee;
+  --jp-workspace-manager-lavender: #a874e7;
   --jp-workspace-manager-rose-active: #e39fb1;
   --jp-workspace-manager-peach-active: #d2ab82;
   --jp-workspace-manager-lemon-active: #bab56d;
@@ -32,12 +32,12 @@
 }
 
 [data-jp-theme-light='false'] {
-  --jp-workspace-manager-rose: #e8bbc6;
-  --jp-workspace-manager-peach: #ddc2a7;
-  --jp-workspace-manager-lemon: #ccc8a6;
-  --jp-workspace-manager-mint: #b3cdb1;
-  --jp-workspace-manager-sky: #a5cce5;
-  --jp-workspace-manager-lavender: #cfc1e1;
+  --jp-workspace-manager-rose: #f094aa;
+  --jp-workspace-manager-peach: #f2b87d;
+  --jp-workspace-manager-lemon: #e3d76d;
+  --jp-workspace-manager-mint: #8cd586;
+  --jp-workspace-manager-sky: #80c4ef;
+  --jp-workspace-manager-lavender: #bd9aea;
   --jp-workspace-manager-rose-active: #3a2328;
   --jp-workspace-manager-peach-active: #3a3126;
   --jp-workspace-manager-lemon-active: #3a3825;
