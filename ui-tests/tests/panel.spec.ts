@@ -8,9 +8,15 @@ import {
   headerButton,
   onlyWorkspaces,
   openPanel,
+  openSection,
   PANEL,
+  panelWidth,
   putWorkspace,
   refresh,
+  rowOf,
+  sectionBody,
+  sectionCount,
+  sectionHeader,
   startTerminal,
   UNDER_LOAD
 } from './helpers';
@@ -18,14 +24,6 @@ import {
 // Load the page inside the test, so every console message of the load is caught
 test.use({ autoGoto: false });
 
-/** The sections the cards replace, and Language servers, which In no workspace lists; every other one is under Other sessions. */
-const REPLACED = [
-  'Open Tabs',
-  'Kernels',
-  'Terminals',
-  'Workspaces',
-  'Language servers'
-];
 /** Requested by every reload of the panel and by nothing else. */
 const POLLED = '/jupyterlab-workspace-manager-extension/terminals';
 
@@ -107,29 +105,56 @@ test('ACC-PANEL-3-SHOWCMD: running:show-panel shows the hidden panel', async ({
   await expect(page.locator(PANEL)).toHaveClass(/jp-WorkspaceManager/);
 });
 
-test('ACC-PANEL-137-OTHERS-CLOSED: Other sessions is closed at load and counts the sections of other extensions', async ({
+test('ACC-PANEL-183-OTHERS-GONE: the panel shows no OTHER SESSIONS header and no text In no workspace; recently closed documents and the sessions of other windows are not listed', async ({
   page
 }) => {
   await page.goto();
   await openPanel(page);
-  const names: string[] = await page.evaluate(async () => {
-    const managers: any = await (window as any).galata.getPlugin(
-      '@jupyterlab/running-extension:plugin'
-    );
-    return managers.items().map((m: any) => m.name);
-  });
-  const others = names.filter(n => !REPLACED.includes(n));
-  // the five are registered, so the count below excludes them
-  expect(names).toEqual(expect.arrayContaining(REPLACED));
-  expect(others.length).toBeGreaterThan(0);
+  await expect(card(page, 'default')).toBeVisible();
+  const text = await page.locator(PANEL).textContent();
+  expect(text).not.toContain('OTHER SESSIONS');
+  expect(text).not.toContain('In no workspace');
+  expect(text).not.toContain('RECENTLY CLOSED');
+  await expect(page.locator(`${PANEL} [data-key="x:others"]`)).toHaveCount(0);
+  await expect(page.locator(`${PANEL} [data-key="x:none"]`)).toHaveCount(0);
+});
 
-  const othersCard = page.locator(`${PANEL} [data-key="x:others"]`);
-  const header = othersCard.locator('.jp-WorkspaceManager-cardHeader');
-  await expect(header).toHaveAttribute('aria-expanded', 'false');
-  await expect(othersCard).not.toHaveClass(/jp-mod-open/);
-  await expect(header.locator('.jp-WorkspaceManager-counts')).toHaveText(
-    `(${others.length})`
-  );
+test('ACC-PANEL-184-TITLE-NAME: the panel header reads WORKBENCH, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  expect(await panelWidth(page)).toBe(250);
+  const header = page.locator(`${PANEL} .jp-WorkspaceManager-header`);
+  const title = header.locator('.jp-WorkspaceManager-titleLabel');
+  await expect(title).toHaveText('WORKBENCH');
+  // the title draws on one line at 250 px: one line box, not a wrapped second
+  expect(
+    await title.evaluate(n => {
+      const r = document.createRange();
+      r.selectNodeContents(n);
+      return r.getClientRects().length;
+    })
+  ).toBe(1);
+  for (const label of [
+    'New workspace',
+    'Filter',
+    'Show hidden workspaces',
+    'Refresh'
+  ]) {
+    await expect(headerButton(page, label)).toBeVisible();
+  }
+  await expect(sectionHeader(page, 'workspaces')).toContainText('WORKSPACES');
+  await expect(sectionCount(page, 'workspaces')).toHaveText(/^\(\d+\)$/);
+  // the cards follow their header, and the other sections follow the cards
+  const [section, cards] = [
+    await sectionHeader(page, 'workspaces').boundingBox(),
+    await page
+      .locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`)
+      .first()
+      .boundingBox()
+  ];
+  expect(section!.y).toBeLessThan(cards!.y);
 });
 
 test('ACC-PANEL-5-ICON: the sidebar tab shows the extension icon of four panes', async ({
@@ -167,9 +192,11 @@ test('ACC-PANEL-6-REFRESH: the refresh button shows a new terminal before the ne
   const first = await startTerminal(page);
   try {
     await refresh(page);
-    const nobody = page.locator(`${PANEL} [data-key="x:none"]`);
-    await nobody.locator('.jp-WorkspaceManager-cardHeader').click();
-    await expect(nobody).toHaveClass(/jp-mod-open/);
+    await expect(sectionHeader(page, 'terminals')).toContainText('TERMINALS');
+    await openSection(page, 'terminals');
+    await expect(
+      rowOf(sectionBody(page, 'terminals'), `terminal ${first}`)
+    ).toBeVisible();
 
     // right after a poll's reload the next poll is 10 s away
     await page.waitForResponse(r => r.url().includes(POLLED), {
@@ -180,9 +207,7 @@ test('ACC-PANEL-6-REFRESH: the refresh button shows a new terminal before the ne
     try {
       await headerButton(page, 'Refresh').click();
       await expect(
-        nobody.locator('.jp-WorkspaceManager-row', {
-          has: page.getByText(`terminal ${second}`, { exact: true })
-        })
+        rowOf(sectionBody(page, 'terminals'), `terminal ${second}`)
       ).toBeVisible({ timeout: 2000 });
     } finally {
       await page.request.delete(`/api/terminals/${second}`);
@@ -241,7 +266,7 @@ test.describe('with the workspaces of the server', () => {
       await gotoWorkspace(page, current);
       await openPanel(page);
       await refresh(page);
-      const count = page.locator(`${PANEL} .jp-WorkspaceManager-titleCount`);
+      const count = sectionCount(page, 'workspaces');
       await expect(count).toHaveText('(4)');
 
       await card(page, three[0])

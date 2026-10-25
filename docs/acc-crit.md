@@ -28,9 +28,9 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
   - log: 2026-10-24T10:03:58Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-PANEL-4-OTHERS` **Sections of other extensions** - HIGH; a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace, and Language servers, which In no workspace lists
+- [x] `ACC-PANEL-4-OTHERS` **Sections of other extensions** - HIGH; a section another extension registers through IRunningSessionManagers is not listed in the panel, which shows the workspace cards and the Kernels, Terminals and Language servers sections only
   - evidence: 2 test(s) in Jest panel.spec.ts, Galata sections.spec.ts passed in make test of final-verify (make-test.log, Jest 41 of 41 passed); full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
-  - test: Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata sections.spec.ts: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section
+  - test: Galata panel.spec.ts: assert the panel's headers are the workspace cards, KERNELS, TERMINALS and LANGUAGE SERVERS, and no header of another manager
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
   - log: 2026-10-23T23:03:47Z @kj amended text "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items" -> "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace"; reason: analyst review round 1 (wf_be2467c8-b64)
@@ -39,6 +39,8 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-24T10:03:58Z @kj closed; reason: final verification of the implementation, 2026-10-24
   - log: 2026-10-24T19:37:01Z @kj amended text "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace" -> "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace, and Language servers, which In no workspace lists"; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
   - log: 2026-10-24T23:10:13Z @kj re-verified: sections.spec.ts:185 passed in both full runs and the Jest panel suite passed in make test: Recently Closed is under Other sessions, no section the cards replace is.
+  - log: 2026-10-25T02:43:14Z @kj amended title "Sections of other extensions" -> "Sections of other extensions"; text "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace, and Language servers, which In no workspace lists" -> "a section another extension registers through IRunningSessionManagers is not listed in the panel, which shows the workspace cards and the Kernels, Terminals and Language servers sections only"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:14Z @kj edited test "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata sections.spec.ts: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section" -> "Galata panel.spec.ts: assert the panel's headers are the workspace cards, KERNELS, TERMINALS and LANGUAGE SERVERS, and no header of another manager"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 - [x] `ACC-PANEL-5-ICON` **Own sidebar icon** - MEDIUM; the sidebar tab shows the extension's own one-colour LabIcon, four panes in a 2 by 2 grid with the top-left one filled, never `ui-components:running`
   - evidence: 1 test(s) in Galata panel.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata panel.spec.ts: assert the tab svg `data-icon` names the extension's icon
@@ -248,20 +250,24 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-24T20:03:39Z @kj amended text "at the default sidebar width of 250 px the panel title with its count and the Other sessions label with its count show in full; the Other sessions count reads N, not N sections" -> "at the default sidebar width of 250 px the panel title with its count and the Other sessions label with its count show in full; the Other sessions count reads (N), not N sections"; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
   - log: 2026-10-24T21:20:54Z @kj edited test "Galata legibility.spec.ts: sidebar at 250 px, assert scrollWidth <= clientWidth for the panel title and the Other sessions label, and the Other sessions count is a bare number" -> "Galata legibility.spec.ts: sidebar at 250 px, assert scrollWidth <= clientWidth for the panel title and the Other sessions label, and the Other sessions count reads (N)"
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
-- [x] `ACC-PANEL-157-OTHERS-ACTIONS` **Other sessions keep their actions** - MEDIUM; Other sessions rows keep the actions the replaced panel gave them: a shutdown button on each item that can be shut down, Shut Down All with its confirmation on each section that offers it, and the child rows of an item
+- [x] `ACC-PANEL-157-OTHERS-ACTIONS` **Section items keep their actions** - MEDIUM; each item of the Kernels, Terminals and Language servers sections keeps its shutdown button, and each section header carries Shut down all with its confirmation
   - evidence: sections.spec.ts:286 passed in both full runs and the Jest panel suite passed in make test: an Other sessions item's button shuts it down and removes the item.
   - related: ACC-PANEL-4-OTHERS
-  - test: Jest panel.spec.ts: a fake manager whose item has shutdown and children, assert the button calls shutdown, the children render, and Shut Down All confirms then calls shutdownAll; Galata sections.spec.ts: an Other sessions item that can be shut down, press its button, assert the item gone
+  - test: Galata sections.spec.ts: a language server and a terminal outside any workspace; assert a shutdown button on each row and Shut down all on each header with its confirmation
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-24T16:05:31Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
-- [x] `ACC-PANEL-159-LANG-OTHERS` **No Language servers under Other sessions** - MEDIUM; Other sessions has no Language servers section
+  - log: 2026-10-25T02:43:14Z @kj amended title "Other sessions keep their actions" -> "Section items keep their actions"; text "Other sessions rows keep the actions the replaced panel gave them: a shutdown button on each item that can be shut down, Shut Down All with its confirmation on each section that offers it, and the child rows of an item" -> "each item of the Kernels, Terminals and Language servers sections keeps its shutdown button, and each section header carries Shut down all with its confirmation"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:14Z @kj edited test "Jest panel.spec.ts: a fake manager whose item has shutdown and children, assert the button calls shutdown, the children render, and Shut Down All confirms then calls shutdownAll; Galata sections.spec.ts: an Other sessions item that can be shut down, press its button, assert the item gone" -> "Galata sections.spec.ts: a language server and a terminal outside any workspace; assert a shutdown button on each row and Shut down all on each header with its confirmation"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+- [x] `ACC-PANEL-159-LANG-OTHERS` **Language servers sit in their own section** - MEDIUM; language servers are listed only in the LANGUAGE SERVERS section below the workspace cards, never inside a workspace card
   - evidence: sections.spec.ts:243 passed in both full runs: Other sessions holds no Language servers section while the lab registers its Language servers manager.
   - related: ACC-PANEL-4-OTHERS
-  - test: Galata sections.spec.ts: open Other sessions, assert no Language servers section, while the lab registers its Language servers manager
+  - test: Galata sections.spec.ts: a language server while a workspace card is open; assert it appears in the LANGUAGE SERVERS section and in no card
   - test-tags: FUNCTIONAL
   - log: 2026-10-24T19:37:00Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+  - log: 2026-10-25T02:43:14Z @kj amended title "No Language servers under Other sessions" -> "Language servers sit in their own section"; text "Other sessions has no Language servers section" -> "language servers are listed only in the LANGUAGE SERVERS section below the workspace cards, never inside a workspace card"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:14Z @kj edited test "Galata sections.spec.ts: open Other sessions, assert no Language servers section, while the lab registers its Language servers manager" -> "Galata sections.spec.ts: a language server while a workspace card is open; assert it appears in the LANGUAGE SERVERS section and in no card"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 - [x] `ACC-PANEL-165-TRIANGLE-KEYS` **Triangle by keyboard** - MEDIUM; a card's triangle is a button: Tab reaches it, Enter or Space opens or closes the card, and `aria-expanded` follows the state
   - evidence: keyboard.spec.ts:50 passed in both full runs: Tab reaches the triangle, Enter opens the card, Space closes it, aria-expanded follows.
   - overrides: ACC-PANEL-91-KEYBOARD
@@ -294,6 +300,48 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test-tags: FUNCTIONAL
   - log: 2026-10-24T20:07:40Z @kj added; reason: the Star Colonel, 2026-10-24 22:15: the Search tabs button is not needed, the panel's filter covers search
   - log: 2026-10-24T23:10:13Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-181-PURPOSE-WRAP` **The purpose wraps and shows in full** - HIGH; the purpose under a workspace's name wraps onto as many lines as it needs and is shown in full, never shortened with an ellipsis
+  - evidence: legibility.spec.ts ACC-PANEL-181-PURPOSE-WRAP passed in both full runs (109 of 109 at 6 and default workers); with the CSS back to an ellipsis it failed
+  - test: Galata legibility.spec.ts: a 60-character purpose at the 250 px sidebar width, assert the rendered text equals the purpose and the element is taller than one line
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-25T02:42:11Z @kj added
+  - log: 2026-10-25T03:51:01Z @kj closed; reason: layout workflow, 2026-10-25
+  - log: 2026-10-25T03:51:09Z @kj edited evidence "legibility.spec.ts ACC-PANEL-181 passed in both full runs (109 of 109 at 6 and default workers); with the CSS back to an ellipsis it failed" -> "legibility.spec.ts ACC-PANEL-181-PURPOSE-WRAP passed in both full runs (109 of 109 at 6 and default workers); with the CSS back to an ellipsis it failed"; reason: full id in the evidence
+- [x] `ACC-PANEL-182-SECTION-HEADS` **Kernels, terminals and language servers are sections below the workspaces** - HIGH; below the WORKSPACES header the panel shows three accordions with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace; one section is open at a time, so a click on a header opens it and closes the open one; each of the three carries its count and a Shut down all, and one with nothing in it is not shown; the WORKSPACES header carries the number of workspaces and stays when there are none
+  - evidence: sections.spec.ts ACC-PANEL-182-SECTION-HEADS passed in both full runs; with a header click that never closes a section it failed
+  - test: Galata sections.spec.ts: a terminal, a kernel and a language server outside any workspace; assert WORKSPACES (3), then the three headers above their rows with their counts, an empty section absent, and a click on a header closing and reopening it
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-25T02:42:45Z @kj added
+  - log: 2026-10-25T02:43:14Z @kj amended text "below the workspace cards the panel shows three sections with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace, each header carrying its count and a Shut down all, and a section with nothing in it is not shown" -> "below the workspace cards the panel shows three accordions with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace; a click on a header opens or closes that section, each header carries its count and a Shut down all, and a section with nothing in it is not shown"; reason: the Star Colonel, 2026-10-25: the sections are accordions
+  - log: 2026-10-25T02:43:14Z @kj edited test "Galata sections.spec.ts: a terminal, a kernel and a language server outside any workspace, assert the three headers above their rows, each count, and an empty section absent" -> "Galata sections.spec.ts: a terminal, a kernel and a language server outside any workspace; assert the three headers above their rows, each count, an empty section absent, and a click on a header closing and reopening it"; reason: the Star Colonel, 2026-10-25: the sections are accordions
+  - log: 2026-10-25T02:43:37Z @kj amended text "below the workspace cards the panel shows three accordions with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace; a click on a header opens or closes that section, each header carries its count and a Shut down all, and a section with nothing in it is not shown" -> "below the WORKSPACES header the panel shows three accordions with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace; a click on a section header opens or closes it; each of the three carries its count and a Shut down all, and one with nothing in it is not shown; the WORKSPACES header carries the number of workspaces and stays when there are none"; reason: the Star Colonel, 2026-10-25: all sections are accordions
+  - log: 2026-10-25T02:43:37Z @kj edited test "Galata sections.spec.ts: a terminal, a kernel and a language server outside any workspace; assert the three headers above their rows, each count, an empty section absent, and a click on a header closing and reopening it" -> "Galata sections.spec.ts: a terminal, a kernel and a language server outside any workspace; assert WORKSPACES (3), then the three headers above their rows with their counts, an empty section absent, and a click on a header closing and reopening it"; reason: the Star Colonel, 2026-10-25: all sections are accordions
+  - log: 2026-10-25T02:43:41Z @kj amended text "below the WORKSPACES header the panel shows three accordions with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace; a click on a section header opens or closes it; each of the three carries its count and a Shut down all, and one with nothing in it is not shown; the WORKSPACES header carries the number of workspaces and stays when there are none" -> "below the WORKSPACES header the panel shows three accordions with their own headers: KERNELS, TERMINALS and LANGUAGE SERVERS, each holding what belongs to no workspace; one section is open at a time, so a click on a header opens it and closes the open one; each of the three carries its count and a Shut down all, and one with nothing in it is not shown; the WORKSPACES header carries the number of workspaces and stays when there are none"; reason: the Star Colonel, 2026-10-25: one section open at a time
+  - log: 2026-10-25T03:51:01Z @kj closed; reason: layout workflow, 2026-10-25
+  - log: 2026-10-25T03:51:09Z @kj edited evidence "sections.spec.ts ACC-PANEL-182 passed in both full runs; with a header click that never closes a section it failed" -> "sections.spec.ts ACC-PANEL-182-SECTION-HEADS passed in both full runs; with a header click that never closes a section it failed"; reason: full id in the evidence
+- [x] `ACC-PANEL-183-OTHERS-GONE` **No Other sessions section and no In no workspace card** - HIGH; the panel shows no Other sessions section and no In no workspace card: a session another window shows is not listed, and recently closed documents are not listed
+  - evidence: panel.spec.ts ACC-PANEL-183-OTHERS-GONE passed in both full runs; with an In no workspace line rendered it failed
+  - test: Galata panel.spec.ts: assert no OTHER SESSIONS header and no text In no workspace anywhere in the panel
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-25T02:42:45Z @kj added
+  - log: 2026-10-25T03:51:01Z @kj closed; reason: layout workflow, 2026-10-25
+  - log: 2026-10-25T03:51:09Z @kj edited evidence "panel.spec.ts ACC-PANEL-183 passed in both full runs; with an In no workspace line rendered it failed" -> "panel.spec.ts ACC-PANEL-183-OTHERS-GONE passed in both full runs; with an In no workspace line rendered it failed"; reason: full id in the evidence
+- [x] `ACC-PANEL-184-TITLE-NAME` **The panel is named WORKBENCH** - MEDIUM; the panel header reads WORKBENCH on one line at the 250 px sidebar width, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces, then the cards, then the KERNELS, TERMINALS and LANGUAGE SERVERS sections
+  - evidence: panel.spec.ts ACC-PANEL-184-TITLE-NAME passed in both full runs; with the old WORKSPACES title it failed
+  - test: Galata panel.spec.ts: the panel header text is WORKBENCH, its rendered height is one line at 250 px, and the add, filter, hidden and refresh buttons are present
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-25T02:43:29Z @kj added
+  - log: 2026-10-25T02:43:37Z @kj amended text "the panel header reads WORKSPACE MANAGER, with the add, filter, hidden and refresh buttons beside it; the number of workspaces is not part of that title" -> "the panel header reads WORKSPACE MANAGER, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces, then the cards, then the KERNELS, TERMINALS and LANGUAGE SERVERS sections"; reason: the Star Colonel, 2026-10-25: panel named WORKSPACE MANAGER, then WORKSPACES (n), then the rest
+  - log: 2026-10-25T03:51:01Z @kj closed; reason: layout workflow, 2026-10-25
+  - log: 2026-10-25T03:51:09Z @kj edited evidence "panel.spec.ts ACC-PANEL-184 passed in both full runs; with the old WORKSPACES title it failed" -> "panel.spec.ts ACC-PANEL-184-TITLE-NAME passed in both full runs; with the old WORKSPACES title it failed"; reason: full id in the evidence
+  - log: 2026-10-25T04:51:36Z @kj amended title "The panel is named WORKSPACE MANAGER" -> "The panel is named WORKBENCH"; text "the panel header reads WORKSPACE MANAGER, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces, then the cards, then the KERNELS, TERMINALS and LANGUAGE SERVERS sections" -> "the panel header reads WORKBENCH on one line at the 250 px sidebar width, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces, then the cards, then the KERNELS, TERMINALS and LANGUAGE SERVERS sections"; reason: the Star Colonel, 2026-10-25: WORKSPACE MANAGER wrapped to two lines; the name is WORKBENCH
+  - log: 2026-10-25T04:51:36Z @kj edited test "Galata panel.spec.ts: assert the panel header text is WORKSPACE MANAGER and the add, filter, hidden and refresh buttons are present" -> "Galata panel.spec.ts: the panel header text is WORKBENCH, its rendered height is one line at 250 px, and the add, filter, hidden and refresh buttons are present"; reason: the Star Colonel, 2026-10-25: WORKSPACE MANAGER wrapped to two lines; the name is WORKBENCH
+- [x] `ACC-PANEL-185-ROW-TOOLTIP` **Rows show their details in a multiline tooltip** - MEDIUM; hovering a row shows a tooltip listing its details on separate lines: a terminal's name, process and last activity; a kernel's kernelspec, session path and state; a language server's id and language; a tab's full path
+  - evidence: terminals, kernels, sections and content specs passed in both full runs (110 of 110 at 6 and default workers); removing the process line from a terminal title made them fail
+  - test: Galata sections.spec.ts: hover a terminal, a kernel and a language server row, and assert each tooltip carries its lines
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-25T03:32:18Z @kj added
+  - log: 2026-10-25T04:28:39Z @kj closed; reason: tooltip workflow, 2026-10-25
 
 ## Workspace sections `ACCORD`
 
@@ -683,12 +731,14 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - test-tags: FUNCTIONAL
   - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
-- [x] `ACC-ACCORD-164-HEADER-TOGGLE` **Header click on a card to stay on** - MEDIUM; a click on the header of this window's card, of In no workspace or of Other sessions opens or closes that card
+- [x] `ACC-ACCORD-164-HEADER-TOGGLE` **Header click on a card to stay on** - MEDIUM; a click on the header of this window's card opens or closes it
   - evidence: sections.spec.ts:1218 passed in both full runs: a header click opens and closes this window's card, In no workspace and Other sessions, and the URL stays.
-  - test: Galata sections.spec.ts: click the header of this window's card, of In no workspace and of Other sessions, assert each opens and the URL unchanged; click again, assert each closes
+  - test: Galata sections.spec.ts: a click on this window's card header closes it, and a second opens it
   - test-tags: FUNCTIONAL
   - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+  - log: 2026-10-25T02:43:15Z @kj amended title "Header click on a card to stay on" -> "Header click on a card to stay on"; text "a click on the header of this window's card, of In no workspace or of Other sessions opens or closes that card" -> "a click on the header of this window's card opens or closes it"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:15Z @kj edited test "Galata sections.spec.ts: click the header of this window's card, of In no workspace and of Other sessions, assert each opens and the URL unchanged; click again, assert each closes" -> "Galata sections.spec.ts: a click on this window's card header closes it, and a second opens it"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 - [x] `ACC-ACCORD-167-NO-BUTTONS` **No buttons in an open card** - MEDIUM; an open card ends with its last row and shows no Open or Close all tabs button; both actions stay in its ... menu
   - evidence: sections.spec.ts:1168 passed in both full runs: an open card ends with its last row, no Open or Close all tabs button; both are in the ... menu.
   - related: ACC-ACCORD-29-MENU
@@ -802,9 +852,9 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - test-tags: UNIT
   - log: 2026-10-23T21:54:03Z @kj added
   - log: 2026-10-24T10:04:04Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-LISTS-110-SHUTDOWN-ALL` **Shut down all without a workspace** - MEDIUM; the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals, kernels and language servers, and shuts all of them down
+- [x] `ACC-LISTS-110-SHUTDOWN-ALL` **Shut down all per section** - MEDIUM; each of the Kernels, Terminals and Language servers sections offers Shut down all; it asks once, naming what it will shut down, and shuts that section's items
   - evidence: content.spec.ts:172 passed in both final-verify-fixes2 full runs (106 of 106 at 6 and at the default workers, --retries=0): the dialog names 1 terminal, 1 kernel and 1 language server, and all three are gone
-  - test: Galata content.spec.ts: a terminal, a kernel and a language server in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal, 1 kernel and 1 language server, confirm, assert the terminal and kernel are gone from /api/terminals and /api/kernels and the language server's connection is gone
+  - test: Galata content.spec.ts: one terminal, one kernel and one language server outside any workspace; each section's Shut down all names its own item and shuts it
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:54:03Z @kj added
   - log: 2026-10-24T10:04:27Z @kj edited test "Galata content.spec.ts: two terminals in no workspace, Shut down all, confirm, assert `/api/terminals` empty of them" -> "Galata content.spec.ts: a terminal and a kernel in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal and 1 kernel, confirm, assert both gone from `/api/terminals` and `/api/kernels`"; reason: stage galata-c check: the test covered less than the criterion states, 2026-10-24
@@ -812,19 +862,23 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - log: 2026-10-25T00:41:08Z @kj amended text "the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals and kernels" -> "the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals, kernels and language servers, and shuts all of them down"; reason: the Star Colonel, 2026-10-25: language servers can be shut down
   - log: 2026-10-25T00:41:08Z @kj edited test "Galata content.spec.ts: a terminal and a kernel in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal and 1 kernel, confirm, assert both gone from `/api/terminals` and `/api/kernels`" -> "Galata content.spec.ts: a terminal, a kernel and a language server in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal, 1 kernel and 1 language server, confirm, assert the terminal and kernel are gone from /api/terminals and /api/kernels and the language server's connection is gone"; reason: the Star Colonel, 2026-10-25: language servers can be shut down
   - log: 2026-10-25T01:29:08Z @kj edited evidence "Galata content.spec.ts:156 passed in final-verify full rig run galata-full (92/92, --workers=6, --retries=0)" -> "content.spec.ts:172 passed in both final-verify-fixes2 full runs (106 of 106 at 6 and at the default workers, --retries=0): the dialog names 1 terminal, 1 kernel and 1 language server, and all three are gone"; reason: test changed for the Star Colonel's ruling that language servers can be shut down
+  - log: 2026-10-25T02:43:14Z @kj amended title "Shut down all without a workspace" -> "Shut down all per section"; text "the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals, kernels and language servers, and shuts all of them down" -> "each of the Kernels, Terminals and Language servers sections offers Shut down all; it asks once, naming what it will shut down, and shuts that section's items"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:14Z @kj edited test "Galata content.spec.ts: a terminal, a kernel and a language server in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal, 1 kernel and 1 language server, confirm, assert the terminal and kernel are gone from /api/terminals and /api/kernels and the language server's connection is gone" -> "Galata content.spec.ts: one terminal, one kernel and one language server outside any workspace; each section's Shut down all names its own item and shuts it"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 - [x] `ACC-LISTS-134-GROUP-COUNT` **Group labels** - LOW; inside an open card each group starts with its name in capitals and the number of its rows
   - evidence: 1 test(s) in Galata content.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata content.spec.ts: assert `TABS 3`, `TERMINALS 5`, `KERNELS 1` for a known workspace
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T22:13:50Z @kj added
   - log: 2026-10-24T10:04:04Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-LISTS-135-NOWS-COUNTS` **Counts without a workspace** - LOW; the In no workspace card counts terminals and kernels and shows no tab count
+- [x] `ACC-LISTS-135-NOWS-COUNTS` **Section headers count their rows** - LOW; the TERMINALS and KERNELS section headers count their rows and show no tab count
   - evidence: 1 test(s) in Galata content.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
-  - test: Galata content.spec.ts: two terminals in no layout, assert terminal count 2, kernel count 0, no tab count
+  - test: Galata content.spec.ts: two terminals and one kernel outside any workspace; assert TERMINALS (2) and KERNELS (1) and no tab count
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T22:13:50Z @kj added
   - log: 2026-10-24T10:04:04Z @kj closed; reason: final verification of the implementation, 2026-10-24
   - log: 2026-10-24T23:10:13Z @kj final verification 2026-10-25: content.spec.ts:721 failed once in the 6-worker full run at host load average 88, a 15 s app-start wait, and passed in the default-worker run and in an isolated rerun; stays closed, whether DEF-GALATA-3-DEFAULT-WORKERS-1 reopens is the Star Colonel's call
+  - log: 2026-10-25T02:43:15Z @kj amended title "Counts without a workspace" -> "Section headers count their rows"; text "the In no workspace card counts terminals and kernels and shows no tab count" -> "the TERMINALS and KERNELS section headers count their rows and show no tab count"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:15Z @kj edited test "Galata content.spec.ts: two terminals in no layout, assert terminal count 2, kernel count 0, no tab count" -> "Galata content.spec.ts: two terminals and one kernel outside any workspace; assert TERMINALS (2) and KERNELS (1) and no tab count"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 - [x] `ACC-LISTS-154-TAB-SHRINK` **Folder gives way first** - MEDIUM; in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the label and the detail shorten together, each keeping its first characters, and the age stays whole inside the row
   - evidence: content.spec.ts:277 passed in both full runs: a terminal row shortens to 'also in ...' then label and detail together, the mark ends in an ellipsis.
   - related: ACC-LISTS-37-TWO-WORKSPACES
@@ -836,26 +890,32 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - log: 2026-10-24T19:08:32Z @kj amended text "in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the detail, then the label, and the age stays whole inside the row" -> "in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the label and the detail shorten together, each keeping its first characters, and the age stays whole inside the row"; reason: a screenshot at 250 px showed the display name Python [conda env:base] * take the kernel row and the notebook name at 0 px, which breaks ACC-KERNEL-48-ROW, 2026-10-24
   - log: 2026-10-24T19:08:33Z @kj edited test "Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces, the other named with 26 characters, assert the process name whole, the age whole inside the row, and the mark showing also in" -> "Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces, the other named with 26 characters, assert the process name whole, the age whole inside the row, and the mark showing also in; a kernel whose display name is longer than the row, assert its notebook name shows its first characters"; reason: a screenshot at 250 px showed the display name Python [conda env:base] * take the kernel row and the notebook name at 0 px, which breaks ACC-KERNEL-48-ROW, 2026-10-24
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
-- [x] `ACC-LISTS-158-LANG-LISTED` **Language servers in no workspace** - MEDIUM; running language servers are listed in the In no workspace card, in a group Language servers after its kernels
+- [x] `ACC-LISTS-158-LANG-LISTED` **Language servers listed below the workspaces** - MEDIUM; running language servers are listed under the LANGUAGE SERVERS section below the workspace cards
   - evidence: sections.spec.ts:268 passed in both full runs and the Jest panel suite passed in make test: pylsp (python) and bash-lsp (bash) are listed under In no workspace.
   - related: ACC-LISTS-38-NO-WORKSPACE
-  - test: Jest panel.spec.ts: a fake manager named Language servers with 2 items, assert both rows in In no workspace after its kernel rows; Galata sections.spec.ts: a language server item in the lab's Language servers manager, assert its row under In no workspace
+  - test: Galata sections.spec.ts: add a language server connection; assert its row under the LANGUAGE SERVERS header
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-24T19:36:58Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
-- [x] `ACC-LISTS-160-LANG-ONLY` **Edge: only language servers** - MEDIUM; the In no workspace card shows when it holds language servers and no terminal or kernel
+  - log: 2026-10-25T02:43:14Z @kj amended title "Language servers in no workspace" -> "Language servers listed below the workspaces"; text "running language servers are listed in the In no workspace card, in a group Language servers after its kernels" -> "running language servers are listed under the LANGUAGE SERVERS section below the workspace cards"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:14Z @kj edited test "Jest panel.spec.ts: a fake manager named Language servers with 2 items, assert both rows in In no workspace after its kernel rows; Galata sections.spec.ts: a language server item in the lab's Language servers manager, assert its row under In no workspace" -> "Galata sections.spec.ts: add a language server connection; assert its row under the LANGUAGE SERVERS header"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+- [x] `ACC-LISTS-160-LANG-ONLY` **Edge: only language servers** - MEDIUM; the LANGUAGE SERVERS section shows when it holds a server and no terminal or kernel is outside a workspace
   - evidence: The Jest panel suite passed in make test: with one language server and nothing else, In no workspace shows with that one row.
-  - test: Jest panel.spec.ts: every terminal and kernel in a workspace and one language server, assert the In no workspace card shown with its language server row
+  - test: Galata sections.spec.ts: one language server and nothing else outside a workspace; assert the LANGUAGE SERVERS header and its row, and no TERMINALS or KERNELS header
   - test-tags: UNIT
   - log: 2026-10-24T19:37:01Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
-- [x] `ACC-LISTS-161-LANG-ACTIONS` **Language servers keep their actions** - MEDIUM; language server rows in In no workspace keep the actions ACC-PANEL-157-OTHERS-ACTIONS gives Other sessions rows: the shutdown button, and Shut Down All with its confirmation
+  - log: 2026-10-25T02:43:15Z @kj amended title "Edge: only language servers" -> "Edge: only language servers"; text "the In no workspace card shows when it holds language servers and no terminal or kernel" -> "the LANGUAGE SERVERS section shows when it holds a server and no terminal or kernel is outside a workspace"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:15Z @kj edited test "Jest panel.spec.ts: every terminal and kernel in a workspace and one language server, assert the In no workspace card shown with its language server row" -> "Galata sections.spec.ts: one language server and nothing else outside a workspace; assert the LANGUAGE SERVERS header and its row, and no TERMINALS or KERNELS header"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+- [x] `ACC-LISTS-161-LANG-ACTIONS` **Language servers keep their actions** - MEDIUM; a language server row keeps its shutdown button, and the LANGUAGE SERVERS header carries Shut down all with its confirmation
   - evidence: The Jest panel suite passed in make test: a language server's shutdown button calls shutdown, and Shut Down All asks first then calls shutdownAll once.
   - related: ACC-PANEL-157-OTHERS-ACTIONS
-  - test: Jest panel.spec.ts: a language server item with shutdown, press its button, assert shutdown called; press Shut Down All, confirm, assert shutdownAll called
+  - test: Galata sections.spec.ts: press the row's shutdown button and the header's Shut down all; assert the connection ends each time
   - test-tags: UNIT
   - log: 2026-10-24T19:37:01Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+  - log: 2026-10-25T02:43:15Z @kj amended title "Language servers keep their actions" -> "Language servers keep their actions"; text "language server rows in In no workspace keep the actions ACC-PANEL-157-OTHERS-ACTIONS gives Other sessions rows: the shutdown button, and Shut Down All with its confirmation" -> "a language server row keeps its shutdown button, and the LANGUAGE SERVERS header carries Shut down all with its confirmation"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:15Z @kj edited test "Jest panel.spec.ts: a language server item with shutdown, press its button, assert shutdown called; press Shut Down All, confirm, assert shutdownAll called" -> "Galata sections.spec.ts: press the row's shutdown button and the header's Shut down all; assert the connection ends each time"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 
 ## Terminal rows `TERM`
 
@@ -892,12 +952,13 @@ What a terminal row shows and where each value comes from
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
   - log: 2026-10-24T10:04:05Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-TERM-47-TITLE` **Tab title as tooltip** - LOW; when this window shows the terminal, the row's tooltip is the terminal tab's title
+- [x] `ACC-TERM-47-TITLE` **Terminal row tooltip** - LOW; a terminal row's tooltip is its details, not the terminal tab's title: the tab's title is not part of it
   - evidence: 1 test(s) in Galata terminals.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata terminals.spec.ts: send an OSC 2 title, assert the row's title attribute
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
   - log: 2026-10-24T10:04:05Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-25T04:28:44Z @kj amended title "Tab title as tooltip" -> "Terminal row tooltip"; text "when this window shows the terminal, the row's tooltip is the terminal tab's title" -> "a terminal row's tooltip is its details, not the terminal tab's title: the tab's title is not part of it"; reason: ACC-PANEL-185-ROW-TOOLTIP replaced the one-line titles, 2026-10-25
 - [x] `ACC-TERM-111-SHUTDOWN` **Shut down a terminal** - HIGH; the context menu of a terminal row shuts the terminal down, and its row leaves every card
   - evidence: 1 test(s) in Galata terminals.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata terminals.spec.ts: shut down from the row, assert the terminal gone from `/api/terminals` and the panel
@@ -960,7 +1021,7 @@ What a kernel row shows
   - log: 2026-10-23T23:39:36Z @kj edited test "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click A's kernel row, assert A's tab active; click B's kernel row, assert B open in an active tab" -> "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; click A's kernel row, assert A's tab active"; reason: analyst review round 5 (wf_866e427b-435)
   - log: 2026-10-24T10:04:27Z @kj edited test "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; click A's kernel row, assert A's tab active" -> "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; focus A's row, press Enter, assert A's tab active; click the kernel row of a notebook in workspace W, assert W open in this window"; reason: stage galata-c check: the test covered less than the criterion states, 2026-10-24
   - log: 2026-10-24T11:09:00Z @kj closed; reason: final verification of the follow-up run, 2026-10-24
-- [x] `ACC-KERNEL-156-DISPLAY-NAME` **Kernel display name** - MEDIUM; a kernel row shows the display name of its kernelspec, as the kernel picker does, and its tooltip names the kernelspec id; a kernel whose spec is unknown shows the id; the filter matches both
+- [x] `ACC-KERNEL-156-DISPLAY-NAME` **Kernel display name** - MEDIUM; a kernel row shows the display name of its kernelspec, as the kernel picker does; a kernel whose spec is unknown shows the id; the filter matches both; its tooltip carries the display name, the session path and the state
   - evidence: kernels.spec.ts:50 passed in both full runs and the model and filter Jest suites passed in make test: a kernel row shows the kernelspec display name, the id in its tooltip.
   - related: ACC-KERNEL-48-ROW
   - related: ACC-FILTER-58-FIELDS
@@ -968,6 +1029,7 @@ What a kernel row shows
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-10-24T16:05:31Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
   - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+  - log: 2026-10-25T04:28:44Z @kj amended text "a kernel row shows the display name of its kernelspec, as the kernel picker does, and its tooltip names the kernelspec id; a kernel whose spec is unknown shows the id; the filter matches both" -> "a kernel row shows the display name of its kernelspec, as the kernel picker does; a kernel whose spec is unknown shows the id; the filter matches both; its tooltip carries the display name, the session path and the state"; reason: ACC-PANEL-185-ROW-TOOLTIP replaced the one-line titles, 2026-10-25
 
 ## Hidden workspaces `HIDDEN`
 
@@ -1006,12 +1068,14 @@ The hide toggle of a workspace and the header button that shows hidden workspace
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
   - log: 2026-10-24T10:04:06Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-HIDDEN-55-CONTENT` **Content stays with the workspace** - MEDIUM; terminals and kernels of a hidden workspace stay hidden with it and are not listed under In no workspace
+- [x] `ACC-HIDDEN-55-CONTENT` **Content stays with the workspace** - MEDIUM; terminals and kernels of a hidden workspace stay hidden with it and are not listed in the TERMINALS or KERNELS section
   - evidence: 1 test(s) in Jest model.spec.ts passed in make test of final-verify (make-test.log, Jest 41 of 41 passed)
-  - test: Jest model.spec.ts: hidden workspace with a terminal, assert the terminal in no visible group
+  - test: Galata hidden.spec.ts: hide a workspace that holds a terminal and a kernel; assert neither appears in the sections below the workspaces
   - test-tags: UNIT
   - log: 2026-10-23T13:58:39Z @kj added
   - log: 2026-10-24T10:04:06Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-25T02:43:15Z @kj amended title "Content stays with the workspace" -> "Content stays with the workspace"; text "terminals and kernels of a hidden workspace stay hidden with it and are not listed under In no workspace" -> "terminals and kernels of a hidden workspace stay hidden with it and are not listed in the TERMINALS or KERNELS section"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
+  - log: 2026-10-25T02:43:15Z @kj edited test "Jest model.spec.ts: hidden workspace with a terminal, assert the terminal in no visible group" -> "Galata hidden.spec.ts: hide a workspace that holds a terminal and a kernel; assert neither appears in the sections below the workspaces"; reason: the Star Colonel, 2026-10-25: Other sessions and In no workspace go; Kernels, Terminals and Language servers are sections below the workspaces
 - [x] `ACC-HIDDEN-87-NOT-CURRENT` **This window's workspace stays shown** - MEDIUM; this window's workspace always has its card, whatever its hidden state; Hide workspace is disabled on it
   - evidence: 1 test(s) in Galata hidden.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata hidden.spec.ts: open the menu of this window's card, assert Hide workspace disabled; from a second page hide the first page's workspace, refresh the first page, assert its card shown first
@@ -1207,4 +1271,96 @@ Working beside jupyterlab_kernel_terminal_workspace_culler_extension in the same
   - test-tags: UNIT
   - log: 2026-10-23T21:53:29Z @kj added
   - log: 2026-10-24T10:04:08Z @kj closed; reason: final verification of the implementation, 2026-10-24
+
+## Command line `CLI`
+
+the jupyterlab-workspace CLI that manages workspaces, terminals and kernels of a running lab
+
+- log: 2026-10-25T02:20:22Z @kj category created
+
+- [x] `ACC-CLI-170-LAB-FIND` **CLI finds the running lab** - HIGH; the CLI reads JUPYTER_SERVER_URL, JUPYTERHUB_SERVICE_PREFIX or JUPYTER_PORT and the token in JUPYTERHUB_API_TOKEN, JPY_API_TOKEN or JUPYTER_TOKEN; with no variable set it uses the one jupyter server list record that carries a token, and refuses when the record does not match
+  - evidence: 14 test_cli.py tests passed; removing the JUPYTER_SERVER_ROOT check made test_server_url_root_mismatch_refuses fail; cli.py restored byte for byte
+  - test: pytest test_cli.py: a server record from jupyter server list, each variable set, and a mismatch each select or refuse
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:22Z @kj added
+  - log: 2026-10-25T02:50:33Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-171-LIST-OUT` **CLI lists workspaces** - HIGH; workspaces list prints one line per workspace with its name, purpose, colour, hidden state and the number of tabs, terminals and kernels; --json prints the same facts as data
+  - evidence: 2 test_cli.py tests passed in make test: list and list --json carry name, purpose, colour, hidden and the counts
+  - test: pytest test_cli.py: three workspaces with records, one hidden, list and list --json both carry every fact
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:22Z @kj added
+  - log: 2026-10-25T02:50:33Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-172-ADD-WRITE` **CLI adds a workspace** - HIGH; workspaces add NAME creates the workspace and its record, with --purpose and --colour; an existing name is refused and nothing is written
+  - evidence: 2 test_cli.py tests passed: add writes the workspace by PUT /lab/api/workspaces/<name> and its record; a second add of the same name fails
+  - test: pytest test_cli.py: add writes the workspace and the record; a second add of the same name fails with the name in the message
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:22Z @kj added
+  - log: 2026-10-25T02:50:33Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-173-OPEN-URL` **CLI opens a workspace** - MEDIUM; workspaces open NAME prints the lab URL that switches this window to it, and nothing else
+  - evidence: 2 test_cli.py tests passed: open prints one URL carrying the workspace name and the lab base path
+  - test: pytest test_cli.py: open prints one URL carrying the workspace name and the lab base path
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:22Z @kj added
+  - log: 2026-10-25T02:50:33Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-174-DESC-EDIT` **CLI edits a record** - HIGH; workspaces describe NAME sets --purpose, --colour, --hide or --show on its record and prints the record as written
+  - evidence: 2 test_cli.py tests passed: describe writes each field and prints the record as written
+  - test: pytest test_cli.py: describe changes each field, prints the record, and a later list shows the change
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:50:33Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-175-REMOVE-YES` **CLI removes a workspace** - HIGH; workspaces remove NAME deletes the workspace only with --yes and refuses while another window shows it, naming the workspace
+  - evidence: 3 test_cli.py tests passed; removing the presence refusal made the test fail; the message names the workspace and says another browser window
+  - test: pytest test_cli.py: remove without --yes refuses and writes nothing; with --yes deletes; a presence record for another window blocks it and the message names the workspace
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:39:24Z @kj edited text "workspaces remove NAME deletes the workspace only with --yes and refuses while another window shows it, naming the window" -> "workspaces remove NAME deletes the workspace only with --yes and refuses while another window shows it, naming the workspace"; test "pytest test_cli.py: remove without --yes refuses and writes nothing; with --yes deletes; a presence record for another window blocks it" -> "pytest test_cli.py: remove without --yes refuses and writes nothing; with --yes deletes; a presence record for another window blocks it and the message names the workspace"
+  - log: 2026-10-25T02:50:33Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-176-CLEAN-DRY` **CLI cleans up workspaces** - MEDIUM; workspaces clean deletes what --hidden, --empty or --older-than DAYS select; it lists what it would delete and deletes only with --yes
+  - evidence: 8 test_cli.py tests passed: each selector names exactly its matches, and --yes deletes them
+  - test: pytest test_cli.py: one hidden, one empty and one old workspace; each selector names exactly its matches and --yes deletes them
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:50:34Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-177-TERM-KILL` **CLI manages terminals** - MEDIUM; terminals list prints each terminal with its name and the process running in it; terminals kill NAME or --all shuts down, and needs --yes for --all
+  - evidence: 4 test_cli.py tests passed: list carries the process name; kill of one and --all both call the terminals route
+  - test: pytest test_cli.py: list carries the process name; kill of one and --all both call the terminals route
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:50:34Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-178-KERNEL-KILL` **CLI manages kernels** - MEDIUM; kernels list prints each kernel with its id, name and the notebook it serves; kernels kill ID or --all shuts down, and needs --yes for --all
+  - evidence: 4 test_cli.py tests passed: list carries the session path; kill of one and --all both call the kernels route
+  - test: pytest test_cli.py: list carries the session path; kill of one and --all both call the kernels route
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:50:34Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-179-HELP-AGENT` **CLI help is complete for an agent** - HIGH; the top-level help carries one line per subcommand plus the environment variables and the exit codes; each subcommand carries 1 to 3 worked examples, and an agent holding only the help runs every command
+  - evidence: 3 test_cli.py tests passed; deleting a group or a leaf help line made the help test fail; 14 help invocations exit 0
+  - test: pytest test_cli.py: --help and each subcommand --help carry their line, the variables and the examples
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:50:34Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [x] `ACC-CLI-180-SKILL-SHIP` **CLI ships an agent skill** - HIGH; the skill at .agents/skills/jupyterlab-workspace-manager-extension/SKILL.md stays under 30 lines, points at --help, and ships in the wheel through the shared-data table
+  - evidence: 2 test_cli.py tests passed; quick_validate says Skill is valid; the built wheel carries the skill under share/jupyter/agents/skills
+  - test: pytest test_cli.py: test_the_skill_exists_with_its_frontmatter_and_stays_short and test_the_skill_ships_through_the_wheel_shared_data_table assert the file, its name and description, the 30-line limit and the pyproject shared-data mapping
+  - test-tags: UNIT
+  - log: 2026-10-25T02:20:28Z @kj added
+  - log: 2026-10-25T02:39:26Z @kj edited test "pytest test_meta.py: the skill file exists, has its name and description, and the wheel places it under share/jupyter/agents/skills" -> "pytest test_cli.py: test_the_skill_exists_with_its_frontmatter_and_stays_short proves the file, its name, its description and the 30-line limit; test_the_skill_ships_through_the_wheel_shared_data_table proves the shared-data mapping"
+  - log: 2026-10-25T02:44:51Z @kj edited test "pytest test_cli.py: test_the_skill_exists_with_its_frontmatter_and_stays_short proves the file, its name, its description and the 30-line limit; test_the_skill_ships_through_the_wheel_shared_data_table proves the shared-data mapping" -> "pytest test_cli.py: test_the_skill_file_exists_and_ships asserts the skill file, its name and description frontmatter, the 30-line limit and the pyproject shared-data mapping"; reason: verify r1 of the CLI build: the hint named test_meta.py
+  - log: 2026-10-25T02:44:54Z @kj edited test "pytest test_cli.py: test_the_skill_file_exists_and_ships asserts the skill file, its name and description frontmatter, the 30-line limit and the pyproject shared-data mapping" -> "pytest test_cli.py: test_the_skill_exists_with_its_frontmatter_and_stays_short and test_the_skill_ships_through_the_wheel_shared_data_table assert the file, its name and description, the 30-line limit and the pyproject shared-data mapping"; reason: verify r1: the hint named a function that does not exist
+  - log: 2026-10-25T02:50:34Z @kj closed; reason: CLI build and verify, 2026-10-25
+
+## Documentation `DOCS`
+
+the README and the images it shows
+
+- log: 2026-10-25T03:33:05Z @kj category created
+
+- [x] `ACC-DOCS-186-SHOT-CURRENT` **README screenshot shows the shipped panel** - MEDIUM; the README image is a full-window screenshot of the panel as shipped: the WORKSPACE MANAGER title, the WORKSPACES header with its cards and one card open, and the KERNELS, TERMINALS and LANGUAGE SERVERS sections, captured after the section layout landed
+  - evidence: docs/images/panel.png retaken 2026-10-25 after the WORKBENCH rename, 2880x1800: WORKBENCH over WORKSPACES (3) with one card open, and the KERNELS (1), TERMINALS (1) and LANGUAGE SERVERS (2) headers with their Shut down all
+  - test: manual: compare docs/images/panel.png with the panel in the Galata rig after the layout change; the image carries the WORKSPACE MANAGER title and the four section headers
+  - test-tags: MANUAL
+  - log: 2026-10-25T03:33:05Z @kj added
+  - log: 2026-10-25T04:28:40Z @kj closed; reason: tooltip workflow, 2026-10-25
+  - log: 2026-10-25T04:51:36Z @kj stale again: the title became WORKBENCH after the image was taken; retake it with the new title before the release
+  - log: 2026-10-25T06:06:33Z @kj edited evidence "docs/images/panel.png retaken at 2880x1800 on the new layout and viewed: WORKSPACE MANAGER, WORKSPACES (3) with one card open, KERNELS (1), TERMINALS (1) and LANGUAGE SERVERS (2)" -> "docs/images/panel.png retaken 2026-10-25 after the WORKBENCH rename, 2880x1800: WORKBENCH over WORKSPACES (3) with one card open, and the KERNELS (1), TERMINALS (1) and LANGUAGE SERVERS (2) headers with their Shut down all"; reason: retake after the rename and the section layout
 

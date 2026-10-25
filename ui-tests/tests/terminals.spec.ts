@@ -108,24 +108,38 @@ test("ACC-TERM-45-ACTIVITY: a terminal row shows the time since the terminal's l
   }
 });
 
-test("ACC-TERM-47-TITLE: the row's tooltip is the title of this window's terminal tab", async ({
+test('ACC-PANEL-185-ROW-TOOLTIP: the tooltip of a terminal row is its name, the process and when it was last active, not the title of its tab', async ({
   page
 }) => {
   const current = fresh('title');
   const title = fresh('wm-title');
   try {
-    const { row } = await terminalHere(page, current);
+    const { name, row } = await terminalHere(page, current);
+    const label = row.locator('.jp-WorkspaceManager-rowLabel');
+    await expect
+      .poll(async () => {
+        await refresh(page);
+        return label.textContent();
+      }, UNDER_LOAD)
+      .toBe('bash');
     const tabTitle = () =>
       page.evaluate(
         () => (window as any).jupyterapp.shell.currentWidget.title.label
       );
-    await expect(row).toHaveAttribute('title', await tabTitle());
+    const age = await row.locator('.jp-WorkspaceManager-age').textContent();
+    await expect(row).toHaveAttribute(
+      'title',
+      `terminal ${name}\nbash\n${age}`
+    );
 
-    // OSC 2 sets the window title, which the terminal tab shows
+    // OSC 2 sets the window title, which the terminal tab shows; the tooltip
+    // keeps the terminal's own details
     await typeInTerminal(page, `printf '\\033]2;%s\\007' ${title}\n`);
     await expect.poll(tabTitle, UNDER_LOAD).toBe(title);
     await refresh(page);
-    await expect(row).toHaveAttribute('title', title);
+    const lines = (await row.getAttribute('title'))!.split('\n');
+    expect(lines.slice(0, 2)).toEqual([`terminal ${name}`, 'bash']);
+    expect(lines).not.toContain(title);
   } finally {
     await deleteWorkspaces(page, [current]);
   }

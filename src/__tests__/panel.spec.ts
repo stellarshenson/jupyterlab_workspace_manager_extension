@@ -291,6 +291,33 @@ const header = (panel: Widget, key: string) =>
 /** The triangle of a card: it opens or closes the card. */
 const triangle = (panel: Widget, key: string) =>
   header(panel, key).querySelector<HTMLElement>('.jp-WorkspaceManager-caret')!;
+/** A section of the accordion: workspaces, kernels, terminals or servers. */
+const section = (panel: Widget, key: string) =>
+  $(panel, `[data-section="${key}"]`);
+const sectionHeader = (panel: Widget, key: string) =>
+  section(panel, key)!.querySelector<HTMLElement>(
+    '.jp-WorkspaceManager-sectionHeader'
+  )!;
+const sectionBody = (panel: Widget, key: string) =>
+  section(panel, key)!.querySelector<HTMLElement>(
+    '.jp-WorkspaceManager-sectionBody'
+  )!;
+const sectionCount = (panel: Widget, key: string) =>
+  section(panel, key)!.querySelector<HTMLElement>(
+    '.jp-WorkspaceManager-sectionCount'
+  )!.textContent;
+/** Open a section through its header, as a click does; its body. */
+const openSection = (panel: Widget, key: string) => {
+  if (sectionHeader(panel, key).getAttribute('aria-expanded') !== 'true') {
+    sectionHeader(panel, key).click();
+  }
+  return sectionBody(panel, key);
+};
+/** The Shut down all button of a section's header. */
+const shutDownAll = (panel: Widget, key: string) =>
+  Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
+    b => b.textContent === 'Shut down all'
+  )!;
 const refreshButton = (panel: Widget) =>
   $(panel, 'button[aria-label="Refresh"]') as HTMLButtonElement;
 
@@ -302,55 +329,56 @@ afterEach(() => {
 });
 
 describe('panel', () => {
-  it('ACC-PANEL-4-OTHERS: sections of other extensions are listed under Other sessions, the replaced ones and Language servers are not', async () => {
+  it('ACC-PANEL-4-OTHERS: sections of other extensions are not listed: the panel shows the workspace cards and the Kernels, Terminals and Language servers sections only', async () => {
     const managers = new RunningSessionManagers();
     managers.add(manager('Debug sessions', ['debug-a', 'debug-b']));
-    for (const name of [
-      'Open Tabs',
-      'Kernels',
-      'Terminals',
-      'Workspaces',
-      'Language servers'
-    ]) {
+    managers.add(manager('Language servers', ['pylsp (python)']));
+    for (const name of ['Open Tabs', 'Kernels', 'Terminals', 'Workspaces']) {
       managers.add(manager(name, [`item of ${name}`]));
     }
     const { panel } = await mount(standard(), { managers });
 
-    const others = card(panel, 'x:others');
-    expect(
-      others.querySelector('.jp-WorkspaceManager-counts')!.textContent
-    ).toBe('(1)');
-    header(panel, 'x:others').click();
-    const text = card(panel, 'x:others').textContent!;
-    expect(text).toContain('DEBUG SESSIONS');
-    expect(text).toContain('debug-a');
-    expect(text).toContain('debug-b');
-    expect(text).not.toMatch(/item of|LANGUAGE SERVERS/);
+    expect($$(panel, '[data-section]').map(s => s.dataset.section)).toEqual([
+      'workspaces',
+      'kernels',
+      'servers'
+    ]);
+    const text = panel.node.textContent!;
+    expect(text).not.toContain('DEBUG SESSIONS');
+    expect(text).not.toContain('debug-a');
+    expect(text).not.toContain('item of');
+    // the replaced sections' own items are not shown either
+    expect(text).not.toContain('OTHER SESSIONS');
   });
 
-  it('ACC-LISTS-158-LANG-LISTED: language servers are listed in In no workspace, in a group after its kernels', async () => {
+  it('ACC-LISTS-158-LANG-LISTED: language servers are listed in the LANGUAGE SERVERS section, never inside a workspace card', async () => {
     const managers = new RunningSessionManagers();
     managers.add(
       manager('Language servers', ['pylsp (python)', 'bash-lsp (bash)'])
     );
     const { panel } = await mount(standard(), { managers });
 
-    header(panel, 'x:none').click();
-    const nobody = card(panel, 'x:none');
-    const labels = Array.from(
-      nobody.querySelectorAll('.jp-WorkspaceManager-groupLabel')
-    ).map(l => l.firstChild!.textContent!.trim());
-    expect(labels).toEqual(['KERNELS', 'LANGUAGE SERVERS']);
+    expect(sectionHeader(panel, 'servers').textContent).toContain(
+      'LANGUAGE SERVERS'
+    );
+    expect(sectionCount(panel, 'servers')).toBe('(2)');
+    // no workspace card holds a language server
+    for (const key of ['w:default', 'w:auto-6']) {
+      expect(card(panel, key).textContent).not.toContain('pylsp');
+    }
+    const body = openSection(panel, 'servers');
     const rows = Array.from(
-      nobody.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
-    ).map(r => r.textContent);
-    expect(rows.slice(1)).toEqual(['pylsp (python)', 'bash-lsp (bash)']);
-    expect(rows[0]).toContain(PYTHON);
-    // the only other section, so no Other sessions card
-    expect($(panel, '[data-key="x:others"]')).toBeNull();
+      body.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+    );
+    expect(rows.map(r => r.textContent)).toEqual([
+      'pylsp (python)',
+      'bash-lsp (bash)'
+    ]);
+    // ACC-PANEL-185: the label gives the id and the language, one per line
+    expect(rows.map(r => r.title)).toEqual(['pylsp\npython', 'bash-lsp\nbash']);
   });
 
-  it('ACC-LISTS-160-LANG-ONLY: In no workspace shows when it holds a language server and no terminal or kernel', async () => {
+  it('ACC-LISTS-160-LANG-ONLY: the LANGUAGE SERVERS section shows when it holds a language server and no terminal or kernel is in no workspace', async () => {
     const server = standard();
     // the kernel of a notebook of auto-6; terminal 1 is in auto-6 already
     server.sessions.push({
@@ -368,16 +396,19 @@ describe('panel', () => {
     managers.add(manager('Language servers', ['pylsp (python)']));
     const { panel } = await mount(server, { managers });
 
-    header(panel, 'x:none').click();
-    const nobody = card(panel, 'x:none');
-    const rows = Array.from(
-      nobody.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
-    ).map(r => r.textContent);
-    expect(rows).toEqual(['pylsp (python)']);
-    expect(nobody.textContent).not.toContain('No tabs, terminals or kernels');
+    expect($$(panel, '[data-section]').map(s => s.dataset.section)).toEqual([
+      'workspaces',
+      'servers'
+    ]);
+    const body = openSection(panel, 'servers');
+    expect(
+      Array.from(
+        body.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+      ).map(r => r.textContent)
+    ).toEqual(['pylsp (python)']);
   });
 
-  it('ACC-LISTS-161-LANG-ACTIONS: a language server row in In no workspace keeps its shutdown button; Shut Down All asks, then shuts all down', async () => {
+  it('ACC-LISTS-161-LANG-ACTIONS: a language server row keeps its shutdown button; the section header Shut down all asks, then shuts all down', async () => {
     const managers = new RunningSessionManagers();
     const shutdown = jest.fn();
     const shutdownAll = jest.fn();
@@ -393,17 +424,13 @@ describe('panel', () => {
         'Are you sure you want to permanently shut down all running language servers?'
     });
     const { panel } = await mount(standard(), { managers });
-    header(panel, 'x:none').click();
-    const nobody = card(panel, 'x:none');
 
-    nobody
+    openSection(panel, 'servers')
       .querySelector<HTMLElement>('button[aria-label="Shut Down"]')!
       .click();
     expect(shutdown).toHaveBeenCalledTimes(1);
 
-    const all = Array.from(nobody.querySelectorAll('button')).find(
-      b => b.textContent === 'Shut Down All'
-    )!;
+    const all = shutDownAll(panel, 'servers');
     all.click();
     await waitForDialog();
     expect(dialogText()).toContain('shut down all running language servers?');
@@ -416,68 +443,34 @@ describe('panel', () => {
     expect(shutdownAll).toHaveBeenCalledTimes(1);
   });
 
-  it('ACC-PANEL-157-OTHERS-ACTIONS: an Other sessions item keeps its shutdown button and its child rows; Shut Down All asks, then shuts all down', async () => {
-    const managers = new RunningSessionManagers();
-    const open = jest.fn();
-    const shutdown = jest.fn();
-    const shutdownChild = jest.fn();
-    const shutdownAll = jest.fn();
-    managers.add({
-      name: 'Debug sessions',
-      running: () => [
-        {
-          label: () => 'pylsp',
-          icon: () => '',
-          open,
-          shutdown,
-          children: [
-            {
-              label: () => 'a.py',
-              icon: () => '',
-              shutdown: shutdownChild
-            }
-          ]
-        }
-      ],
-      refreshRunning: () => undefined,
-      runningChanged: new Signal<any, any>({}),
-      shutdownAll,
-      shutdownLabel: 'Stop',
-      shutdownAllLabel: 'Stop All',
-      shutdownAllConfirmationText: 'Stop every debug session?'
+  it('ACC-PANEL-157-OTHERS-ACTIONS: a row of the KERNELS and TERMINALS sections keeps its shutdown action, and each section header carries Shut down all', async () => {
+    const server = standard();
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
     });
-    const { panel } = await mount(standard(), { managers });
-    header(panel, 'x:others').click();
-    const others = card(panel, 'x:others');
-    const rows = Array.from(
-      others.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
-    );
-    expect(rows.map(r => r.textContent)).toEqual(['pylsp', 'a.py']);
-    expect(rows[1].classList).toContain('jp-mod-child');
+    const { panel, app } = await mount(server);
 
-    rows[0].querySelector<HTMLElement>('button[aria-label="Stop"]')!.click();
-    expect(shutdown).toHaveBeenCalledTimes(1);
-    expect(open).not.toHaveBeenCalled();
-    // as the replaced panel: a child row's button takes the default label
-    rows[1]
-      .querySelector<HTMLElement>('button[aria-label="Shut Down"]')!
-      .click();
-    expect(shutdownChild).toHaveBeenCalledTimes(1);
+    const terminals = openSection(panel, 'terminals');
+    terminals
+      .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    chooseMenuItem(0); // Shut down terminal
+    await settle();
+    expect(app.serviceManager.terminals.shutdown).toHaveBeenCalledWith('9');
 
-    const all = Array.from(others.querySelectorAll('button')).find(
-      b => b.textContent === 'Stop All'
-    )!;
-    all.click();
-    await waitForDialog();
-    expect(dialogText()).toContain('Stop All?');
-    expect(dialogText()).toContain('Stop every debug session?');
-    await dismissDialog();
+    const kernels = openSection(panel, 'kernels');
+    kernels
+      .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    chooseMenuItem(0); // Shut down kernel
     await settle();
-    expect(shutdownAll).not.toHaveBeenCalled();
-    all.click();
-    await acceptDialog();
-    await settle();
-    expect(shutdownAll).toHaveBeenCalledTimes(1);
+    expect(app.serviceManager.kernels.shutdown).toHaveBeenCalledWith('k1');
+
+    for (const key of ['kernels', 'terminals']) {
+      expect(shutDownAll(panel, key)).toBeTruthy();
+    }
   });
 
   it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one row; a click activates a view, Close tab closes both', async () => {
@@ -507,51 +500,27 @@ describe('panel', () => {
 
   it('DEF-PANEL-11-SHUTDOWN-STALE: Shut down all shuts down what is in no workspace when the user confirms', async () => {
     const server = standard();
-    server.terminals.push({
-      name: '9',
-      last_activity: iso(0),
-      process: 'htop'
-    });
-    const shutdownServer = jest.fn();
-    const managers = new RunningSessionManagers();
-    managers.add({
-      ...manager('Language servers', []),
-      running: () => [
-        {
-          label: () => 'pylsp (python)',
-          icon: () => '',
-          shutdown: shutdownServer
-        }
-      ]
-    });
-    const { panel, app } = await mount(server, { managers });
-    card(panel, 'x:none')
-      .querySelector<HTMLElement>(
-        'button[aria-label="Menu of In no workspace"]'
-      )!
-      .click();
-    chooseMenuItem(0); // Shut down all
-    await waitForDialog();
-    expect(dialogText()).toContain(
-      '1 terminal, 1 kernel and 1 language server'
+    // two terminals in no workspace
+    server.terminals.push(
+      { name: '9', last_activity: iso(0), process: 'htop' },
+      { name: '8', last_activity: iso(0), process: 'fish' }
     );
-    // while the dialog is open, another window opens the kernel's notebook in auto-6
-    server.sessions.push({
-      id: 's1',
-      name: 'a.ipynb',
-      path: 'a.ipynb',
-      type: 'notebook',
-      kernel: server.kernels[0]
-    });
+    const { panel, app } = await mount(server);
+    openSection(panel, 'terminals');
+    const all = shutDownAll(panel, 'terminals');
+    all.click();
+    await waitForDialog();
+    expect(dialogText()).toContain('Shut down 2 terminals in no workspace.');
+    // while the dialog is open, another window opens terminal 9 in auto-6
     server.workspaces[1] = workspace('auto-6', 0, [
       'terminal:1',
-      'notebook:a.ipynb'
+      'terminal:9',
+      'editor:docs/README.md'
     ]);
     await acceptDialog();
     await settle();
-    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['9']]);
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['8']]);
     expect(app.serviceManager.kernels.shutdown).not.toHaveBeenCalled();
-    expect(shutdownServer).toHaveBeenCalledTimes(1);
   });
 
   it('ACC-PANEL-7-REFRESH-BUSY: the refresh button turns and waits for the requests, at least 500 ms', async () => {
@@ -703,15 +672,13 @@ describe('panel', () => {
     const rows = $$(panel, '.jp-WorkspaceManager-row').map(r => r.textContent);
     expect(rows).toContain('terminal 1now');
     expect(card(panel, 'w:auto-6').textContent).not.toContain('claude');
-    header(panel, 'x:none').click();
-    expect(card(panel, 'x:none').textContent).toContain(PYTHON);
+    expect(openSection(panel, 'kernels').textContent).toContain(PYTHON);
   });
 
   it('ACC-PANEL-96-LOAD-ERROR, DEF-PANEL-2-PARTIAL-RELOAD: a failed list keeps its rows under one line naming it, the other lists update; the next good reload removes the line', async () => {
     const server = standard();
     const { panel } = await mount(server);
-    header(panel, 'x:none').click();
-    expect(card(panel, 'x:none').textContent).toContain(PYTHON);
+    expect(openSection(panel, 'kernels').textContent).toContain(PYTHON);
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
 
     // the kernel list fails while its kernel ends and a terminal starts
@@ -727,20 +694,22 @@ describe('panel', () => {
     expect(lines.map(l => l.textContent)).toEqual([
       'Reload failed: kernels (Unhandled error)'
     ]);
-    expect(card(panel, 'x:none').textContent).toContain(PYTHON);
-    expect(card(panel, 'x:none').textContent).toContain('htop');
+    // the KERNELS section keeps its last rows under the line
+    expect(sectionBody(panel, 'kernels').textContent).toContain(PYTHON);
+    // the TERMINALS section lists the new terminal
+    expect(openSection(panel, 'terminals').textContent).toContain('htop');
 
     server.failing = false;
     await panel.refresh();
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
-    expect(card(panel, 'x:none').textContent).not.toContain(PYTHON);
-    expect(card(panel, 'x:none').textContent).toContain('htop');
+    expect(section(panel, 'kernels')).toBeNull();
+    expect(sectionBody(panel, 'terminals').textContent).toContain('htop');
   });
 
   it('ACC-CULLER-65-CULLED: a kernel list that answers 500 once, as jupyter_server does while a kernel starts, is asked again and shows no line', async () => {
     const server = standard();
     const { panel, log } = await mount(server);
-    header(panel, 'x:none').click();
+    openSection(panel, 'kernels');
 
     server.failing = 'once';
     server.kernels.push({ ...server.kernels[0], id: 'k2', name: 'julia' });
@@ -748,14 +717,13 @@ describe('panel', () => {
     await panel.refresh();
     expect(log.filter(l => l.endsWith('/api/kernels'))).toHaveLength(2);
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
-    expect(card(panel, 'x:none').textContent).toContain('julia');
+    expect(sectionBody(panel, 'kernels').textContent).toContain('julia');
   });
 
   it('DEF-PANEL-1-REFRESH-STALE: a refresh pressed while a poll load is in flight shows data asked for after the press', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
     const { panel, reloads, hold, release } = await mount(server);
-    header(panel, 'x:none').click();
 
     // a poll reaches the server; its answers wait
     hold();
@@ -772,7 +740,7 @@ describe('panel', () => {
     release();
     await settle();
     expect(reloads()).toBe(3);
-    expect(card(panel, 'x:none').textContent).toContain('htop');
+    expect(openSection(panel, 'terminals').textContent).toContain('htop');
     jest.advanceTimersByTime(500);
     await settle();
     expect(refreshButton(panel).disabled).toBe(false);
@@ -806,18 +774,10 @@ describe('panel', () => {
     ]);
   });
 
-  it('ACC-PANEL-168-COUNT-BRACKETS: a count after a label reads (N), a filtered card (N of M); the header icon counts stay bare', async () => {
-    const managers = new RunningSessionManagers();
-    managers.add(manager('Debug sessions', ['debug-a']));
-    managers.add(manager('Recently Closed', ['a.md']));
-    const { panel } = await mount(standard(), { managers });
-    expect($(panel, '.jp-WorkspaceManager-titleCount')!.textContent).toBe(
-      '(2)'
-    );
-    expect(
-      card(panel, 'x:others').querySelector('.jp-WorkspaceManager-counts')!
-        .textContent
-    ).toBe('(2)');
+  it('ACC-PANEL-168-COUNT-BRACKETS: a section count reads (N), a filtered card (N of M); the header icon counts stay bare', async () => {
+    const { panel } = await mount(standard());
+    expect(sectionCount(panel, 'workspaces')).toBe('(2)');
+    expect(sectionCount(panel, 'kernels')).toBe('(1)');
     expect(
       Array.from(
         header(panel, 'w:auto-6').querySelectorAll('.jp-WorkspaceManager-count')
@@ -841,6 +801,7 @@ describe('panel', () => {
       'value'
     )!.set!.call(input, 'claude');
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(sectionCount(panel, 'workspaces')).toBe('(1)');
     expect(
       header(panel, 'w:auto-6').querySelector('.jp-WorkspaceManager-counts')!
         .textContent
@@ -889,19 +850,18 @@ describe('panel', () => {
     const terminalRow = $$(panel, '.jp-WorkspaceManager-row').find(r =>
       r.textContent!.includes('terminal 1')
     )!;
-    expect(terminalRow.title).toBe(MARKUP);
+    expect(terminalRow.title).toBe(`terminal 1\n${MARKUP}\nnow`);
   });
 
-  it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME: a kernel row shows kernelIcon and the display name of its kernelspec, the id in its tooltip', async () => {
+  it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME: a kernel row shows kernelIcon and the display name of its kernelspec, its tooltip the display name and state', async () => {
     const { panel } = await mount(standard());
-    header(panel, 'x:none').click();
-    const row = card(panel, 'x:none').querySelector<HTMLElement>(
+    const row = openSection(panel, 'kernels').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
     )!;
     expect(
       row.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
     ).toBe(PYTHON);
-    expect(row.title).toBe('python3');
+    expect(row.title).toBe(`${PYTHON}\nidle`);
     expect(
       row
         .querySelector('.jp-WorkspaceManager-rowIcon svg')!

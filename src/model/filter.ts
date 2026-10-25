@@ -56,9 +56,7 @@ export function filterSections(
       continue;
     }
     const all =
-      !q ||
-      (section.id !== null &&
-        (fuzzyMatch(section.id, q) || fuzzyMatch(section.purpose, q)));
+      !q || fuzzyMatch(section.id, q) || fuzzyMatch(section.purpose, q);
     const keep = <T>(
       rows: T[],
       texts: (row: T) => (string | null | undefined)[]
@@ -83,7 +81,7 @@ export function filterSections(
       const total =
         section.tabs.length + section.terminals.length + section.kernels.length;
       cards.push({ section, tabs, terminals, kernels, shown, total });
-    } else if (section.id !== null) {
+    } else {
       unmatched += 1;
     }
   }

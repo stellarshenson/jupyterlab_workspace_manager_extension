@@ -7,32 +7,39 @@ import {
   colourOf,
   COLOURS,
   deleteWorkspaces,
+  displayName,
   expectRefused,
   fresh,
   fromMenu,
+  fromRowMenu,
   gotoWorkspace,
-  group,
   headerButton,
   kernelIds,
   languageServer,
   layout,
   menuItem,
   menuButton,
-  nobodyCard,
   onlyWorkspaces,
-  openDocument,
   openPanel,
+  openSection,
   PANEL,
   PANEL_TAB,
   panelWidth,
   patchMeta,
+  putNotebook,
   putWorkspace,
   refresh,
   rgb,
   rowOf,
   saved,
   secondWindow,
+  sectionBody,
+  sectionCount,
+  sectionHeader,
+  sendToTerminal,
+  serverList,
   shownElsewhere,
+  startSession,
   startTerminal,
   terminalNames,
   triangle,
@@ -50,6 +57,19 @@ const openCards = (page: Page) =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`);
 
 const dialog = (page: Page) => page.locator('.jp-Dialog');
+
+/** Answer GET `url` with only the entries `keep` accepts: the items of other tests are not this test's. */
+const only = (page: Page, url: RegExp, keep: (x: any) => boolean) =>
+  page.route(url, async route => {
+    if (route.request().method() !== 'GET') {
+      return route.fallback();
+    }
+    const response = await route.fetch();
+    const json = response.ok()
+      ? (await response.json()).filter(keep)
+      : undefined;
+    await route.fulfill({ response, json });
+  });
 
 /** The colour of a card's strip, its `::before`, as the page draws it. */
 const stripColour = (c: Locator) =>
@@ -183,29 +203,42 @@ test("ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: one 
   }
 });
 
-test('ACC-PANEL-4-OTHERS: Recently Closed is under Other sessions, and no section of those the cards replace', async ({
+test('ACC-PANEL-4-OTHERS: a section another extension registers is not listed; the panel shows the workspace cards and the Kernels, Terminals and Language servers sections only', async ({
   page
 }) => {
   const current = await setUp(page, 'others');
   try {
-    const others = page.locator(`${PANEL} [data-key="x:others"]`);
-    await others.locator('.jp-WorkspaceManager-cardHeader').click();
-    await expect(others).toHaveClass(/jp-mod-open/);
-    const groups = (
-      await page
-        .locator(`${PANEL} .jp-WorkspaceManager-groupLabel`)
-        .allTextContents()
-    ).map(g => g.replace(/\s*\(\d+\)$/, ''));
-    expect(groups).toContain('RECENTLY CLOSED');
-    for (const replaced of [
-      'OPEN TABS',
-      'KERNELS',
-      'TERMINALS',
-      'WORKSPACES',
-      'LANGUAGE SERVERS'
-    ]) {
-      expect(groups).not.toContain(replaced);
-    }
+    // a manager another extension registers through IRunningSessionManagers
+    await page.evaluate(async () => {
+      const managers: any = await (window as any).galata.getPlugin(
+        '@jupyterlab/running-extension:plugin'
+      );
+      managers.add({
+        name: 'Debug sessions',
+        running: () => [{ label: () => 'debug item', icon: () => '' }],
+        refreshRunning: () => undefined,
+        runningChanged: {
+          connect: () => undefined,
+          disconnect: () => undefined
+        },
+        shutdownAll: () => undefined
+      });
+    });
+    await refresh(page);
+    const labels = await page
+      .locator(`${PANEL} .jp-WorkspaceManager-sectionLabel`)
+      .allTextContents();
+    expect(labels).not.toContain('DEBUG SESSIONS');
+    expect(
+      labels.every(label =>
+        ['WORKSPACES', 'KERNELS', 'TERMINALS', 'LANGUAGE SERVERS'].includes(
+          label
+        )
+      )
+    ).toBe(true);
+    const text = await page.locator(PANEL).textContent();
+    expect(text).not.toContain('DEBUG SESSIONS');
+    expect(text).not.toContain('debug item');
     // the built-in section list is absent
     await expect(page.locator('.jp-RunningSessions-section')).toHaveCount(0);
   } finally {
@@ -213,42 +246,21 @@ test('ACC-PANEL-4-OTHERS: Recently Closed is under Other sessions, and no sectio
   }
 });
 
-test('ACC-PANEL-159-LANG-OTHERS: Other sessions has no Language servers section while the lab registers its Language servers manager', async ({
+test('ACC-PANEL-159-LANG-OTHERS: a language server is listed only in the LANGUAGE SERVERS section below the workspace cards, never inside a workspace card', async ({
   page
 }) => {
   const current = await setUp(page, 'langothers');
   try {
-    const names: string[] = await page.evaluate(async () =>
-      (
-        await (window as any).galata.getPlugin(
-          '@jupyterlab/running-extension:plugin'
-        )
-      )
-        .items()
-        .map((m: any) => m.name)
-    );
-    expect(names).toContain('Language servers');
-    const others = page.locator(`${PANEL} [data-key="x:others"]`);
-    await others.locator('.jp-WorkspaceManager-cardHeader').click();
-    await expect(others).toHaveClass(/jp-mod-open/);
-    await expect(group(others, 'RECENTLY CLOSED')).toHaveCount(1);
-    await expect(group(others, 'LANGUAGE SERVERS')).toHaveCount(0);
-  } finally {
-    await deleteWorkspaces(page, [current]);
-  }
-});
-
-test('ACC-LISTS-158-LANG-LISTED: a language server of the lab is listed under In no workspace', async ({
-  page
-}) => {
-  const current = await setUp(page, 'lang');
-  try {
     await languageServer(page, true);
-    const nobody = nobodyCard(page);
-    await nobody.locator('.jp-WorkspaceManager-cardHeader').click();
-    await expect(nobody).toHaveClass(/jp-mod-open/);
+    await cardHeader(page, current).click();
+    await expect(card(page, current)).toHaveClass(/jp-mod-open/);
+    expect(await card(page, current).textContent()).not.toContain('fake-lsp');
+    await expect(sectionHeader(page, 'servers')).toContainText(
+      'LANGUAGE SERVERS'
+    );
+    await openSection(page, 'servers');
     await expect(
-      rowOf(group(nobody, 'LANGUAGE SERVERS'), 'fake-lsp (python)')
+      rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)')
     ).toBeVisible();
   } finally {
     await languageServer(page, false);
@@ -256,39 +268,191 @@ test('ACC-LISTS-158-LANG-LISTED: a language server of the lab is listed under In
   }
 });
 
-test('ACC-PANEL-157-OTHERS-ACTIONS: an Other sessions item that can be shut down has its button; pressing it removes the item', async ({
-  page,
-  tmpPath
+test('ACC-LISTS-158-LANG-LISTED: a language server of the lab is listed in the LANGUAGE SERVERS section', async ({
+  page
 }) => {
-  const current = await setUp(page, 'forget');
-  const doc = `${tmpPath}/forget-me.txt`;
-  await page.contents.uploadContent('text', 'text', doc);
+  const current = await setUp(page, 'lang');
   try {
-    // a closed document is an item of Recently Closed, whose shutdown is Forget
-    await openDocument(page, doc);
-    await page.evaluate(async path => {
-      const app = (window as any).jupyterapp;
-      const tab: any = Array.from(app.shell.widgets('main')).find(
-        (w: any) => w.context?.path === path
-      );
-      await tab.context.ready;
-      tab.close();
-    }, doc);
-    const others = page.locator(`${PANEL} [data-key="x:others"]`);
-    await others.locator('.jp-WorkspaceManager-cardHeader').click();
-    const recent = others
-      .locator('.jp-WorkspaceManager-group')
-      .filter({ hasText: /^RECENTLY CLOSED/ });
-    const item = recent
-      .locator('.jp-WorkspaceManager-row')
-      .filter({ hasText: 'forget-me.txt' });
-    await expect(item).toHaveCount(1, UNDER_LOAD);
-    const forget = item.locator('button[aria-label="Forget"]');
-    await expect(forget).toBeVisible();
-    await forget.click();
-    await expect(item).toHaveCount(0);
+    await languageServer(page, true);
+    await expect(sectionHeader(page, 'servers')).toContainText(
+      'LANGUAGE SERVERS'
+    );
+    await expect(sectionCount(page, 'servers')).toHaveText('(1)');
+    await openSection(page, 'servers');
+    await expect(
+      rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)')
+    ).toBeVisible();
   } finally {
+    await languageServer(page, false);
     await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Language servers sections keep their shutdown buttons, and each header carries Shut down all with its confirmation', async ({
+  page
+}) => {
+  const terminal = await startTerminal(page);
+  const current = await setUp(page, 'forget');
+  try {
+    await languageServer(page, true);
+    await expect(sectionHeader(page, 'terminals')).toContainText('TERMINALS');
+    await expect(sectionHeader(page, 'servers')).toContainText(
+      'LANGUAGE SERVERS'
+    );
+    // each section header carries Shut down all
+    for (const name of ['terminals', 'servers']) {
+      await expect(
+        sectionHeader(page, name).getByRole('button', {
+          name: 'Shut down all',
+          exact: true
+        })
+      ).toBeVisible();
+    }
+
+    // a terminal row shuts its terminal down from its context menu
+    await openSection(page, 'terminals');
+    const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
+    await expect(row).toBeVisible();
+    await fromRowMenu(row, 'Shut down terminal');
+    await expect
+      .poll(() => terminalNames(page), UNDER_LOAD)
+      .not.toContain(terminal);
+    await expect(row).toHaveCount(0);
+
+    // the language server row keeps its shutdown button
+    await openSection(page, 'servers');
+    await expect(
+      rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)').locator(
+        'button[aria-label="Shut Down"]'
+      )
+    ).toBeVisible();
+    // and the header's Shut down all asks once, naming its items
+    await sectionHeader(page, 'servers')
+      .getByRole('button', { name: 'Shut down all', exact: true })
+      .click();
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'Shut down all?'
+    );
+    await expect(dialog(page).locator('.jp-Dialog-body')).toContainText(
+      'language servers'
+    );
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Cancel' })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+  } finally {
+    await languageServer(page, false);
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions for the kernels, terminals and language servers in no workspace; one section is open at a time, a click closes and reopens a header, and an empty section is not shown', async ({
+  page
+}) => {
+  // the terminals, kernels and language servers of other tests are in no workspace too
+  let terminal = '';
+  let kernelId = '';
+  await only(
+    page,
+    /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+    t => t.name === terminal
+  );
+  await only(page, /\/api\/kernels(\?.*)?$/, k => k.id === kernelId);
+  await only(page, /\/api\/sessions(\?.*)?$/, () => false);
+  const current = await setUp(page, 'heads', { a: {}, b: {} });
+  try {
+    // nothing belongs to no workspace: WORKSPACES alone, with its count and body
+    await expect(sectionHeader(page, 'workspaces')).toContainText('WORKSPACES');
+    await expect(sectionCount(page, 'workspaces')).toHaveText('(3)');
+    await expect(sectionBody(page, 'workspaces')).toBeVisible();
+    await expect(
+      sectionBody(page, 'workspaces').locator('.jp-WorkspaceManager-card')
+    ).toHaveCount(3);
+    for (const name of ['kernels', 'terminals', 'servers']) {
+      await expect(
+        page.locator(`${PANEL} [data-section="${name}"]`)
+      ).toHaveCount(0);
+    }
+
+    // a terminal in no workspace: TERMINALS (1), the other two sections absent
+    terminal = await startTerminal(page);
+    await refresh(page);
+    await expect(sectionCount(page, 'terminals')).toHaveText('(1)');
+    await expect(page.locator(`${PANEL} [data-section="kernels"]`)).toHaveCount(
+      0
+    );
+    await expect(page.locator(`${PANEL} [data-section="servers"]`)).toHaveCount(
+      0
+    );
+
+    // a kernel in no workspace
+    const response = await page.request.post('/api/kernels', {
+      data: { name: 'python3' }
+    });
+    kernelId = (await response.json()).id;
+    await refresh(page);
+    await expect(sectionCount(page, 'kernels')).toHaveText('(1)');
+
+    // a language server
+    await languageServer(page, true);
+    await expect(sectionCount(page, 'servers')).toHaveText('(1)');
+    const order = await page
+      .locator(`${PANEL} .jp-WorkspaceManager-sectionLabel`)
+      .allTextContents();
+    expect(order).toEqual([
+      'WORKSPACES',
+      'KERNELS',
+      'TERMINALS',
+      'LANGUAGE SERVERS'
+    ]);
+
+    // a click on a header opens it and closes the open one, and a second click closes it
+    for (const [name, text] of [
+      ['kernels', 'Python'],
+      ['terminals', `terminal ${terminal}`],
+      ['servers', 'fake-lsp (python)']
+    ] as const) {
+      await sectionHeader(page, name).click();
+      await expect(sectionHeader(page, name)).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+      await expect(sectionBody(page, name)).toBeVisible();
+      await expect(sectionBody(page, name)).toContainText(text);
+      await expect(
+        sectionBody(page, name).locator('.jp-WorkspaceManager-row')
+      ).toHaveCount(1);
+      // WORKSPACES closed: its cards are not in the page
+      await expect(card(page, current)).toHaveCount(0);
+      await sectionHeader(page, name).click();
+      await expect(sectionHeader(page, name)).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      );
+      await expect(
+        page.locator(`${PANEL} .jp-WorkspaceManager-sectionBody`)
+      ).toHaveCount(0);
+    }
+    await sectionHeader(page, 'terminals').click();
+    await sectionHeader(page, 'servers').click();
+    await expect(sectionHeader(page, 'terminals')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    await expect(sectionHeader(page, 'servers')).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  } finally {
+    await languageServer(page, false);
+    if (terminal) {
+      await page.request.delete(`/api/terminals/${terminal}`);
+    }
+    if (kernelId) {
+      await page.request.delete(`/api/kernels/${kernelId}`);
+    }
+    await deleteWorkspaces(page, ids(current, 'a', 'b'));
   }
 });
 
@@ -529,6 +693,78 @@ test.describe('kernels and sessions of the server', () => {
         terminals.map(t => page.request.delete(`/api/terminals/${t}`))
       );
       await deleteWorkspaces(page, [current, held, docs]);
+    }
+  });
+
+  test('ACC-PANEL-185-ROW-TOOLTIP: a terminal, a kernel, a language server and a tab row carry their details in a tooltip, one per line', async ({
+    page,
+    tmpPath
+  }) => {
+    const terminal = await startTerminal(page);
+    const notebook = `${tmpPath}/tips.ipynb`;
+    await putNotebook(page, notebook);
+    const session = await startSession(page, notebook);
+    const current = await setUp(page, 'tooltip', {
+      doc: layout([`editor:${tmpPath}/note.md`])
+    });
+    try {
+      // a tab row: its full path
+      await triangle(page, `${current}-doc`).click();
+      await expect(
+        rowOf(card(page, `${current}-doc`), 'note.md')
+      ).toHaveAttribute('title', `${tmpPath}/note.md`);
+
+      // a terminal row: its name, the process and when it was last active
+      await sendToTerminal(page, terminal, 'sleep 300\n');
+      await openSection(page, 'terminals');
+      const terminalRow = rowOf(
+        sectionBody(page, 'terminals'),
+        `terminal ${terminal}`
+      );
+      await expect
+        .poll(async () => {
+          await refresh(page);
+          return terminalRow
+            .locator('.jp-WorkspaceManager-rowLabel')
+            .textContent();
+        }, UNDER_LOAD)
+        .toBe('sleep');
+      const age = await terminalRow
+        .locator('.jp-WorkspaceManager-age')
+        .textContent();
+      expect((await terminalRow.getAttribute('title'))!.split('\n')).toEqual([
+        `terminal ${terminal}`,
+        'sleep',
+        age
+      ]);
+
+      // a kernel row: its kernelspec display name, the session path and its state
+      const state = () =>
+        serverList(page, '/api/kernels').then(
+          list => list.find(k => k.id === session.kernel.id)?.execution_state
+        );
+      await expect.poll(state, UNDER_LOAD).toBe('idle');
+      await openSection(page, 'kernels');
+      await refresh(page);
+      await expect(
+        rowOf(sectionBody(page, 'kernels'), 'tips.ipynb')
+      ).toHaveAttribute(
+        'title',
+        `${await displayName(page, session.kernel.name)}\n${notebook}\nidle`
+      );
+
+      // a language server row: its id and its language
+      await languageServer(page, true);
+      await openSection(page, 'servers');
+      await expect(
+        rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)')
+      ).toHaveAttribute('title', 'fake-lsp\npython');
+    } finally {
+      await languageServer(page, false);
+      await page.request.delete(`/api/sessions/${session.id}`);
+      await page.request.delete(`/api/kernels/${session.kernel.id}`);
+      await page.request.delete(`/api/terminals/${terminal}`);
+      await deleteWorkspaces(page, [current, `${current}-doc`]);
     }
   });
 });
@@ -984,7 +1220,7 @@ test("ACC-ACCORD-125-SELECTED-SHADE: this window's header takes the active shade
   }
 });
 
-test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the tooltip holds the full name and purpose', async ({
+test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the purpose wraps in full; the tooltip holds the full name and purpose', async ({
   page
 }) => {
   const current = fresh('long');
@@ -996,18 +1232,26 @@ test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the tooltip holds
   await patchMeta(page, long, { purpose });
   try {
     await setUpExisting(page, current);
-    for (const part of [
-      '.jp-WorkspaceManager-name',
-      '.jp-WorkspaceManager-purpose'
-    ]) {
-      const cut = await card(page, long)
-        .locator(part)
-        .evaluate(n => ({
-          overflow: getComputedStyle(n).textOverflow,
-          clipped: n.scrollWidth > n.clientWidth
-        }));
-      expect(cut, part).toEqual({ overflow: 'ellipsis', clipped: true });
-    }
+    const name = await card(page, long)
+      .locator('.jp-WorkspaceManager-name')
+      .evaluate(n => ({
+        overflow: getComputedStyle(n).textOverflow,
+        clipped: n.scrollWidth > n.clientWidth
+      }));
+    expect(name).toEqual({ overflow: 'ellipsis', clipped: true });
+    // the purpose is never shortened with an ellipsis
+    const text = await card(page, long)
+      .locator('.jp-WorkspaceManager-purpose')
+      .evaluate(n => ({
+        overflow: getComputedStyle(n).textOverflow,
+        clipped: n.scrollWidth > n.clientWidth,
+        content: n.textContent
+      }));
+    expect(text).toEqual({
+      overflow: 'clip',
+      clipped: false,
+      content: purpose
+    });
     await expect(cardHeader(page, long)).toHaveAttribute(
       'title',
       `${long}\n${purpose}`
@@ -1188,30 +1432,23 @@ test("ACC-ACCORD-163-HEADER-SWITCH: a click on the name of another workspace's c
   }
 });
 
-test("ACC-ACCORD-164-HEADER-TOGGLE: a header click opens and closes this window's card, In no workspace and Other sessions", async ({
+test("ACC-ACCORD-164-HEADER-TOGGLE: a header click opens and closes this window's card", async ({
   page
 }) => {
-  const terminal = await startTerminal(page);
   const current = await setUp(page, 'toggle');
   const url = page.url();
   try {
-    for (const c of [
-      card(page, current),
-      nobodyCard(page),
-      page.locator(`${PANEL} [data-key="x:others"]`)
-    ]) {
-      const header = c.locator('.jp-WorkspaceManager-cardHeader');
-      await header.click();
-      await expect(c).toHaveClass(/jp-mod-open/);
-      await expect(header).toHaveAttribute('aria-expanded', 'true');
-      expect(page.url()).toBe(url);
-      await header.click();
-      await expect(c).not.toHaveClass(/jp-mod-open/);
-      await expect(header).toHaveAttribute('aria-expanded', 'false');
-      expect(page.url()).toBe(url);
-    }
+    const c = card(page, current);
+    const header = c.locator('.jp-WorkspaceManager-cardHeader');
+    await header.click();
+    await expect(c).toHaveClass(/jp-mod-open/);
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(page.url()).toBe(url);
+    await header.click();
+    await expect(c).not.toHaveClass(/jp-mod-open/);
+    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(page.url()).toBe(url);
   } finally {
-    await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current]);
   }
 });

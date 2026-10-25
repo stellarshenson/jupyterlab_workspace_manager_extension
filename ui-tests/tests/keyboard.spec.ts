@@ -39,7 +39,7 @@ async function tabTo(page: Page, selector: string): Promise<Locator> {
 
 /** Press Tab from the refresh button until a card header has the focus. */
 async function tabToCardHeader(page: Page): Promise<Locator> {
-  // until the first load lands, the Other sessions card is the only card
+  // the workspace cards render once the first load lands
   await expect(card(page, 'default')).toBeVisible();
   return tabTo(page, `${PANEL} .jp-WorkspaceManager-cardHeader`);
 }
@@ -55,7 +55,7 @@ test('ACC-PANEL-165-TRIANGLE-KEYS: Tab reaches the triangle of a card, Enter ope
   await expect(card(page, 'default')).toBeVisible();
   const triangle = await tabTo(
     page,
-    `${PANEL} button.jp-WorkspaceManager-caret`
+    `${PANEL} .jp-WorkspaceManager-card button.jp-WorkspaceManager-caret`
   );
   await expect(triangle).toHaveAttribute('aria-expanded', 'false');
 
@@ -277,8 +277,7 @@ test.describe('with the workspaces of the server', () => {
           'Open workspace',
           'Close all tabs',
           'Workspace menu',
-          'Show workspace again',
-          'Menu of In no workspace'
+          'Show workspace again'
         ])
       );
       for (const b of buttons) {

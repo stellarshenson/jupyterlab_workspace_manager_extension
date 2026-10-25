@@ -10,9 +10,15 @@
 
 This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: one section per workspace, one section open at a time.
 
-![The workspace panel](https://raw.githubusercontent.com/stellarshenson/jupyterlab_workspace_manager_extension/main/docs/images/panel.png)
+![The workspace panel](docs/images/panel.png)
 
-_Fig 1 - The panel with one workspace open, and its Other sessions and In no workspace sections closed_
+_Fig 1 - The workspace panel beside a notebook of the workspace this window shows_
+
+## Why a workspace panel
+
+Developers and data scientists now run several projects at once: they start an agent on one project and work on another while it runs. Each project holds its own tabs, terminals and kernels in a JupyterLab workspace, and the built-in Running panel lists all of them in one flat list, so a terminal from one project sits beside a kernel from another with nothing to tell them apart.
+
+The panel groups them by workspace: what each project holds, what is running in it, and how long ago it was used, with one click to switch to it.
 
 ## Features
 
@@ -21,8 +27,7 @@ _Fig 1 - The panel with one workspace open, and its Other sessions and In no wor
 - **Header** - a click on the name of another workspace switches this window to it, and a click on this window's workspace closes it
 - **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, delete
 - **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last section
-- **In no workspace** - the terminals, kernels and language servers that belong to no workspace, with shut down for one item and for all of them
-- **Other sessions** - the open tabs, kernels, language servers and recently closed documents of the lab
+- **Kernels, terminals and language servers** - three sections below the workspaces for what belongs to no workspace, each with its count and a shut down all
 - **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them
 - **New workspace** - the + button creates a workspace and asks for its name and an optional description
 
@@ -36,6 +41,24 @@ Install the package from PyPI.
 
 ```bash
 pip install jupyterlab-workspace-manager-extension
+```
+
+## Agent skill
+
+The `jupyterlab-workspace` command ships an agent skill at
+`.agents/skills/jupyterlab-workspace-manager-extension/SKILL.md`. Link it where your agents
+read skills.
+
+After `pip install`, with the Python that runs the lab:
+
+```bash
+mkdir -p ~/.agents/skills && ln -s "$(python -c 'import sys; print(sys.prefix)')/share/jupyter/agents/skills/jupyterlab-workspace-manager-extension" ~/.agents/skills/jupyterlab-workspace-manager-extension
+```
+
+From a clone:
+
+```bash
+ln -s "$PWD/.agents/skills/jupyterlab-workspace-manager-extension" ~/.claude/skills/jupyterlab-workspace-manager-extension
 ```
 
 ## Uninstall

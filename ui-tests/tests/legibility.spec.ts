@@ -11,12 +11,15 @@ import {
   headerButton,
   onlyWorkspaces,
   openPanel,
+  openSection,
   PANEL,
   panelWidth,
   patchMeta,
   layout,
   putWorkspace,
   refresh,
+  sectionCount,
+  sectionHeader,
   startTerminal,
   triangle
 } from './helpers';
@@ -195,18 +198,18 @@ async function populate(page: IJupyterLabPageFixture) {
   return { current, coloured, cleanup };
 }
 
-/** The texts of each card opened in turn: this window's, a coloured one, In no workspace. */
+/** The texts of each card opened in turn: this window's, a coloured one, and the TERMINALS section. */
 async function textsOfOpenCards(
   page: Page,
   ids: { current: string; coloured: string[] }
 ): Promise<IText[]> {
   const found: IText[] = [];
+  // the cards render only while WORKSPACES is the open section
+  await openSection(page, 'workspaces');
   for (const caret of [
     triangle(page, ids.current),
     triangle(page, ids.coloured[0]),
-    page.locator(
-      `${PANEL} [data-key="x:none"] button.jp-WorkspaceManager-caret`
-    )
+    sectionHeader(page, 'terminals').locator('button.jp-WorkspaceManager-caret')
   ]) {
     await caret.click();
     await expect(caret).toHaveAttribute('aria-expanded', 'true');
@@ -234,6 +237,7 @@ test('ACC-PANEL-73-TEXT-CONTRAST: every text reads at 4.5:1 or more in Galaxa St
       for (const colour of COLOURS) {
         await patchMeta(page, ids.current, { colour });
         await refresh(page);
+        await openSection(page, 'workspaces');
         await expect(card(page, ids.current)).toHaveClass(
           new RegExp(`jp-mod-${colour}`)
         );
@@ -327,11 +331,11 @@ test('ACC-PANEL-94-THEME: a theme change repaints the cards without a reload', a
   }
 });
 
-test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title, the Other sessions label and their counts show in full', async ({
+test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title and the WORKSPACES label with its count show in full', async ({
   page
 }) => {
   const current = fresh('narrow');
-  // ten cards, so the title count has two digits
+  // ten cards, so the WORKSPACES count has two digits
   const others = Array.from({ length: 9 }, (_, i) => `${current}-${i}`);
   await Promise.all(others.map(id => putWorkspace(page, id)));
   try {
@@ -341,38 +345,66 @@ test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title, the Other se
     await refresh(page);
     expect(await panelWidth(page)).toBe(250);
     const panel = page.locator(PANEL);
-    await expect(panel.locator('.jp-WorkspaceManager-titleCount')).toHaveText(
-      '(10)'
+    await expect(panel.locator('.jp-WorkspaceManager-titleLabel')).toHaveText(
+      'WORKBENCH'
     );
-    const othersHeader = panel.locator(
-      '[data-key="x:others"] .jp-WorkspaceManager-cardHeader'
-    );
-    await expect(
-      othersHeader.locator('.jp-WorkspaceManager-counts')
-    ).toHaveText(/^\(\d+\)$/);
+    await expect(sectionCount(page, 'workspaces')).toHaveText('(10)');
     for (const theme of [DARK, LIGHT]) {
       await page.theme.setTheme(theme);
       expect(
-        await cut(
-          panel,
-          '.jp-WorkspaceManager-titleLabel, .jp-WorkspaceManager-titleCount'
-        ),
-        theme
-      ).toEqual([]);
-      expect(
-        await cut(
-          othersHeader,
-          '.jp-WorkspaceManager-name, .jp-WorkspaceManager-counts'
-        ),
+        await cut(panel, '.jp-WorkspaceManager-titleLabel'),
         theme
       ).toEqual([]);
     }
+    expect(
+      await cut(
+        sectionHeader(page, 'workspaces'),
+        '.jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
+      )
+    ).toEqual([]);
   } finally {
     await deleteWorkspaces(page, [current, ...others]);
   }
 });
 
-test('ACC-PANEL-168-COUNT-BRACKETS: the title count reads WORKSPACES (4); the counts beside the header icons stay bare', async ({
+test('ACC-PANEL-181-PURPOSE-WRAP: a purpose wraps onto as many lines as it needs and shows in full, never shortened with an ellipsis', async ({
+  page
+}) => {
+  const current = fresh('purpose');
+  // 60 characters: wider than the 250 px card, so it must wrap
+  const purpose =
+    'A purpose sixty characters long, wrapping onto several lines';
+  expect(purpose).toHaveLength(60);
+  await putWorkspace(page, current);
+  await patchMeta(page, current, { purpose });
+  try {
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    expect(await panelWidth(page)).toBe(250);
+    const element = card(page, current).locator('.jp-WorkspaceManager-purpose');
+    await expect(element).toHaveText(purpose);
+    const drawn = await element.evaluate(n => {
+      const style = getComputedStyle(n);
+      return {
+        overflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+        clipped: n.scrollWidth > n.clientWidth,
+        height: n.getBoundingClientRect().height,
+        font: parseFloat(style.fontSize)
+      };
+    });
+    expect(drawn.overflow).not.toBe('ellipsis');
+    expect(drawn.whiteSpace).toBe('normal');
+    expect(drawn.clipped).toBe(false);
+    // more than one line: the card grew with the wrapped purpose
+    expect(drawn.height).toBeGreaterThan(drawn.font * 2);
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-168-COUNT-BRACKETS: the WORKSPACES count reads (4); the counts beside the header icons stay bare', async ({
   page
 }) => {
   const current = fresh('brackets');
@@ -389,15 +421,13 @@ test('ACC-PANEL-168-COUNT-BRACKETS: the title count reads WORKSPACES (4); the co
     await gotoWorkspace(page, current);
     await openPanel(page);
     await refresh(page);
-    const title = page.locator(`${PANEL} .jp-WorkspaceManager-title`);
-    await expect(title.locator('.jp-WorkspaceManager-titleLabel')).toHaveText(
-      'WORKSPACES'
-    );
-    await expect(title.locator('.jp-WorkspaceManager-titleCount')).toHaveText(
-      '(4)'
-    );
+    const header = sectionHeader(page, 'workspaces');
+    await expect(
+      header.locator('.jp-WorkspaceManager-sectionLabel')
+    ).toHaveText('WORKSPACES');
+    await expect(sectionCount(page, 'workspaces')).toHaveText('(4)');
     // the label and the count, as the page draws them
-    expect(await title.evaluate(n => (n as HTMLElement).innerText)).toMatch(
+    expect(await header.evaluate(n => (n as HTMLElement).innerText)).toMatch(
       /^WORKSPACES\s*\(4\)$/
     );
     await expect(

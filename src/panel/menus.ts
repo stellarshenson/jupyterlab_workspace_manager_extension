@@ -198,7 +198,7 @@ export function workspaceMenu(
   return menu;
 }
 
-/** A menu of plain actions: a row's context menu, or the ... of In no workspace. */
+/** A menu of plain actions: a row's context menu. */
 export function actionMenu(
   items: { label: string; icon: LabIcon; execute: () => void }[]
 ): Menu {

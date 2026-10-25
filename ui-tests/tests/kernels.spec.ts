@@ -15,13 +15,14 @@ import {
   kernelIds,
   layout,
   NEXT_POLL,
-  nobodyCard,
   openDocument,
+  openSection,
   panelWidth,
   putNotebook,
   putWorkspace,
   refresh,
   rowOf,
+  sectionBody,
   serverList,
   shows,
   startSession,
@@ -47,7 +48,7 @@ async function sessionOf(page: Page, path: string): Promise<any> {
   return session;
 }
 
-test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a kernel row shows the display name of its kernelspec, the id in its tooltip, its notebook and age; Shut down kernel ends it and the notebook stays open', async ({
+test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a kernel row shows the display name of its kernelspec, its details in its tooltip, its notebook and age; Shut down kernel ends it and the notebook stays open', async ({
   page,
   tmpPath
 }) => {
@@ -68,10 +69,19 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
       display
     );
-    await expect(row).toHaveAttribute(
-      'title',
-      `${notebook}\n${session.kernel.name}`
-    );
+    // ACC-PANEL-185: the display name, the session path and the state, one per line
+    await expect
+      .poll(() => serverList(page, '/api/kernels'), UNDER_LOAD)
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: session.kernel.id,
+            execution_state: 'idle'
+          })
+        ])
+      );
+    await refresh(page);
+    await expect(row).toHaveAttribute('title', `${display}\n${notebook}\nidle`);
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
       'kernelled.ipynb'
     );
@@ -148,7 +158,7 @@ test.describe('kernels and sessions of the server', () => {
   // Galata lists only the kernels and sessions its page started; this test starts one by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-KERNEL-151-ROW-CLICK: a click or Enter on a kernel row opens its notebook: here, from In no workspace, or in its workspace', async ({
+  test('ACC-KERNEL-151-ROW-CLICK: a click or Enter on a kernel row opens its notebook: here, from the KERNELS section, or in its workspace', async ({
     page,
     tmpPath
   }) => {
@@ -169,12 +179,16 @@ test.describe('kernels and sessions of the server', () => {
       await sessionOf(page, a);
       await refresh(page);
 
-      await nobodyCard(page).locator('.jp-WorkspaceManager-cardHeader').click();
-      await rowOf(nobodyCard(page), `${tag}-b.ipynb`).click();
+      // B's kernel is in the KERNELS section: a click opens its notebook here
+      await openSection(page, 'kernels');
+      await rowOf(sectionBody(page, 'kernels'), `${tag}-b.ipynb`).click();
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(b);
       // the tab of B runs on the kernel of its session
       expect((await sessionOf(page, b)).kernel.id).toBe(sessionB.kernel.id);
 
+      // B is a live tab now: its kernel row is in this window's card too
+      await refresh(page);
+      await openSection(page, 'workspaces');
       await cardHeader(page, current).click();
       const kernels = group(card(page, current), 'KERNELS');
       await expect(rowOf(kernels, `${tag}-b.ipynb`)).toBeVisible();

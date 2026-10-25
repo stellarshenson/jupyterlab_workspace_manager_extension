@@ -2,6 +2,7 @@ import type { Kernel, Session } from '@jupyterlab/services';
 
 import { filterSections } from '../model/filter';
 import {
+  buildModel,
   buildSections,
   IModelInput,
   ISection,
@@ -59,12 +60,12 @@ const specs = (name: string, display_name: string) => ({
   }
 });
 
-const byId = (sections: ISection[], id: string | null) =>
+const byId = (sections: ISection[], id: string) =>
   sections.find(s => s.id === id)!;
 
 describe('model', () => {
-  it('ACC-ACCORD-13-ORDER: this window first, the others newest first, then In no workspace', () => {
-    const sections = buildSections(
+  it('ACC-ACCORD-13-ORDER: this window first, the others newest first; what is in no workspace comes apart', () => {
+    const model = buildModel(
       input({
         current: 'default',
         workspaces: [
@@ -76,17 +77,17 @@ describe('model', () => {
         terminals: [{ name: '9' }]
       })
     );
-    expect(sections.map(s => s.id)).toEqual([
+    expect(model.sections.map(s => s.id)).toEqual([
       'default',
       'newest',
       'middle',
-      'older',
-      null
+      'older'
     ]);
+    expect(model.unowned.terminals.map(t => t.name)).toEqual(['9']);
   });
 
   it('ACC-LISTS-34-ASSIGN-TERMINAL: a terminal goes to the workspace whose layout holds terminal:<name>', () => {
-    const sections = buildSections(
+    const model = buildModel(
       input({
         current: 'cur',
         workspaces: [
@@ -104,6 +105,7 @@ describe('model', () => {
         ]
       })
     );
+    const sections = model.sections;
     expect(byId(sections, 'a').terminals).toEqual([
       {
         name: '1',
@@ -115,15 +117,15 @@ describe('model', () => {
     ]);
     expect(byId(sections, 'b').terminals.map(t => t.name)).toEqual(['2']);
     expect(byId(sections, 'cur').terminals).toEqual([]);
-    expect(byId(sections, null).terminals.map(t => t.name)).toEqual(['3']);
-    expect(byId(sections, null).terminals[0].process).toBeNull();
+    expect(model.unowned.terminals.map(t => t.name)).toEqual(['3']);
+    expect(model.unowned.terminals[0].process).toBeNull();
   });
 
   it('ACC-LISTS-35-ASSIGN-KERNEL: a kernel goes to the workspace whose notebook has a session on it', () => {
     const k1 = kernel('k1');
     const k2 = kernel('k2');
     const k3 = kernel('k3');
-    const sections = buildSections(
+    const model = buildModel(
       input({
         workspaces: [
           ws('a', '2026-10-23T10:00:00Z', ['notebook:work/x.ipynb'], {
@@ -137,12 +139,13 @@ describe('model', () => {
         kernels: [k1, k2, k3]
       })
     );
+    const sections = model.sections;
     expect(byId(sections, 'a').kernels).toEqual([
       {
         id: 'k1',
         name: 'python3',
         label: 'python3',
-        title: 'work/x.ipynb\npython3',
+        title: 'python3\nwork/x.ipynb\nidle',
         path: 'work/x.ipynb',
         detail: 'x.ipynb',
         lastActivity: '2026-10-24T11:00:00.000000Z',
@@ -152,14 +155,14 @@ describe('model', () => {
     ]);
     expect(byId(sections, 'b').kernels.map(k => k.id)).toEqual(['k2']);
     // a kernel without a session belongs to no workspace
-    expect(byId(sections, null).kernels.map(k => k.id)).toEqual(['k3']);
-    expect(byId(sections, null).kernels[0].path).toBe('');
+    expect(model.unowned.kernels.map(k => k.id)).toEqual(['k3']);
+    expect(model.unowned.kernels[0].path).toBe('');
   });
 
   it('ACC-LISTS-37-TWO-WORKSPACES: a terminal and a kernel in two workspaces show in both, marked with the other', () => {
     const k1 = kernel('k1');
     const keys = ['terminal:5', 'notebook:shared.ipynb'];
-    const sections = buildSections(
+    const model = buildModel(
       input({
         workspaces: [
           ws('a', '2026-10-23T10:00:00Z', keys),
@@ -170,6 +173,7 @@ describe('model', () => {
         kernels: [k1]
       })
     );
+    const sections = model.sections;
     for (const [id, other] of [
       ['a', 'b'],
       ['b', 'a']
@@ -182,7 +186,7 @@ describe('model', () => {
         ['k1', [other]]
       ]);
     }
-    expect(byId(sections, null)).toBeUndefined();
+    expect(model.unowned).toEqual({ terminals: [], kernels: [] });
   });
 
   it('ACC-LISTS-81-ONCE: a document, a terminal and a notebook each in one group only', () => {
@@ -223,7 +227,7 @@ describe('model', () => {
     const k1 = kernel('k1');
     const k2 = kernel('k2');
     const path = 'console-1-7f3a';
-    const sections = buildSections(
+    const model = buildModel(
       input({
         workspaces: [
           ws('a', '2026-10-23T10:00:00Z', [`console:${path}`], {
@@ -238,26 +242,26 @@ describe('model', () => {
         kernels: [k1, k2]
       })
     );
-    const a = byId(sections, 'a');
+    const a = byId(model.sections, 'a');
     expect(a.kernels.map(k => [k.id, k.detail])).toEqual([['k1', 'Console 1']]);
     expect(a.tabs.map(t => t.label)).toEqual(['Console 1']);
-    expect(byId(sections, null).kernels.map(k => k.id)).toEqual(['k2']);
+    expect(model.unowned.kernels.map(k => k.id)).toEqual(['k2']);
   });
 
   it('ACC-KERNEL-49-STATE: idle and busy kernels take their dot classes', () => {
     const idle = kernel('k1', 'idle');
     const busy = kernel('k2', 'busy');
-    const sections = buildSections(input({ kernels: [idle, busy] }));
-    expect(byId(sections, null).kernels.map(k => k.dotClass)).toEqual([
+    const model = buildModel(input({ kernels: [idle, busy] }));
+    expect(model.unowned.kernels.map(k => k.dotClass)).toEqual([
       'jp-WorkspaceManager-dot jp-mod-idle',
       'jp-WorkspaceManager-dot jp-mod-busy'
     ]);
   });
 
-  it('ACC-KERNEL-156-DISPLAY-NAME: a kernel row shows the display name of its kernelspec, the id in its tooltip; an unknown spec shows the id', () => {
+  it('ACC-KERNEL-156-DISPLAY-NAME, ACC-PANEL-185-ROW-TOOLTIP: a kernel row shows the display name of its kernelspec, its tooltip the display name, path and state; an unknown spec shows the id', () => {
     const k1 = kernel('k1');
     const k2 = { ...kernel('k2'), name: 'xpython' };
-    const sections = buildSections(
+    const model = buildModel(
       input({
         workspaces: [
           ws('a', '2026-10-23T10:00:00Z', ['notebook:work/x.ipynb'])
@@ -267,15 +271,15 @@ describe('model', () => {
         specs: specs('python3', 'Python 3 (ipykernel)')
       })
     );
-    const [row] = byId(sections, 'a').kernels;
+    const [row] = byId(model.sections, 'a').kernels;
     expect(row.label).toBe('Python 3 (ipykernel)');
-    expect(row.title).toBe('work/x.ipynb\npython3');
-    const [unknown] = byId(sections, null).kernels;
+    expect(row.title).toBe('Python 3 (ipykernel)\nwork/x.ipynb\nidle');
+    const [unknown] = model.unowned.kernels;
     expect(unknown.label).toBe('xpython');
-    expect(unknown.title).toBe('xpython');
+    expect(unknown.title).toBe('xpython\nidle');
     // before JupyterLab has loaded the kernelspecs
-    const early = buildSections(input({ kernels: [k1] }));
-    expect(byId(early, null).kernels[0].label).toBe('python3');
+    const early = buildModel(input({ kernels: [k1] }));
+    expect(early.unowned.kernels[0].label).toBe('python3');
   });
 
   it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one tab row', () => {
@@ -304,22 +308,23 @@ describe('model', () => {
     ]) {
       expect(kernelDot(state)).toBe('jp-WorkspaceManager-dot jp-mod-unknown');
     }
-    const sections = buildSections(input({ kernels: [kernel('k', 'dead')] }));
-    expect(byId(sections, null).kernels[0].dotClass).toBe(
+    const model = buildModel(input({ kernels: [kernel('k', 'dead')] }));
+    expect(model.unowned.kernels[0].dotClass).toBe(
       'jp-WorkspaceManager-dot jp-mod-unknown'
     );
   });
 
   it('ACC-HIDDEN-55-CONTENT: the terminal of a hidden workspace is in no visible group', () => {
-    const sections = buildSections(
+    const model = buildModel(
       input({
         workspaces: [ws('h', '2026-10-23T10:00:00Z', ['terminal:1'])],
         records: { h: { hidden: true } },
         terminals: [{ name: '1' }]
       })
     );
+    const sections = model.sections;
     expect(byId(sections, 'h').hidden).toBe(true);
-    expect(byId(sections, null)).toBeUndefined();
+    expect(model.unowned).toEqual({ terminals: [], kernels: [] });
 
     const { cards } = filterSections(sections, '', false);
     expect(cards.map(c => c.section.id)).toEqual(['default']);
@@ -330,7 +335,7 @@ describe('model', () => {
   });
 
   it("follows this window's open tabs instead of its saved layout, and never hides it", () => {
-    const sections = buildSections(
+    const model = buildModel(
       input({
         current: 'default',
         workspaces: [ws('default', '2026-10-23T10:00:00Z', ['terminal:1'])],
@@ -339,7 +344,7 @@ describe('model', () => {
         liveTabs: [{ key: 'terminal:2', title: 'vim notes.md' }]
       })
     );
-    const current = byId(sections, 'default');
+    const current = byId(model.sections, 'default');
     expect(current).toMatchObject({
       current: true,
       hidden: false,
@@ -349,7 +354,7 @@ describe('model', () => {
     expect(current.terminals.map(t => [t.name, t.title])).toEqual([
       ['2', 'vim notes.md']
     ]);
-    expect(byId(sections, null).terminals.map(t => t.name)).toEqual(['1']);
+    expect(model.unowned.terminals.map(t => t.name)).toEqual(['1']);
   });
 
   it("gives this window's workspace a card before its first save", () => {

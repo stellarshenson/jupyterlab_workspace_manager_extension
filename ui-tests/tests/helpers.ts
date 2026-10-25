@@ -363,9 +363,31 @@ export const UNDER_LOAD = { timeout: 20000 };
  */
 export const HEAVY_LOAD = { timeout: 60000 };
 
-/** The card In no workspace. */
-export const nobodyCard = (page: Page): Locator =>
-  page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-nobody`);
+/** The header of the panel section `name`: workspaces, kernels, terminals or servers. */
+export const sectionHeader = (page: Page, name: string): Locator =>
+  page.locator(
+    `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionHeader`
+  );
+
+/** The body of the panel section `name`; the section is open when it has one. */
+export const sectionBody = (page: Page, name: string): Locator =>
+  page.locator(
+    `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionBody`
+  );
+
+/** The count in the header of the panel section `name`, such as (3). */
+export const sectionCount = (page: Page, name: string): Locator =>
+  page.locator(
+    `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionCount`
+  );
+
+/** Open the panel section `name` if it is closed, and return nothing: one section is open at a time. */
+export async function openSection(page: Page, name: string): Promise<void> {
+  const header = sectionHeader(page, name);
+  if ((await header.getAttribute('aria-expanded')) !== 'true') {
+    await header.click();
+  }
+}
 
 /** The rows of a card whose label or detail reads `text` exactly, such as `terminal 3`. */
 export const rowOf = (c: Locator, text: string): Locator =>
@@ -513,9 +535,9 @@ export function activeTab(page: Page): Promise<string | undefined> {
 
 /**
  * Put a connection of a fake language server into the lab's connection manager
- * (`add`) or take it out, then tell the Language servers section, so In no
- * workspace lists it as `fake-lsp (python)`. It carries what the panel's
- * shutdown reads: a document to unregister and a dispose.
+ * (`add`) or take it out, then tell the Language servers section, so the
+ * LANGUAGE SERVERS section lists it as `fake-lsp (python)`. It carries what the
+ * panel's shutdown reads: a document to unregister and a dispose.
  */
 export async function languageServer(page: Page, add: boolean): Promise<void> {
   await page.evaluate(async add => {

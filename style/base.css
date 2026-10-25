@@ -74,27 +74,18 @@
   box-shadow: none;
 }
 
-/* The word gives way to the buttons before the count does */
+/* The word gives way to the buttons before the count does; at 250 px it wraps */
 .jp-WorkspaceManager-header > .jp-WorkspaceManager-title {
   flex: 0 1 auto;
   min-width: 0;
   margin-left: 8px;
-  white-space: nowrap;
   font-weight: 600;
   color: var(--jp-ui-font-color0);
 }
 
 .jp-WorkspaceManager-titleLabel {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.jp-WorkspaceManager-titleCount {
-  flex: 0 0 auto;
-  margin-left: 8px;
-  font-weight: 400;
-  color: var(--jp-ui-font-color1);
+  overflow-wrap: anywhere;
 }
 
 .jp-WorkspaceManager-header > .jp-Toolbar-item {
@@ -163,6 +154,42 @@
   min-height: 0;
   overflow-y: auto;
   padding: 4px 0 8px;
+}
+
+/* The top of a section: its label, its count and, below WORKSPACES, Shut down all */
+.jp-WorkspaceManager-section {
+  margin: 4px 0;
+}
+
+.jp-WorkspaceManager-sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  margin: 0 8px;
+  padding: 4px 6px 4px 8px;
+  border-radius: 3px;
+  background: var(--jp-layout-color2);
+  cursor: pointer;
+}
+
+/* the label keeps its whole text; a Shut down all too wide for the line wraps below it */
+.jp-WorkspaceManager-sectionLabel {
+  flex: 1 0 auto;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--jp-ui-font-color0);
+}
+
+.jp-WorkspaceManager-sectionCount {
+  flex: 0 0 auto;
+  color: var(--jp-ui-font-color0);
+  white-space: nowrap;
+}
+
+.jp-WorkspaceManager-sectionBody {
+  padding: 2px 0;
 }
 
 .jp-WorkspaceManager-filter {
@@ -260,7 +287,7 @@
 }
 
 /* the border takes the margin's place, so opening moves nothing */
-.jp-WorkspaceManager-card.jp-mod-open:not(.jp-mod-current, .jp-mod-nobody) {
+.jp-WorkspaceManager-card.jp-mod-open:not(.jp-mod-current) {
   margin: 3px 7px;
   border: 1px solid var(--wm-strip);
 }
@@ -272,11 +299,6 @@
   background: color-mix(in srgb, var(--wm-active) 40%, var(--jp-layout-color1));
 }
 
-.jp-WorkspaceManager-card.jp-mod-nobody {
-  margin: 3px 7px;
-  border: 1px dashed var(--jp-border-color1);
-}
-
 .jp-WorkspaceManager-cardHeader {
   padding: 6px 8px 6px 12px;
   background: color-mix(in srgb, var(--wm-strip) 8%, var(--jp-layout-color1));
@@ -285,14 +307,6 @@
 
 .jp-WorkspaceManager-card.jp-mod-current > .jp-WorkspaceManager-cardHeader {
   background: var(--wm-active);
-}
-
-.jp-WorkspaceManager-card.jp-mod-nobody > .jp-WorkspaceManager-cardHeader {
-  background: transparent;
-}
-
-.jp-WorkspaceManager-card.jp-mod-others > .jp-WorkspaceManager-cardHeader {
-  background: var(--jp-layout-color2);
 }
 
 .jp-WorkspaceManager-headerLine {
@@ -317,12 +331,12 @@
   color: var(--jp-ui-font-color0);
 }
 
+/* As many lines as the purpose needs: the card grows with it */
 .jp-WorkspaceManager-purpose {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   color: var(--jp-ui-font-color0);
 }
 
@@ -380,7 +394,7 @@
   cursor: pointer;
 }
 
-/* the shutdown button of an Other sessions item, at the row's end */
+/* the shutdown button of a language server item, at the row's end */
 .jp-WorkspaceManager-row > .jp-WorkspaceManager-iconButton {
   margin-left: auto;
 }
@@ -498,7 +512,7 @@
   margin-left: auto;
 }
 
-/* the child rows of an Other sessions item, under its icon */
+/* the child rows of a language server item, under its icon */
 .jp-WorkspaceManager-row.jp-mod-child {
   padding-left: 38px;
 }
@@ -536,12 +550,6 @@
   background: var(--jp-error-color1);
 }
 
-.jp-WorkspaceManager-buttons {
-  display: flex;
-  gap: 8px;
-  padding: 8px 8px 0 16px;
-}
-
 .jp-WorkspaceManager-button {
   height: 26px;
   padding: 0 12px;
@@ -552,6 +560,14 @@
   font-family: inherit;
   font-size: var(--jp-ui-font-size1);
   cursor: pointer;
+}
+
+/* the Shut down all of a section header: a short button that leaves the label room */
+.jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-button {
+  flex: 0 0 auto;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 8px;
 }
 
 /* without its fill, as colour 1 on the fill reads 3.6:1 in Galaxa Steel */

@@ -54,7 +54,7 @@ export interface IKernelRow {
   name: string;
   /** the display name of its kernelspec; the id when the spec is unknown */
   label: string;
-  /** the tooltip: the session path, then the kernelspec id */
+  /** the tooltip: the kernelspec display name, the session path, then the state */
   title: string;
   /** the session path of its notebook or console; empty without a session */
   path: string;
@@ -66,8 +66,8 @@ export interface IKernelRow {
 }
 
 export interface ISection {
-  /** the workspace id; null for In no workspace */
-  id: string | null;
+  /** the workspace id */
+  id: string;
   current: boolean;
   /** hidden by its record; never true for this window's workspace */
   hidden: boolean;
@@ -92,9 +92,18 @@ export interface IModelInput {
   current: string;
   /** the open tabs of this window, which stand for its workspace's saved layout */
   liveTabs: ITab[];
-  /** the running language servers, which In no workspace lists */
-  languageServers?: number;
 }
+
+/** The panel: one section per workspace, and what belongs to no workspace. */
+export interface IModel {
+  sections: ISection[];
+  /** the terminals and kernels in no workspace: the TERMINALS and KERNELS sections */
+  unowned: { terminals: ITerminalRow[]; kernels: IKernelRow[] };
+}
+
+/** The details of a row's tooltip, one per line; a missing detail leaves its line out. */
+export const lines = (...details: (string | null | undefined)[]): string =>
+  details.filter(Boolean).join('\n');
 
 /** The dot of a kernel row: idle, busy, or unknown for every other state. */
 export function kernelDot(state: string | undefined): string {
@@ -116,10 +125,10 @@ export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
 
 /**
  * One section per workspace, hidden ones included and flagged: this window's
- * workspace first, the others by `last_modified` newest first, then In no
- * workspace when it holds a terminal, a kernel or a language server.
+ * workspace first, the others by `last_modified` newest first. The terminals
+ * and kernels no workspace holds are returned beside them.
  */
-export function buildSections(input: IModelInput): ISection[] {
+export function buildModel(input: IModelInput): IModel {
   const { records, current } = input;
   let workspaces = input.workspaces;
   if (!workspaces.some(w => w.metadata.id === current)) {
@@ -186,7 +195,7 @@ export function buildSections(input: IModelInput): ISection[] {
     return { ws, docs, terminals, kernels };
   });
 
-  const terminalRow = (t: ITerminal, holders: string[], id: string | null) => ({
+  const terminalRow = (t: ITerminal, holders: string[], id?: string) => ({
     name: t.name,
     process: t.process ?? null,
     lastActivity: t.last_activity,
@@ -197,22 +206,25 @@ export function buildSections(input: IModelInput): ISection[] {
     k: Kernel.IModel,
     session: Session.IModel | undefined,
     holders: string[],
-    id: string | null
-  ) => ({
-    id: k.id,
-    name: k.name,
-    label: input.specs?.kernelspecs[k.name]?.display_name ?? k.name,
-    title: session?.path ? `${session.path}\n${k.name}` : k.name,
-    path: session?.path ?? '',
-    detail: !session
-      ? ''
-      : session.type === 'console'
-        ? session.name
-        : basename(session.path),
-    lastActivity: k.last_activity,
-    dotClass: kernelDot(k.execution_state),
-    alsoIn: holders.filter(h => h !== id)
-  });
+    id?: string
+  ) => {
+    const label = input.specs?.kernelspecs[k.name]?.display_name ?? k.name;
+    return {
+      id: k.id,
+      name: k.name,
+      label,
+      title: lines(label, session?.path, k.execution_state),
+      path: session?.path ?? '',
+      detail: !session
+        ? ''
+        : session.type === 'console'
+          ? session.name
+          : basename(session.path),
+      lastActivity: k.last_activity,
+      dotClass: kernelDot(k.execution_state),
+      alsoIn: holders.filter(h => h !== id)
+    };
+  };
 
   const sections: ISection[] = held.map(({ ws, docs, terminals, kernels }) => {
     const id = ws.metadata.id;
@@ -244,37 +256,26 @@ export function buildSections(input: IModelInput): ISection[] {
     (a, b) => Number(b.current) - Number(a.current) || time(b) - time(a)
   );
 
-  const nobody = {
+  const unowned = {
     terminals: input.terminals
       .filter(t => !termHolders.has(t.name))
-      .map(t => terminalRow(t, [], null)),
+      .map(t => terminalRow(t, [])),
     kernels: Array.from(kernelById.values())
       .filter(k => !kernelHolders.has(k.id))
       .map(k =>
         kernelRow(
           k,
           input.sessions.find(s => s.kernel?.id === k.id),
-          [],
-          null
+          []
         )
       )
   };
-  if (
-    nobody.terminals.length ||
-    nobody.kernels.length ||
-    input.languageServers
-  ) {
-    sections.push({
-      id: null,
-      current: false,
-      hidden: false,
-      purpose: '',
-      colour: null,
-      tabs: [],
-      ...nobody
-    });
-  }
-  return sections;
+  return { sections, unowned };
+}
+
+/** The workspace sections of the panel; `buildModel` adds what belongs to no workspace. */
+export function buildSections(input: IModelInput): ISection[] {
+  return buildModel(input).sections;
 }
 
 /**

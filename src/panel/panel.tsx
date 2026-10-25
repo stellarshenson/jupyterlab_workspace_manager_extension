@@ -41,13 +41,15 @@ import {
 import { age } from '../model/age';
 import { filterSections, type ICard } from '../model/filter';
 import {
-  buildSections,
+  buildModel,
   type IKernelRow,
+  type IModel,
   type IRecord,
   type ISection,
   type ITab,
   type ITabRow,
   type ITerminalRow,
+  lines,
   tabsOf,
   withoutTabs
 } from '../model/model';
@@ -56,14 +58,10 @@ import { assignColours, type Colour, nextColour } from '../model/palette';
 import { confirm, descriptionDialog, newWorkspaceDialog } from './dialogs';
 import { actionMenu, workspaceMenu } from './menus';
 
-/** Sections of other extensions the cards replace. */
-const REPLACED = ['Open Tabs', 'Kernels', 'Terminals', 'Workspaces'];
-/** The section of other extensions In no workspace lists after its kernels. */
+/** The section of the panel that lists the running language servers. */
 const LANGUAGE_SERVERS = 'Language servers';
 const POLL_MS = 10000;
 const SPIN_MS = 500;
-const NONE = 'x:none';
-const OTHERS = 'x:others';
 /** The lists before the first reload: a list that fails at once stays empty. */
 const EMPTY: ILoaded = {
   workspaces: [],
@@ -74,8 +72,7 @@ const EMPTY: ILoaded = {
   sessions: []
 };
 
-const keyOf = (section: ISection) =>
-  section.id === null ? NONE : `w:${section.id}`;
+const keyOf = (section: ISection) => `w:${section.id}`;
 const dirname = (path = '') =>
   path.slice(0, Math.max(0, path.lastIndexOf('/')));
 
@@ -93,10 +90,12 @@ export namespace WorkspacePanel {
 
 /**
  * The workspace panel in the sidebar place of the Running panel: a toolbar
- * header (title, count and buttons; other extensions add theirs after them),
- * the filter field, then one card per workspace, In no workspace and Other
- * sessions. The cards are React, rendered synchronously, so a reload keeps
- * the scroll position, the focus and every open card or menu.
+ * header (title and buttons; other extensions add theirs after them), the
+ * filter field, then four accordion sections - WORKSPACES holding one card per
+ * workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS with what belongs to
+ * no workspace. One section is open at a time. The cards are React, rendered
+ * synchronously, so a reload keeps the scroll position, the focus and every
+ * open card or menu.
  */
 export class WorkspacePanel
   extends SidePanel
@@ -116,11 +115,8 @@ export class WorkspacePanel
     title.addClass('jp-WorkspaceManager-title');
     const label = document.createElement('span');
     label.className = 'jp-WorkspaceManager-titleLabel';
-    label.textContent = 'WORKSPACES';
+    label.textContent = 'WORKBENCH';
     title.node.appendChild(label);
-    this._count = document.createElement('span');
-    this._count.className = 'jp-WorkspaceManager-titleCount';
-    title.node.appendChild(this._count);
     this.toolbar.addItem('title', title);
     this.toolbar.addItem('spacer', Toolbar.createSpacerItem());
     this.toolbar.addItem(
@@ -314,9 +310,9 @@ export class WorkspacePanel
 
   /** A workspace without a stored colour takes the next one of the rotation. */
   private _giveColours(): void {
-    const ids = this._sections()
-      .filter(s => s.id !== null && !s.colour)
-      .map(s => s.id!)
+    const ids = (this._model()?.sections ?? [])
+      .filter(s => !s.colour)
+      .map(s => s.id)
       .reverse();
     if (!ids.length) {
       return;
@@ -336,23 +332,22 @@ export class WorkspacePanel
     }
   }
 
-  private _sections(data = this._data): ISection[] {
+  private _model(data = this._data): IModel | null {
     if (!data) {
-      return [];
+      return null;
     }
-    const sections = buildSections({
+    const model = buildModel({
       ...data,
       specs: this._app.serviceManager.kernelspecs.specs,
       current: this._current,
-      liveTabs: this._liveTabs(),
-      languageServers: running(this._languageServers()).length
+      liveTabs: this._liveTabs()
     });
-    for (const s of sections) {
-      if (s.id !== null && !s.colour) {
+    for (const s of model.sections) {
+      if (!s.colour) {
         s.colour = this._colours[s.id] ?? null;
       }
     }
-    return sections;
+    return model;
   }
 
   /** The open tabs of this window, keyed as the layout restorer keys them. */
@@ -390,16 +385,9 @@ export class WorkspacePanel
   }
 
   private _watch(manager: IRunningSessions.IManager): void {
-    if (!REPLACED.includes(manager.name)) {
+    if (manager.name === LANGUAGE_SERVERS) {
       manager.runningChanged.connect(() => this._render());
-      this._render();
     }
-  }
-
-  private _others(): IRunningSessions.IManager[] {
-    return (this._managers?.items() ?? []).filter(
-      m => !REPLACED.includes(m.name) && m.name !== LANGUAGE_SERVERS
-    );
   }
 
   private _languageServers(): IRunningSessions.IManager | undefined {
@@ -422,6 +410,16 @@ export class WorkspacePanel
   private _setQuery(query: string): void {
     this._query = query;
     this._closedInFilter.clear();
+    // the filter shows the workspace cards: its section opens as the query starts
+    if (query.trim()) {
+      this._section = 'workspaces';
+    }
+    this._render();
+  }
+
+  /** A section header: it opens and closes the open one; a second click closes it. */
+  private _toggleSection(key: string): void {
+    this._section = this._section === key ? null : key;
     this._render();
   }
 
@@ -447,16 +445,17 @@ export class WorkspacePanel
     if (this.isDisposed) {
       return;
     }
-    const sections = this._sections();
+    const model = this._model();
+    const sections = model?.sections ?? [];
     const filtering = !!this._query.trim();
     const { cards, unmatched } = filterSections(
       sections,
       this._query,
       this._showHidden
     );
-    this._count.textContent = `(${cards.filter(c => c.section.id !== null).length})`;
+    const unowned = model?.unowned ?? { terminals: [], kernels: [] };
+    const servers = running(this._languageServers());
     const hidden = sections.filter(s => s.hidden).length;
-    const others = filtering ? [] : this._others();
     const now = Date.now();
     flushSync(() =>
       this._root.render(
@@ -468,26 +467,61 @@ export class WorkspacePanel
             </div>
           )}
           <div className="jp-WorkspaceManager-list">
-            {cards.map(card => this._renderCard(card, filtering, now))}
-            {others.length > 0 && this._renderOthers(others)}
-            {filtering && !cards.length && (
-              <div className="jp-WorkspaceManager-note">Nothing matches</div>
+            {this._renderSection(
+              'workspaces',
+              'WORKSPACES',
+              cards.length,
+              <>
+                {cards.map(card => this._renderCard(card, filtering, now))}
+                {model && !filtering && !cards.length && (
+                  <div className="jp-WorkspaceManager-empty">No workspaces</div>
+                )}
+                {filtering && !cards.length && (
+                  <div className="jp-WorkspaceManager-note">
+                    Nothing matches
+                  </div>
+                )}
+                {filtering && cards.length > 0 && unmatched > 0 && (
+                  <div className="jp-WorkspaceManager-note">
+                    {unmatched} {unmatched === 1 ? 'workspace' : 'workspaces'}{' '}
+                    without a match {unmatched === 1 ? 'is' : 'are'} not shown
+                  </div>
+                )}
+                {hidden > 0 && (
+                  <div className="jp-WorkspaceManager-note">
+                    <eyeOffIcon.react
+                      tag="span"
+                      className="jp-WorkspaceManager-noteIcon"
+                    />
+                    {hidden} hidden {hidden === 1 ? 'workspace' : 'workspaces'}
+                  </div>
+                )}
+              </>
             )}
-            {filtering && cards.length > 0 && unmatched > 0 && (
-              <div className="jp-WorkspaceManager-note">
-                {unmatched} {unmatched === 1 ? 'workspace' : 'workspaces'}{' '}
-                without a match {unmatched === 1 ? 'is' : 'are'} not shown
-              </div>
-            )}
-            {hidden > 0 && (
-              <div className="jp-WorkspaceManager-note">
-                <eyeOffIcon.react
-                  tag="span"
-                  className="jp-WorkspaceManager-noteIcon"
-                />
-                {hidden} hidden {hidden === 1 ? 'workspace' : 'workspaces'}
-              </div>
-            )}
+            {unowned.kernels.length > 0 &&
+              this._renderSection(
+                'kernels',
+                'KERNELS',
+                unowned.kernels.length,
+                unowned.kernels.map(k => this._kernelRow(null, k, now)),
+                'kernels'
+              )}
+            {unowned.terminals.length > 0 &&
+              this._renderSection(
+                'terminals',
+                'TERMINALS',
+                unowned.terminals.length,
+                unowned.terminals.map(t => this._terminalRow(null, t, now)),
+                'terminals'
+              )}
+            {servers.length > 0 &&
+              this._renderSection(
+                'servers',
+                'LANGUAGE SERVERS',
+                servers.length,
+                this._managerRows(this._languageServers()!),
+                'servers'
+              )}
           </div>
         </>
       )
@@ -539,6 +573,60 @@ export class WorkspacePanel
     );
   }
 
+  /**
+   * One accordion section: the header carries the label, the count and, for the
+   * sections below WORKSPACES, a Shut down all; only the open section shows its body.
+   */
+  private _renderSection(
+    key: string,
+    label: string,
+    n: number,
+    body: React.ReactNode,
+    shutdown?: 'servers' | 'terminals' | 'kernels'
+  ): React.ReactElement {
+    const open = this._section === key;
+    return (
+      <div
+        key={key}
+        className={`jp-WorkspaceManager-section${open ? ' jp-mod-open' : ''}`}
+        data-section={key}
+      >
+        <div
+          className="jp-WorkspaceManager-sectionHeader"
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={() => this._toggleSection(key)}
+          onKeyDown={e => {
+            if (
+              e.target === e.currentTarget &&
+              (e.key === 'Enter' || e.key === ' ')
+            ) {
+              e.preventDefault();
+              this._toggleSection(key);
+            }
+          }}
+        >
+          {caret(open, () => this._toggleSection(key))}
+          <span className="jp-WorkspaceManager-sectionLabel">{label}</span>
+          <span className="jp-WorkspaceManager-sectionCount">({n})</span>
+          {shutdown && (
+            <button
+              className="jp-WorkspaceManager-button"
+              onClick={e => {
+                e.stopPropagation();
+                void this._shutDownSection(shutdown);
+              }}
+            >
+              Shut down all
+            </button>
+          )}
+        </div>
+        {open && <div className="jp-WorkspaceManager-sectionBody">{body}</div>}
+      </div>
+    );
+  }
+
   private _renderCard(
     card: ICard,
     filtering: boolean,
@@ -548,23 +636,18 @@ export class WorkspacePanel
     const key = keyOf(section);
     const open = this._isOpen(key);
     const id = section.id;
-    const name = id ?? 'In no workspace';
+    const name = id;
     const classes = [
       'jp-WorkspaceManager-card',
       section.colour ? `jp-mod-${section.colour}` : '',
       section.current ? 'jp-mod-current' : '',
       // not jp-mod-hidden: JupyterLab sets display: none on that class
       section.hidden ? 'jp-mod-hiddenWorkspace' : '',
-      id === null ? 'jp-mod-nobody' : '',
       open ? 'jp-mod-open' : ''
     ];
     const when = age(section.lastModified, now);
-    // the filter matches no language server, as it matches no Other sessions item
-    const servers = id === null && !filtering ? this._languageServers() : null;
-    const serverGroup =
-      servers && running(servers).length ? this._managerGroup(servers) : null;
     // the header of another workspace's card switches to it; the triangle opens the card
-    const switches = id !== null && !section.current;
+    const switches = !section.current;
     const click = () =>
       switches ? void this._openWorkspace(section) : this._toggle(key);
     return (
@@ -572,7 +655,7 @@ export class WorkspacePanel
         key={key}
         className={classes.filter(Boolean).join(' ')}
         data-key={key}
-        data-workspace={id ?? undefined}
+        data-workspace={id}
       >
         <div
           className="jp-WorkspaceManager-cardHeader"
@@ -594,7 +677,7 @@ export class WorkspacePanel
           <div className="jp-WorkspaceManager-headerLine">
             {caret(open, () => this._toggle(key))}
             <span className="jp-WorkspaceManager-name">{name}</span>
-            {id !== null && !open && !section.hidden && (
+            {!open && !section.hidden && (
               <span className="jp-WorkspaceManager-hoverActions">
                 {iconButton(
                   openIcon,
@@ -615,24 +698,20 @@ export class WorkspacePanel
                 {iconButton(
                   eyeOffIcon,
                   'Show workspace again',
-                  () => void this._store(id!, { hidden: false })
+                  () => void this._store(id, { hidden: false })
                 )}
               </>
             ) : (
-              id !== null && (
-                <span className={when.className}>
-                  {when.dot && (
-                    <span className="jp-WorkspaceManager-dot jp-mod-busy" />
-                  )}
-                  {when.label}
-                </span>
-              )
+              <span className={when.className}>
+                {when.dot && (
+                  <span className="jp-WorkspaceManager-dot jp-mod-busy" />
+                )}
+                {when.label}
+              </span>
             )}
             {!section.hidden &&
-              iconButton(
-                ellipsesIcon,
-                id === null ? 'Menu of In no workspace' : 'Workspace menu',
-                e => this._openMenu(section, e.currentTarget as HTMLElement)
+              iconButton(ellipsesIcon, 'Workspace menu', e =>
+                this._openMenu(section, e.currentTarget as HTMLElement)
               )}
           </div>
           {!section.hidden && (
@@ -646,7 +725,7 @@ export class WorkspacePanel
                 </span>
               ) : (
                 <span className="jp-WorkspaceManager-counts">
-                  {id !== null && count(tabIcon, 'Tabs', section.tabs.length)}
+                  {count(tabIcon, 'Tabs', section.tabs.length)}
                   {count(terminalGlyph, 'Terminals', section.terminals.length)}
                   {count(kernelIcon, 'Kernels', section.kernels.length)}
                 </span>
@@ -674,8 +753,7 @@ export class WorkspacePanel
                 card.kernels.length,
                 card.kernels.map(k => this._kernelRow(section, k, now))
               )}
-            {serverGroup}
-            {card.total === 0 && !serverGroup && (
+            {card.total === 0 && (
               <div className="jp-WorkspaceManager-empty">
                 No tabs, terminals or kernels
               </div>
@@ -715,7 +793,7 @@ export class WorkspacePanel
       label: tab.label,
       detail: dirname(tab.path),
       folder: true,
-      title: tab.path ?? tab.label,
+      title: tab.path ?? '',
       open: () => this._openRow(section, tab.key),
       menu: [
         {
@@ -728,7 +806,8 @@ export class WorkspacePanel
   }
 
   private _terminalRow(
-    section: ISection,
+    /** null for a row of the TERMINALS section: a terminal in no workspace */
+    section: ISection | null,
     t: ITerminalRow,
     now: number
   ): React.ReactElement {
@@ -739,7 +818,7 @@ export class WorkspacePanel
       label: t.process ?? `terminal ${t.name}`,
       detail: t.process ? `terminal ${t.name}` : '',
       also: t.alsoIn,
-      title: t.title ?? `terminal ${t.name}`,
+      title: lines(`terminal ${t.name}`, t.process, when.label),
       age: (
         <span className={when.className}>
           {when.dot && <span className="jp-WorkspaceManager-dot jp-mod-busy" />}
@@ -747,7 +826,7 @@ export class WorkspacePanel
         </span>
       ),
       open: () =>
-        section.id === null
+        section === null
           ? void this._app.commands.execute('terminal:open', { name: t.name })
           : this._openRow(section, `terminal:${t.name}`),
       menu: [
@@ -761,7 +840,8 @@ export class WorkspacePanel
   }
 
   private _kernelRow(
-    section: ISection,
+    /** null for a row of the KERNELS section: a kernel in no workspace */
+    section: ISection | null,
     k: IKernelRow,
     now: number
   ): React.ReactElement {
@@ -779,7 +859,7 @@ export class WorkspacePanel
         </span>
       ),
       open: () => {
-        if (section.id !== null) {
+        if (section !== null) {
           this._openRow(section, `notebook:${k.path}`, `console:${k.path}`);
           return;
         }
@@ -801,53 +881,9 @@ export class WorkspacePanel
     });
   }
 
-  private _renderOthers(
-    managers: IRunningSessions.IManager[]
-  ): React.ReactElement {
-    const open = this._isOpen(OTHERS);
-    return (
-      <div
-        key={OTHERS}
-        data-key={OTHERS}
-        className={`jp-WorkspaceManager-card jp-mod-others${open ? ' jp-mod-open' : ''}`}
-      >
-        <div
-          className="jp-WorkspaceManager-cardHeader"
-          role="button"
-          tabIndex={0}
-          aria-expanded={open}
-          onClick={() => this._toggle(OTHERS)}
-          onKeyDown={e => {
-            if (
-              e.target === e.currentTarget &&
-              (e.key === 'Enter' || e.key === ' ')
-            ) {
-              e.preventDefault();
-              this._toggle(OTHERS);
-            }
-          }}
-        >
-          <div className="jp-WorkspaceManager-headerLine">
-            {caret(open, () => this._toggle(OTHERS))}
-            <span className="jp-WorkspaceManager-name">Other sessions</span>
-            <span className="jp-WorkspaceManager-counts">
-              ({managers.length})
-            </span>
-          </div>
-        </div>
-        {open && (
-          <div className="jp-WorkspaceManager-cardBody">
-            {managers.map(m => this._managerGroup(m))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /** The group of a section of another extension, with the actions the replaced panel gives it. */
-  private _managerGroup(m: IRunningSessions.IManager): React.ReactElement {
+  /** The rows of the LANGUAGE SERVERS section, with the actions the replaced panel gives them. */
+  private _managerRows(m: IRunningSessions.IManager): React.ReactElement[] {
     const items = running(m);
-    const all = m.shutdownAllLabel || 'Shut Down All';
     const rows = (
       list: IRunningSessions.IRunningItem[],
       key: string,
@@ -877,7 +913,7 @@ export class WorkspacePanel
                 ),
               label: item.label(),
               detail: item.detail?.() ?? '',
-              title: item.labelTitle?.() ?? '',
+              title: languageServerTitle(item),
               child,
               shutdown: item.shutdown && {
                 label: label ?? 'Shut Down',
@@ -890,50 +926,78 @@ export class WorkspacePanel
           ];
         })
       );
-    return this._group(m.name.toUpperCase(), items.length, [
-      ...rows(items, m.name, false),
-      <div className="jp-WorkspaceManager-buttons" key="all">
-        <button
-          className="jp-WorkspaceManager-button"
-          disabled={!items.length}
-          onClick={async () => {
-            const text =
-              typeof m.shutdownAllConfirmationText === 'function'
-                ? m.shutdownAllConfirmationText()
-                : m.shutdownAllConfirmationText;
-            if (await confirm(`${all}?`, text ?? `${all} ${m.name}`, all)) {
-              m.shutdownAll();
-            }
-          }}
-        >
-          {all}
-        </button>
-      </div>
-    ]);
+    return rows(items, m.name, false);
+  }
+
+  /** Shut down every item of one of the sections below WORKSPACES, asking once. */
+  private async _shutDownSection(
+    kind: 'servers' | 'terminals' | 'kernels'
+  ): Promise<void> {
+    if (kind === 'servers') {
+      const manager = this._languageServers();
+      const text =
+        typeof manager?.shutdownAllConfirmationText === 'function'
+          ? manager.shutdownAllConfirmationText()
+          : manager?.shutdownAllConfirmationText;
+      if (
+        !(await confirm(
+          'Shut down all?',
+          text ?? 'Shut down all language servers.',
+          'Shut down all'
+        ))
+      ) {
+        return;
+      }
+      await this._act(async () => manager?.shutdownAll());
+      return;
+    }
+    const n = this._model()?.unowned[kind].length ?? 0;
+    const word = kind === 'terminals' ? 'terminal' : 'kernel';
+    if (
+      !(await confirm(
+        'Shut down all?',
+        `Shut down ${n} ${word}${n === 1 ? '' : 's'} in no workspace.`,
+        'Shut down all'
+      ))
+    ) {
+      return;
+    }
+    await this._act(async () => {
+      // what is in no workspace now: another window may have moved a row while the dialog was open
+      const { failed, ...data } = await load(this._settings);
+      if (failed.length) {
+        throw new Error(
+          `Nothing was shut down. Reload failed: ${failed.join(', ')}`
+        );
+      }
+      const unowned = this._model({ ...EMPTY, ...data })!.unowned;
+      if (kind === 'terminals') {
+        await Promise.all(
+          unowned.terminals.map(x =>
+            this._app.serviceManager.terminals.shutdown(x.name)
+          )
+        );
+      } else {
+        await Promise.all(
+          unowned.kernels.map(x =>
+            this._app.serviceManager.kernels.shutdown(x.id)
+          )
+        );
+      }
+    });
   }
 
   private _openMenu(section: ISection, anchor: HTMLElement): void {
     const id = section.id;
-    let menu: Menu;
-    if (id === null) {
-      menu = actionMenu([
-        {
-          label: 'Shut down all',
-          icon: closeIcon,
-          execute: () => void this._shutDownAll(section)
-        }
-      ]);
-    } else {
-      menu = workspaceMenu(section.colour, section.current, {
-        open: () => void this._openWorkspace(section),
-        openInNewTab: () => void this._openWorkspace(section, true),
-        closeAll: () => void this._closeAll(section),
-        describe: () => void this._describe(section),
-        colour: colour => void this._store(id, { colour }),
-        hide: () => void this._store(id, { hidden: true }),
-        delete: () => void this._delete(section)
-      });
-    }
+    const menu: Menu = workspaceMenu(section.colour, section.current, {
+      open: () => void this._openWorkspace(section),
+      openInNewTab: () => void this._openWorkspace(section, true),
+      closeAll: () => void this._closeAll(section),
+      describe: () => void this._describe(section),
+      colour: colour => void this._store(id, { colour }),
+      hide: () => void this._store(id, { hidden: true }),
+      delete: () => void this._delete(section)
+    });
     const rect = anchor.getBoundingClientRect();
     menu.open(rect.left, rect.bottom);
   }
@@ -962,7 +1026,7 @@ export class WorkspacePanel
     section: ISection,
     newTab = false
   ): Promise<void> {
-    const id = section.id!;
+    const id = section.id;
     if (section.current) {
       return;
     }
@@ -996,7 +1060,7 @@ export class WorkspacePanel
   }
 
   private async _closeAll(section: ISection): Promise<void> {
-    const id = section.id!;
+    const id = section.id;
     await this._act(async () => {
       if (!section.current && (await this._refused(id, 'Close all tabs'))) {
         return;
@@ -1042,7 +1106,7 @@ export class WorkspacePanel
       }
       return;
     }
-    const id = section.id!;
+    const id = section.id;
     await this._act(async () => {
       if (await this._refused(id, 'Close tab')) {
         return;
@@ -1057,7 +1121,7 @@ export class WorkspacePanel
   }
 
   private async _delete(section: ISection): Promise<void> {
-    const id = section.id!;
+    const id = section.id;
     await this._act(async () => {
       if (section.current || (await this._refused(id, 'Delete workspace'))) {
         return;
@@ -1070,9 +1134,9 @@ export class WorkspacePanel
   }
 
   private async _describe(section: ISection): Promise<void> {
-    const purpose = await descriptionDialog(section.id!, section.purpose);
+    const purpose = await descriptionDialog(section.id, section.purpose);
     if (purpose !== null) {
-      await this._store(section.id!, { purpose: purpose.trim() });
+      await this._store(section.id, { purpose: purpose.trim() });
     }
   }
 
@@ -1088,44 +1152,6 @@ export class WorkspacePanel
       return;
     }
     await this._act(() => this._app.serviceManager.terminals.shutdown(t.name));
-  }
-
-  private async _shutDownAll(section: ISection): Promise<void> {
-    const t = section.terminals.length;
-    const k = section.kernels.length;
-    const l = running(this._languageServers()).length;
-    const many = (n: number, word: string) =>
-      `${n} ${word}${n === 1 ? '' : 's'}`;
-    if (
-      !(await confirm(
-        'Shut down all?',
-        `Shut down ${many(t, 'terminal')}, ${many(k, 'kernel')} and ${many(l, 'language server')} that are in no workspace.`,
-        'Shut down all'
-      ))
-    ) {
-      return;
-    }
-    await this._act(async () => {
-      // what is in no workspace now: another window may have moved a row while the dialog was open
-      const { failed, ...data } = await load(this._settings);
-      if (failed.length) {
-        throw new Error(
-          `Nothing was shut down. Reload failed: ${failed.join(', ')}`
-        );
-      }
-      const now = this._sections({ ...EMPTY, ...data }).find(
-        s => s.id === null
-      );
-      await Promise.all([
-        ...(now?.terminals ?? []).map(x =>
-          this._app.serviceManager.terminals.shutdown(x.name)
-        ),
-        ...(now?.kernels ?? []).map(x =>
-          this._app.serviceManager.kernels.shutdown(x.id)
-        ),
-        ...running(this._languageServers()).map(x => x.shutdown?.())
-      ]);
-    });
   }
 
   /** Store a record change; the card shows it at once. */
@@ -1159,7 +1185,6 @@ export class WorkspacePanel
   private _window: string;
   private _managers: IRunningSessionManagers | null;
   private _root: Root;
-  private _count: HTMLSpanElement;
   private _filterButton: Widget;
   private _hiddenButton: Widget;
   private _refreshButton: Widget;
@@ -1179,6 +1204,8 @@ export class WorkspacePanel
   /** the colour given last, as the server keeps it for every window */
   private _last: Colour | null = null;
 
+  /** the open section of the accordion: one at a time, WORKSPACES first */
+  private _section: string | null = 'workspaces';
   private _open: string | null = null;
   private _scrollTo: string | null = null;
   private _query = '';
@@ -1237,6 +1264,18 @@ function running(
   m?: IRunningSessions.IManager
 ): IRunningSessions.IRunningItem[] {
   return m?.running({ mode: m.supportsMultipleViews ? 'tree' : 'list' }) ?? [];
+}
+
+/**
+ * The tooltip of a row of another extension's section: a language server's id
+ * and language, which the LSP extension gives only as the label `id (language)`.
+ */
+function languageServerTitle(item: IRunningSessions.IRunningItem): string {
+  const label = item.label();
+  const text = typeof label === 'string' ? label : '';
+  // shortcut: the LSP item exposes no id or language; upgrade if it gains detail()
+  const match = /^(.*) \(([^()]*)\)$/.exec(text);
+  return match ? lines(match[1], match[2]) : text;
 }
 
 /** The triangle of a card: a button of its own that opens or closes the card. */

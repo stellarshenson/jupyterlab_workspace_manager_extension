@@ -18,11 +18,10 @@ import {
   kernelIds,
   languageServer,
   layout,
-  menuItem,
   newTerminalTab,
   NEXT_POLL,
-  nobodyCard,
   openDocument,
+  openSection,
   PANEL,
   panelWidth,
   putNotebook,
@@ -30,6 +29,9 @@ import {
   rowOf,
   saved,
   secondWindow,
+  sectionBody,
+  sectionCount,
+  sectionHeader,
   shows,
   startSession,
   startTerminal,
@@ -58,6 +60,19 @@ const serverConnections = (page: Page): Promise<number> =>
       '@jupyterlab/lsp-extension:plugin'
     );
     return connections.size;
+  });
+
+/** Answer GET `url` with only the entries `keep` accepts: the items of other tests are not this test's. */
+const only = (page: Page, url: RegExp, keep: (x: any) => boolean) =>
+  page.route(url, async route => {
+    if (route.request().method() !== 'GET') {
+      return route.fallback();
+    }
+    const response = await route.fetch();
+    const json = response.ok()
+      ? (await response.json()).filter(keep)
+      : undefined;
+    await route.fulfill({ response, json });
   });
 
 test.describe('terminals, kernels and sessions of the server', () => {
@@ -122,7 +137,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
     }
   });
 
-  test('ACC-LISTS-38-NO-WORKSPACE: a terminal of no workspace is under In no workspace, after the last workspace; a click or Enter opens it here', async ({
+  test('ACC-LISTS-38-NO-WORKSPACE: a terminal of no workspace is in the TERMINALS section, after the last workspace; a click or Enter opens it here', async ({
     page
   }) => {
     const [first, second] = [
@@ -131,32 +146,31 @@ test.describe('terminals, kernels and sessions of the server', () => {
     ];
     const current = fresh('nobody');
     await putWorkspace(page, `${current}-a`);
+    await only(
+      page,
+      /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+      t => [first, second].includes(t.name)
+    );
     try {
       await enterWorkspace(page, current);
-      await expect(nobodyCard(page)).toBeVisible();
-      const kinds = await page
-        .locator(`${PANEL} .jp-WorkspaceManager-card`)
-        .evaluateAll(nodes =>
-          nodes.map(n =>
-            n.classList.contains('jp-mod-nobody')
-              ? 'nobody'
-              : n.hasAttribute('data-workspace')
-                ? 'workspace'
-                : 'other'
-          )
-        );
-      expect(kinds.lastIndexOf('workspace')).toBe(1);
-      expect(kinds.indexOf('nobody')).toBe(2);
+      // the sections that hold what belongs to no workspace come after WORKSPACES
+      const last = await page
+        .locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`)
+        .last()
+        .boundingBox();
+      const terminals = await sectionHeader(page, 'terminals').boundingBox();
+      expect(terminals!.y).toBeGreaterThan(last!.y);
+      await expect(sectionCount(page, 'terminals')).toHaveText('(2)');
 
-      await nobodyCard(page).locator('.jp-WorkspaceManager-cardHeader').click();
-      await rowOf(nobodyCard(page), `terminal ${first}`).click();
+      await openSection(page, 'terminals');
+      await rowOf(sectionBody(page, 'terminals'), `terminal ${first}`).click();
       // a terminal tab on that terminal, not a new one
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(first);
       await expect(
         page.locator('#jp-main-dock-panel .jp-Terminal:visible')
       ).toHaveCount(1);
 
-      await rowOf(nobodyCard(page), `terminal ${second}`).focus();
+      await rowOf(sectionBody(page, 'terminals'), `terminal ${second}`).focus();
       await page.keyboard.press('Enter');
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(second);
       expect(await terminalNames(page)).toEqual(
@@ -169,7 +183,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
     }
   });
 
-  test('ACC-LISTS-110-SHUTDOWN-ALL: Shut down all of In no workspace asks once, naming its terminal, kernel and language server, and ends all three', async ({
+  test("ACC-LISTS-110-SHUTDOWN-ALL: each of the KERNELS, TERMINALS and LANGUAGE SERVERS headers offers Shut down all; it asks once, naming its items, and shuts that section's items", async ({
     page
   }) => {
     const terminal = await startTerminal(page);
@@ -179,55 +193,69 @@ test.describe('terminals, kernels and sessions of the server', () => {
     expect(response.ok()).toBe(true);
     const kernel: string = (await response.json()).id;
     // the terminals, kernels and sessions other tests run at the same time are in no workspace too
-    const only = (url: RegExp, keep: (x: any) => boolean) =>
-      page.route(url, async route => {
-        if (route.request().method() !== 'GET') {
-          return route.fallback();
-        }
-        const response = await route.fetch();
-        const json = response.ok()
-          ? (await response.json()).filter(keep)
-          : undefined;
-        await route.fulfill({ response, json });
-      });
     await only(
+      page,
       /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
       t => t.name === terminal
     );
-    await only(/\/api\/kernels(\?.*)?$/, k => k.id === kernel);
-    await only(/\/api\/sessions(\?.*)?$/, () => false);
+    await only(page, /\/api\/kernels(\?.*)?$/, k => k.id === kernel);
+    await only(page, /\/api\/sessions(\?.*)?$/, () => false);
     const current = fresh('shutall');
     try {
       await enterWorkspace(page, current);
       await languageServer(page, true);
-      const nobody = nobodyCard(page);
-      await expect(countOf(nobody, 'Terminals')).toHaveText('1');
-      await expect(countOf(nobody, 'Kernels')).toHaveText('1', NEXT_POLL);
-      await nobody.locator('.jp-WorkspaceManager-cardHeader').click();
-      await expect(
-        rowOf(group(nobody, 'LANGUAGE SERVERS'), 'fake-lsp (python)')
-      ).toBeVisible();
+      await expect(sectionCount(page, 'terminals')).toHaveText('(1)');
+      await expect(sectionCount(page, 'kernels')).toHaveText('(1)');
+      await expect(sectionCount(page, 'servers')).toHaveText('(1)');
 
-      await nobody
-        .locator('button[aria-label="Menu of In no workspace"]')
+      // TERMINALS: Shut down all names its terminal
+      await openSection(page, 'terminals');
+      await sectionHeader(page, 'terminals')
+        .getByRole('button', { name: 'Shut down all', exact: true })
         .click();
-      await menuItem(page, 'Shut down all').click();
       await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
         'Shut down all?'
       );
       await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
-        'Shut down 1 terminal, 1 kernel and 1 language server that are in no workspace.'
+        'Shut down 1 terminal in no workspace.'
       );
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
       await expect(dialog(page)).toHaveCount(0);
       await expect
         .poll(() => terminalNames(page), UNDER_LOAD)
         .not.toContain(terminal);
+
+      // KERNELS: Shut down all names its kernel
+      await openSection(page, 'kernels');
+      await sectionHeader(page, 'kernels')
+        .getByRole('button', { name: 'Shut down all', exact: true })
+        .click();
+      await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
+        'Shut down 1 kernel in no workspace.'
+      );
+      await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
+      await expect(dialog(page)).toHaveCount(0);
       await expect
         .poll(() => kernelIds(page), UNDER_LOAD)
         .not.toContain(kernel);
+
+      // LANGUAGE SERVERS: the manager's own confirmation, then the shutdown
+      await openSection(page, 'servers');
+      await sectionHeader(page, 'servers')
+        .getByRole('button', { name: 'Shut down all', exact: true })
+        .click();
+      await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+        'Shut down all?'
+      );
+      await expect(dialog(page).locator('.jp-Dialog-body')).toContainText(
+        'language servers'
+      );
+      await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
+      await expect(dialog(page)).toHaveCount(0);
       await expect.poll(() => serverConnections(page), UNDER_LOAD).toBe(0);
-      await expect(nobody).toHaveCount(0, NEXT_POLL);
+      await expect(
+        page.locator(`${PANEL} [data-section="servers"]`)
+      ).toHaveCount(0);
     } finally {
       await languageServer(page, false);
       await page.request.delete(`/api/terminals/${terminal}`);
@@ -278,9 +306,10 @@ test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both
         row.locator('.jp-WorkspaceManager-rowDetail', { hasText: 'also in' })
       ).toHaveText(`also in ${also}`);
     }
-    await expect(rowOf(nobodyCard(page), `terminal ${terminal}`)).toHaveCount(
-      0
-    );
+    // held by two workspaces, it is not in the TERMINALS section of no workspace
+    await expect(
+      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`)
+    ).toHaveCount(0);
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, a, b]);
@@ -735,32 +764,31 @@ test("ACC-LISTS-108-PATH-TOOLTIP: a document row's tooltip is the full path", as
   }
 });
 
-test('ACC-LISTS-135-NOWS-COUNTS: In no workspace counts terminals and kernels only', async ({
+test('ACC-LISTS-135-NOWS-COUNTS: the TERMINALS and KERNELS section headers count their rows and show no tab count', async ({
   page
 }) => {
   const terminals = [await startTerminal(page), await startTerminal(page)];
-  // the terminals other tests run at the same time are in no workspace too
-  await page.route(
+  // the terminals and kernels other tests run at the same time are in no workspace too
+  await only(
+    page,
     /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
-    async route => {
-      const response = await route.fetch();
-      const json = (await response.json()).filter((t: any) =>
-        terminals.includes(t.name)
-      );
-      await route.fulfill({ response, json });
-    }
+    t => terminals.includes(t.name)
   );
+  await only(page, /\/api\/kernels(\?.*)?$/, () => false);
+  await only(page, /\/api\/sessions(\?.*)?$/, () => false);
   const current = fresh('nows');
   try {
     await enterWorkspace(page, current);
-    const counts = await nobodyCard(page)
-      .locator('.jp-WorkspaceManager-count')
-      .evaluateAll(nodes =>
-        Object.fromEntries(
-          nodes.map(n => [n.getAttribute('title'), n.textContent])
-        )
-      );
-    expect(counts).toEqual({ Terminals: '2', Kernels: '0' });
+    await expect(sectionCount(page, 'terminals')).toHaveText('(2)');
+    // no kernel belongs to no workspace: the section is not shown
+    await expect(page.locator(`${PANEL} [data-section="kernels"]`)).toHaveCount(
+      0
+    );
+    // the header counts rows; the bare counts beside the icons of a card are not there
+    await expect(
+      sectionHeader(page, 'terminals').locator('.jp-WorkspaceManager-count')
+    ).toHaveCount(0);
+    await expect(sectionCount(page, 'terminals')).toHaveText('(2)');
   } finally {
     await Promise.all(
       terminals.map(t => page.request.delete(`/api/terminals/${t}`))

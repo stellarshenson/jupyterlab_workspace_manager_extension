@@ -28,7 +28,7 @@ const ROW = '.jp-WorkspaceManager-row';
 const field = (page: Page): Locator =>
   page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`);
 
-/** Every card the panel shows, In no workspace and Other sessions included. */
+/** Every workspace card the panel shows. */
 const cards = (page: Page): Locator =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card`);
 
