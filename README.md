@@ -2,7 +2,7 @@
 
 [![GitHub Actions](https://github.com/stellarshenson/jupyterlab_workspace_manager_extension/actions/workflows/build.yml/badge.svg)](https://github.com/stellarshenson/jupyterlab_workspace_manager_extension/actions/workflows/build.yml)
 [![npm version](https://img.shields.io/npm/v/jupyterlab_workspace_manager_extension.svg)](https://www.npmjs.com/package/jupyterlab_workspace_manager_extension)
-[![PyPI version](https://img.shields.io/pypi/v/jupyterlab-workspace-manager-extension.svg)](https://pypi.org/project/jupyterlab-workspace-manager-extension/)
+[![PyPI version](https://img.shields.io/pypi/v/jupyterlab-workspace-manager-extension.svg?cache=20261025)](https://pypi.org/project/jupyterlab-workspace-manager-extension/)
 [![Total PyPI downloads](https://static.pepy.tech/badge/jupyterlab-workspace-manager-extension)](https://pepy.tech/project/jupyterlab-workspace-manager-extension)
 [![JupyterLab 4](https://img.shields.io/badge/JupyterLab-4-orange.svg)](https://jupyterlab.readthedocs.io/en/stable/)
 [![Brought To You By KOLOMOLO](https://img.shields.io/badge/Brought%20To%20You%20By-KOLOMOLO-00ffff?style=flat)](https://kolomolo.com)
@@ -10,7 +10,7 @@
 
 This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: one section per workspace, one section open at a time.
 
-![The workspace panel](https://raw.githubusercontent.com/stellarshenson/jupyterlab_workspace_manager_extension/main/docs/images/panel.png)
+![The workspace panel](https://raw.githubusercontent.com/stellarshenson/jupyterlab_workspace_manager_extension/main/docs/images/panel-full-window.png)
 
 _Fig 1 - The workspace panel beside a notebook of the workspace this window shows_
 
@@ -28,8 +28,10 @@ The panel groups them by workspace: what each project holds, what is running in 
 - **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, delete
 - **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last section
 - **Kernels, terminals and language servers** - three sections below the workspaces for what belongs to no workspace, each with its count and a shut down all
+- **Tooltips** - hover a tab, terminal, kernel or language server for its details on several lines
 - **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them
 - **New workspace** - the + button creates a workspace and asks for its name and an optional description
+- **Command line** - the `jupyterlab-workspace` tool drives the same workspaces, terminals and kernels from a shell
 
 ## Requirements
 
@@ -42,6 +44,12 @@ Install the package from PyPI.
 ```bash
 pip install jupyterlab-workspace-manager-extension
 ```
+
+## Command line
+
+`jupyterlab-workspace` manages a running lab from a shell: `workspaces list`, `add`, `open`, `describe`, `remove` and `clean`, and `terminals` and `kernels`, each with `list` and `kill`.
+
+Run `jupyterlab-workspace --help` for the commands, the environment variables that name the lab, and the exit codes.
 
 ## Agent skill
 
