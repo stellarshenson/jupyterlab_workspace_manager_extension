@@ -6,14 +6,17 @@ import {
   card,
   cardHeader,
   countOf,
+  cut,
   deleteWorkspaces,
   dialog,
+  displayName,
   enterWorkspace,
   expectRefused,
   fresh,
   fromRowMenu,
   group,
   kernelIds,
+  languageServer,
   layout,
   menuItem,
   newTerminalTab,
@@ -21,14 +24,17 @@ import {
   nobodyCard,
   openDocument,
   PANEL,
+  panelWidth,
   putNotebook,
   putWorkspace,
   rowOf,
   saved,
   secondWindow,
+  shows,
   startSession,
   startTerminal,
   terminalNames,
+  triangle,
   UNDER_LOAD
 } from './helpers';
 
@@ -44,6 +50,15 @@ const openPaths = (page: Page): Promise<string[]> =>
       .map((w: any) => w.context?.path)
       .filter(Boolean)
   );
+
+/** The number of language server connections in this page's manager. */
+const serverConnections = (page: Page): Promise<number> =>
+  page.evaluate(async () => {
+    const { connections } = await (window as any).galata.getPlugin(
+      '@jupyterlab/lsp-extension:plugin'
+    );
+    return connections.size;
+  });
 
 test.describe('terminals, kernels and sessions of the server', () => {
   // Galata lists only what its page started; these tests start terminals and kernels by REST
@@ -75,12 +90,12 @@ test.describe('terminals, kernels and sessions of the server', () => {
     );
     try {
       await enterWorkspace(page, current);
-      await cardHeader(page, other).click();
+      await triangle(page, other).click();
       const c = card(page, other);
       await expect(c.locator('.jp-WorkspaceManager-groupLabel')).toHaveText([
-        'TABS 3',
-        'TERMINALS 5',
-        'KERNELS 1'
+        'TABS (3)',
+        'TERMINALS (5)',
+        'KERNELS (1)'
       ]);
       // each row is in the group of its kind; the notebook tab is a tab
       await expect(
@@ -96,7 +111,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
         rowOf(group(c, 'KERNELS'), 'grouped.ipynb').locator(
           '.jp-WorkspaceManager-rowLabel'
         )
-      ).toHaveText(session.kernel.name);
+      ).toHaveText(await displayName(page, session.kernel.name));
     } finally {
       await page.request.delete(`/api/sessions/${session.id}`);
       await page.request.delete(`/api/kernels/${session.kernel.id}`);
@@ -154,7 +169,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
     }
   });
 
-  test('ACC-LISTS-110-SHUTDOWN-ALL: Shut down all of In no workspace asks once, naming its terminal and kernel, and ends both', async ({
+  test('ACC-LISTS-110-SHUTDOWN-ALL: Shut down all of In no workspace asks once, naming its terminal, kernel and language server, and ends all three', async ({
     page
   }) => {
     const terminal = await startTerminal(page);
@@ -184,9 +199,14 @@ test.describe('terminals, kernels and sessions of the server', () => {
     const current = fresh('shutall');
     try {
       await enterWorkspace(page, current);
+      await languageServer(page, true);
       const nobody = nobodyCard(page);
       await expect(countOf(nobody, 'Terminals')).toHaveText('1');
       await expect(countOf(nobody, 'Kernels')).toHaveText('1', NEXT_POLL);
+      await nobody.locator('.jp-WorkspaceManager-cardHeader').click();
+      await expect(
+        rowOf(group(nobody, 'LANGUAGE SERVERS'), 'fake-lsp (python)')
+      ).toBeVisible();
 
       await nobody
         .locator('button[aria-label="Menu of In no workspace"]')
@@ -196,7 +216,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
         'Shut down all?'
       );
       await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
-        'Shut down 1 terminal and 1 kernel that are in no workspace.'
+        'Shut down 1 terminal, 1 kernel and 1 language server that are in no workspace.'
       );
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
       await expect(dialog(page)).toHaveCount(0);
@@ -206,8 +226,10 @@ test.describe('terminals, kernels and sessions of the server', () => {
       await expect
         .poll(() => kernelIds(page), UNDER_LOAD)
         .not.toContain(kernel);
+      await expect.poll(() => serverConnections(page), UNDER_LOAD).toBe(0);
       await expect(nobody).toHaveCount(0, NEXT_POLL);
     } finally {
+      await languageServer(page, false);
       await page.request.delete(`/api/terminals/${terminal}`);
       await page.request.delete(`/api/kernels/${kernel}`);
       await deleteWorkspaces(page, [current]);
@@ -249,7 +271,7 @@ test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both
       [b, a]
     ]) {
       await expect(countOf(card(page, id), 'Terminals')).toHaveText('1');
-      await cardHeader(page, id).click();
+      await triangle(page, id).click();
       const row = rowOf(card(page, id), `terminal ${terminal}`);
       await expect(row).toBeVisible();
       await expect(
@@ -263,6 +285,164 @@ test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, a, b]);
   }
+});
+
+test.describe('a kernel of the server in a narrow row', () => {
+  // Galata lists only the kernels and sessions its page started; this test starts one by REST
+  test.use({ kernels: null, sessions: null });
+
+  test('ACC-LISTS-154-TAB-SHRINK: at the 250 px sidebar a tab row shortens its folder before its file name; a terminal row shortens its also in mark to the words also in and an ellipsis, then its label and detail together, and keeps its process name and age whole in the row; a kernel row with a display name longer than the row shows the first characters of its notebook name', async ({
+    page,
+    tmpPath
+  }) => {
+    const folder = `${tmpPath}/a/folder/deep/enough/to/fill/the/row/of/the/card`;
+    // longer than half the room of a tab row, so a folder that shortens with it would cut it
+    const file = 'notes-of-the-week.md';
+    // a long terminal name, so the detail cannot be whole beside the words also in
+    const response = await page.request.post('/api/terminals', {
+      data: { name: `${fresh('wm').replace('-', '')}withalongname` }
+    });
+    const terminal = (await response.json()).name;
+    const notebook = `${tmpPath}/shrunk.ipynb`;
+    const session = await startSession(page, notebook);
+    const current = fresh('s');
+    const a = `${current}-a`;
+    // as long as model-training-experiments: 26 characters
+    const b = `${current}-b`.padEnd(26, 'x');
+    await putWorkspace(
+      page,
+      a,
+      layout([
+        `editor:${folder}/${file}`,
+        `terminal:${terminal}`,
+        `notebook:${notebook}`
+      ])
+    );
+    await putWorkspace(page, b, layout([`terminal:${terminal}`]));
+    // the kernelspecs the page loads give every kernel a display name longer than the row
+    await page.route(/\/api\/kernelspecs(\?.*)?$/, async route => {
+      const answer = await route.fetch();
+      const json = await answer.json();
+      for (const k of Object.values<any>(json.kernelspecs)) {
+        k.spec.display_name += ' with a display name longer than the row';
+      }
+      await route.fulfill({ response: answer, json });
+    });
+    try {
+      await enterWorkspace(page, current);
+      expect(await panelWidth(page)).toBe(250);
+      await triangle(page, a).click();
+      const tab = rowOf(card(page, a), file);
+      await expect(tab.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+        folder
+      );
+      expect(await cut(tab, '.jp-WorkspaceManager-rowLabel')).toEqual([]);
+      expect(await cut(tab, '.jp-WorkspaceManager-rowDetail')).toEqual([
+        folder
+      ]);
+
+      const shared = rowOf(card(page, a), `terminal ${terminal}`);
+      await expect(shared.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
+        'bash',
+        NEXT_POLL
+      );
+      await expect(
+        shared.locator('.jp-WorkspaceManager-rowDetail', { hasText: 'also in' })
+      ).toHaveText(`also in ${b}`);
+      expect(await cut(shared, '.jp-WorkspaceManager-rowLabel')).toEqual([]);
+      // the whole label takes the width of its text (bash: its first four characters), the detail the rest
+      const label = await shows(shared, '.jp-WorkspaceManager-rowLabel');
+      expect(label.width).toBeLessThan(label.start + 1);
+      // the mark gave way first: the label is whole, the detail cut
+      expect(await cut(shared, '.jp-WorkspaceManager-rowDetail')).toEqual([
+        `terminal ${terminal}`
+      ]);
+      const x = await shared.evaluate(row => {
+        const words = document.createRange();
+        words.selectNodeContents(
+          row.querySelector('.jp-WorkspaceManager-rowAlso')!.firstChild!
+        );
+        const name = row.querySelector('.jp-WorkspaceManager-rowAlsoName')!;
+        const age = row.querySelector('.jp-WorkspaceManager-age')!;
+        const [r, w, n, g] = [row, words, name, age].map(e =>
+          e.getBoundingClientRect()
+        );
+        // Chrome keeps a line's first character (the ::before when it has one) before the
+        // ellipsis, so a visible ellipsis needs the width of that character and the ellipsis
+        const before = getComputedStyle(name, '::before').content;
+        const line = [
+          ...((before === 'none' ? '' : JSON.parse(before)) + name.textContent)
+        ];
+        const width = (text: string) => {
+          const probe = document.createElement('span');
+          probe.style.cssText = `position: absolute; white-space: pre; font: ${getComputedStyle(name).font}`;
+          probe.textContent = text;
+          document.body.append(probe);
+          const px = probe.getBoundingClientRect().width;
+          probe.remove();
+          return px;
+        };
+        return {
+          words: words.toString().trim(),
+          wordsIn: w.width > 0 && w.left >= r.left && w.right <= g.left,
+          name: n.width,
+          nameIn: n.left >= w.right && n.right <= g.left,
+          nameCut: name.scrollWidth > name.clientWidth,
+          ellipsis: getComputedStyle(name).textOverflow,
+          needed: width(`${line[0]}…`),
+          oneMore: width(`${line[0]}${line[1]}…`),
+          ageIn: g.left >= r.left && g.right <= r.right,
+          ageWhole: age.scrollWidth <= age.clientWidth
+        };
+      });
+      expect(x).toMatchObject({
+        words: 'also in',
+        wordsIn: true,
+        nameIn: true,
+        nameCut: true,
+        ellipsis: 'ellipsis',
+        ageIn: true,
+        ageWhole: true
+      });
+      // the mark gave way first, down to the words also in and an ellipsis: no character of the name shows
+      expect(x.name).toBeGreaterThanOrEqual(x.needed);
+      expect(x.name).toBeLessThan(x.oneMore);
+
+      const kernel = group(card(page, a), 'KERNELS').locator(ROW);
+      await expect(kernel.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
+        / longer than the row$/,
+        NEXT_POLL
+      );
+      await expect(kernel.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+        'shrunk.ipynb'
+      );
+      expect(
+        await kernel.evaluate(
+          row =>
+            row.querySelector('.jp-WorkspaceManager-rowLabel')!.scrollWidth >
+            row.getBoundingClientRect().width
+        )
+      ).toBe(true);
+      // the label and the notebook name shorten together, each keeping its first characters
+      for (const part of [
+        '.jp-WorkspaceManager-rowLabel',
+        '.jp-WorkspaceManager-rowDetail'
+      ]) {
+        const s = await shows(kernel, part);
+        expect(s.inside, part).toBe(true);
+        expect(s.width, part).toBeGreaterThanOrEqual(s.start);
+      }
+      expect(await shows(kernel, '.jp-WorkspaceManager-age')).toMatchObject({
+        inside: true,
+        whole: true
+      });
+    } finally {
+      await page.request.delete(`/api/sessions/${session.id}`);
+      await page.request.delete(`/api/kernels/${session.kernel.id}`);
+      await page.request.delete(`/api/terminals/${terminal}`);
+      await deleteWorkspaces(page, [current, a, b]);
+    }
+  });
 });
 
 test("ACC-LISTS-39-ROW-CURRENT: a row click in this window's card activates its tab", async ({
@@ -299,7 +479,7 @@ test('ACC-LISTS-40-ROW-OTHER: a row click in the card of another workspace opens
   await putWorkspace(page, other, layout([`editor:${doc}`]));
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, other).click();
+    await triangle(page, other).click();
     await rowOf(card(page, other), 'elsewhere.txt').click();
     await expect(page).toHaveURL(
       new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
@@ -317,7 +497,7 @@ test('ACC-LISTS-41-EMPTY: the open card of a workspace without tabs shows one em
   await putWorkspace(page, empty);
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, empty).click();
+    await triangle(page, empty).click();
     await expect(card(page, empty).locator(ROW)).toHaveCount(0);
     await expect(
       card(page, empty).locator('.jp-WorkspaceManager-empty')
@@ -446,6 +626,57 @@ test("ACC-LISTS-106-CLOSE-TAB: Close tab on a row of this window's card closes t
   }
 });
 
+test('DEF-PANEL-10-SHARED-VIEW: two views of one document are one row; a click activates a view; Close tab asks once for an unsaved change, then closes both views', async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('views');
+  const [shared, other] = [`${tmpPath}/shared.txt`, `${tmpPath}/other.txt`];
+  for (const path of [shared, other]) {
+    await page.contents.uploadContent('text', 'text', path);
+  }
+  try {
+    await enterWorkspace(page, current);
+    await openDocument(page, shared);
+    // New View for the document, as its tab's context menu runs it
+    await page.evaluate(() =>
+      (window as any).jupyterapp.commands.execute('docmanager:clone')
+    );
+    await openDocument(page, other);
+    await expect
+      .poll(async () => (await openPaths(page)).sort(), UNDER_LOAD)
+      .toEqual([other, shared, shared]);
+    await cardHeader(page, current).click();
+    const c = card(page, current);
+    await expect(rowOf(c, 'shared.txt')).toHaveCount(1);
+
+    await rowOf(c, 'shared.txt').click();
+    await expect.poll(() => activeTab(page)).toBe(shared);
+
+    // an unsaved change, typed into the view the click activated
+    const view = await page.evaluate(
+      () => (window as any).jupyterapp.shell.currentWidget.id
+    );
+    await page.locator(`[id="${view}"] .cm-content`).click();
+    await page.keyboard.type('changed ');
+    await expect(
+      page.locator('#jp-main-dock-panel .lm-TabBar-tab.jp-mod-dirty')
+    ).toHaveCount(2);
+    await fromRowMenu(rowOf(c, 'shared.txt'), 'Close tab');
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'Save your work'
+    );
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Discard' })
+      .click();
+    await expect.poll(() => openPaths(page), UNDER_LOAD).toEqual([other]);
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(rowOf(c, 'shared.txt')).toHaveCount(0);
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
 test('ACC-LISTS-107-TAB-OTHER: Close tab on a row of another workspace removes the tab from its saved layout; refused while another window shows it', async ({
   page,
   tmpPath
@@ -464,7 +695,7 @@ test('ACC-LISTS-107-TAB-OTHER: Close tab on a row of another workspace removes t
   const opened: Page[] = [];
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, other).click();
+    await triangle(page, other).click();
     await fromRowMenu(rowOf(card(page, other), 'a.txt'), 'Close tab');
     await expect.poll(tabKeys, UNDER_LOAD).toEqual([`editor:${b}`]);
     expect(
@@ -494,7 +725,7 @@ test("ACC-LISTS-108-PATH-TOOLTIP: a document row's tooltip is the full path", as
   await putWorkspace(page, other, layout([`editor:${path}`]));
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, other).click();
+    await triangle(page, other).click();
     await expect(rowOf(card(page, other), 'note.md')).toHaveAttribute(
       'title',
       path

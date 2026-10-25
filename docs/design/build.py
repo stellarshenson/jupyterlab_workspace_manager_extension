@@ -589,7 +589,7 @@ def b2_counts(s: Svg, xr, y, n):
 def b2_panel_header(s: Svg, y, count="11", filter_on=False, hidden_on=False):
     s.rect(0, y, W, 32, v("l1"))
     s.line(0, y + 32, W, y + 32, v("b2"))
-    s.runs(14, y + 20, [("WORKSPACES", "f0", FS1, 600, False, 0), (count, "f1", FS1, 400, False, 8)])
+    s.runs(14, y + 20, [("WORKSPACES", "f0", FS1, 600, False, 0), (f"({count})", "f1", FS1, 400, False, 8)])
     icon_button(s, W - 108, y + 4, g_plus)
     icon_button(s, W - 82, y + 4, g_filter, active=filter_on)
     icon_button(s, W - 56, y + 4, g_eye, active=hidden_on)
@@ -606,9 +606,11 @@ def b2_header(s: Svg, x, y, w, ws, n, open_, hover=False, current=False, hidden=
         icon_button(s, x + w - 28, y + 4, g_eye, off=True)
         s.text(x + w - 34, y + 20, "hidden", "f0", FS1, anchor="end")
     else:
-        b2_age(s, x + w - 34, y + 20, ws["age"])
+        if not hover:
+            b2_age(s, x + w - 34, y + 20, ws["age"])
         icon_button(s, x + w - 28, y + 4, g_dots, hover=hover)
     if hover:
+        # the hover icons take the age's place, so the name keeps its width
         icon_button(s, x + w - 104, y + 4, g_open_ws, hover=True)
         icon_button(s, x + w - 80, y + 4, g_closeall, hover=True)
     if ws.get("purpose"):
@@ -623,7 +625,7 @@ def b2_header(s: Svg, x, y, w, ws, n, open_, hover=False, current=False, hidden=
 
 
 def b2_group(s: Svg, x, y, label, num):
-    s.runs(x, y + 15, [(label.upper(), "f1", FS0, 600, False, 0), (str(num), "f1", FS0, 600, False, 6)])
+    s.runs(x, y + 15, [(label.upper(), "f1", FS0, 600, False, 0), (f"({num})", "f1", FS0, 600, False, 6)])
     return y + 21
 
 
@@ -698,13 +700,6 @@ def b2_card(s: Svg, x, y, w, ws, n, open_=False, hover=False, current=False, hov
             y = b2_row(s, x, y, w, kind, lab, det, right, hover=(i == hover_row), state=st)
             i += 1
         y += 4
-    if rows is None:
-        bx = x + 14
-        for label, wdt, enabled in (("Open", 52, not current), ("Close all tabs", 104, True)):
-            s.rect(bx, y + 2, wdt, 24, v("l2"), rx=2)
-            s.text(bx + wdt / 2, y + 18, label, "f0" if enabled else "f2", FS1, anchor="middle")
-            bx += wdt + 8
-        y += 34
     card_frame(s, idx, x, top, w, hb, y, ws, True, current)
     return y
 
@@ -717,7 +712,7 @@ def b2_footer(s: Svg, x, y, w, hidden_n=3):
     y += 38
     s.rect(x, y, w, 32, v("l2"), rx=3)
     s.text(x + 14, y + 20, "Other sessions", "f0", FS2 - 1, 600)
-    s.text(x + w - 10, y + 20, "3 sections", "f0", FS1, anchor="end")
+    s.text(x + w - 10, y + 20, "(2)", "f0", FS1, anchor="end")
     y += 40
     if hidden_n:
         g_eye(s, x + 4, y, colour="f1", off=True)
@@ -768,8 +763,8 @@ def b2_filter() -> Svg:
     matches = [
         (DEFAULT_WS, True, [("Terminals", [("term", "claude", "terminal 7", "now", None),
                                            ("term", "claude", "terminal 11", "2m", None),
-                                           ("term", "claude", "terminal 14", "12m", None)])], "3 of 9"),
-        (B2_OTHERS[1], False, [("Terminals", [("term", "claude", "terminal 1", "1d", None)])], "1 of 1"),
+                                           ("term", "claude", "terminal 14", "12m", None)])], "(3 of 9)"),
+        (B2_OTHERS[1], False, [("Terminals", [("term", "claude", "terminal 1", "1d", None)])], "(1 of 1)"),
     ]
     for ws, current, rows, of in matches:
         top, idx = y, len(s.parts)
@@ -785,7 +780,7 @@ def b2_filter() -> Svg:
     s.rect(x, y, w, 32, "none", rx=3, stroke=v("f2"), dash="3 2")
     g_unassigned(s, x + 12, y + 8, colour="f1")
     s.text(x + 34, y + 20, "In no workspace", "f0", FS2 - 1, 600)
-    s.text(x + w - 10, y + 20, "4 of 10", "f0", FS1, anchor="end")
+    s.text(x + w - 10, y + 20, "(4 of 10)", "f0", FS1, anchor="end")
     y += 40
     s.text(14, y + 10, "4 workspaces without a match are not shown", "f0", FS1)
     s.h = y + 22
@@ -925,7 +920,7 @@ def b2_legend() -> Svg:
         x += {"ok": 90, "brand2": 220}.get(colour, 0)
     g_caret(s, 12, 96, open_=False, colour="f0")
     g_caret(s, 28, 96, open_=True, colour="f0")
-    s.text(50, 109, "closed / open; a click on the header toggles", "f0", FS1)
+    s.text(50, 109, "closed / open; triangle toggles, header switches", "f0", FS1)
     card_frame(s, len(s.parts), 330, 94, 40, 114, 114, {"colour": "sky"}, False, True)
     s.text(380, 109, "this window's workspace", "f0", FS1)
     return s

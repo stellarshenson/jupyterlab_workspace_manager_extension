@@ -9,7 +9,13 @@ import { CommandRegistry } from '@lumino/commands';
 import type { Message } from '@lumino/messaging';
 import type { Menu } from '@lumino/widgets';
 
-import { closeTabsIcon, eyeOffIcon, openIcon, swatchIcons } from '../icons';
+import {
+  closeTabsIcon,
+  eyeOffIcon,
+  openIcon,
+  swatchIcons,
+  warningIcon
+} from '../icons';
 import { DeleteArm } from '../model/menu';
 import { COLOURS, type Colour } from '../model/palette';
 
@@ -24,6 +30,16 @@ export const COLOUR_LABELS: Record<Colour, string> = {
 };
 
 const DELETE = 'delete';
+
+/** Closing the menu gives the focus back to the element that had it when the menu opened. */
+function restoreFocus(menu: Menu): void {
+  const previous = document.activeElement as HTMLElement | null;
+  menu.aboutToClose.connect(() => {
+    if (previous?.isConnected) {
+      previous.focus();
+    }
+  });
+}
 
 /**
  * JupyterLab's menu renderer draws a check in place of the icon of a toggled
@@ -124,6 +140,7 @@ export function workspaceMenu(
   const arm = new DeleteArm(() => menu.update());
   const menu = new ArmedMenu(commands, arm, actions.delete);
   menu.addClass('jp-WorkspaceManager-menu');
+  restoreFocus(menu);
   const add = (
     id: string,
     label: string,
@@ -167,8 +184,7 @@ export function workspaceMenu(
   menu.addItem({ type: 'separator' });
   commands.addCommand(DELETE, {
     label: () => (arm.armed ? 'Confirm delete' : 'Delete workspace'),
-    className: () => (arm.armed ? 'jp-mod-confirm' : ''),
-    icon: deleteIcon,
+    icon: () => (arm.armed ? warningIcon : deleteIcon),
     isEnabled: () => !current,
     execute: () => undefined
   });
@@ -189,6 +205,7 @@ export function actionMenu(
   const commands = new CommandRegistry();
   const menu = new MenuSvg({ commands });
   menu.addClass('jp-WorkspaceManager-menu');
+  restoreFocus(menu);
   items.forEach(({ label, icon, execute }, i) => {
     commands.addCommand(`item-${i}`, { label, icon, execute });
     menu.addItem({ command: `item-${i}` });

@@ -8,6 +8,7 @@ import {
   fromMenu,
   gotoWorkspace,
   headerButton,
+  HEAVY_LOAD,
   menuButton,
   menuItem,
   onlyWorkspaces,
@@ -47,7 +48,7 @@ async function setUp(
 
 async function hide(page: Page, id: string): Promise<void> {
   await fromMenu(page, id, 'Hide workspace');
-  await expect(card(page, id)).toHaveCount(0);
+  await expect(card(page, id)).toHaveCount(0, HEAVY_LOAD);
 }
 
 /** The panel of `page` sees only the workspaces of `prefix`, reloaded. */
@@ -117,11 +118,11 @@ test('ACC-HIDDEN-51-COUNT-LINE: the line under the last card counts the hidden w
 }) => {
   const all = await setUp(page, 'count', 3);
   try {
-    await expect(countLine(page)).toHaveCount(0);
+    await expect(countLine(page)).toHaveCount(0, HEAVY_LOAD);
     await hide(page, all[1]);
-    await expect(countLine(page)).toHaveText('1 hidden workspace');
+    await expect(countLine(page)).toHaveText('1 hidden workspace', HEAVY_LOAD);
     await hide(page, all[2]);
-    await expect(countLine(page)).toHaveText('2 hidden workspaces');
+    await expect(countLine(page)).toHaveText('2 hidden workspaces', HEAVY_LOAD);
     // under the last card
     const below = await page.locator(PANEL).evaluate(panel => {
       const cards = panel.querySelectorAll('.jp-WorkspaceManager-card');
@@ -142,10 +143,10 @@ test('ACC-HIDDEN-51-COUNT-LINE: the line under the last card counts the hidden w
         .click();
       await expect(card(page, id)).not.toHaveClass(/jp-mod-hiddenWorkspace/);
     }
-    await expect(countLine(page)).toHaveCount(0);
+    await expect(countLine(page)).toHaveCount(0, HEAVY_LOAD);
     await eye(page).click();
     await refresh(page);
-    await expect(countLine(page)).toHaveCount(0);
+    await expect(countLine(page)).toHaveCount(0, HEAVY_LOAD);
   } finally {
     await deleteWorkspaces(page, all);
   }

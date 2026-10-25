@@ -11,24 +11,31 @@ import {
   fresh,
   fromMenu,
   gotoWorkspace,
+  group,
   headerButton,
   kernelIds,
+  languageServer,
   layout,
   menuItem,
   menuButton,
+  nobodyCard,
   onlyWorkspaces,
+  openDocument,
   openPanel,
   PANEL,
   PANEL_TAB,
+  panelWidth,
   patchMeta,
   putWorkspace,
   refresh,
   rgb,
+  rowOf,
   saved,
   secondWindow,
   shownElsewhere,
   startTerminal,
   terminalNames,
+  triangle,
   UNDER_LOAD
 } from './helpers';
 
@@ -114,13 +121,14 @@ test("ACC-ACCORD-68-START-CLOSED: no card is open at load, this window's include
   }
 });
 
-test('ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-78-CLOSE-OPEN, ACC-ACCORD-77-CARET: one card open at a time, its header closes it, the triangle follows', async ({
+test("ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: one card open at a time; the triangle of another workspace's card opens and closes it and never switches; the triangle follows", async ({
   page
 }) => {
   const current = await setUp(page, 'one', { a: {} });
   const other = `${current}-a`;
   const caret = (id: string) =>
     cardHeader(page, id).locator('.jp-WorkspaceManager-caret svg');
+  const url = page.url();
   try {
     await expect(cardHeader(page, current)).toHaveAttribute(
       'aria-expanded',
@@ -143,8 +151,12 @@ test('ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-78-CLOSE-OPEN, ACC-ACCORD-77-CARET: one
     await expect(openCards(page)).toHaveCount(1);
 
     // ACC-ACCORD-11: opening another closes the open one
-    await cardHeader(page, other).click();
+    await triangle(page, other).click();
     await expect(card(page, other)).toHaveClass(/jp-mod-open/);
+    await expect(triangle(page, other)).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
     await expect(card(page, current)).not.toHaveClass(/jp-mod-open/);
     await expect(caret(current)).toHaveAttribute(
       'data-icon',
@@ -152,10 +164,10 @@ test('ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-78-CLOSE-OPEN, ACC-ACCORD-77-CARET: one
     );
     await expect(openCards(page)).toHaveCount(1);
 
-    // ACC-ACCORD-78: a click on the open card's header leaves none open
-    await cardHeader(page, other).click();
+    // ACC-ACCORD-162: a click on the open card's triangle leaves none open
+    await triangle(page, other).click();
     await expect(openCards(page)).toHaveCount(0);
-    await expect(cardHeader(page, other)).toHaveAttribute(
+    await expect(triangle(page, other)).toHaveAttribute(
       'aria-expanded',
       'false'
     );
@@ -163,6 +175,9 @@ test('ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-78-CLOSE-OPEN, ACC-ACCORD-77-CARET: one
       'data-icon',
       'ui-components:caret-right'
     );
+    // the window stays in its workspace; a switch would have loaded another page
+    await page.waitForTimeout(1000);
+    expect(page.url()).toBe(url);
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
   }
@@ -180,18 +195,98 @@ test('ACC-PANEL-4-OTHERS: Recently Closed is under Other sessions, and no sectio
       await page
         .locator(`${PANEL} .jp-WorkspaceManager-groupLabel`)
         .allTextContents()
-    ).map(g => g.replace(/\s*\d+$/, ''));
+    ).map(g => g.replace(/\s*\(\d+\)$/, ''));
     expect(groups).toContain('RECENTLY CLOSED');
     for (const replaced of [
       'OPEN TABS',
       'KERNELS',
       'TERMINALS',
-      'WORKSPACES'
+      'WORKSPACES',
+      'LANGUAGE SERVERS'
     ]) {
       expect(groups).not.toContain(replaced);
     }
     // the built-in section list is absent
     await expect(page.locator('.jp-RunningSessions-section')).toHaveCount(0);
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-159-LANG-OTHERS: Other sessions has no Language servers section while the lab registers its Language servers manager', async ({
+  page
+}) => {
+  const current = await setUp(page, 'langothers');
+  try {
+    const names: string[] = await page.evaluate(async () =>
+      (
+        await (window as any).galata.getPlugin(
+          '@jupyterlab/running-extension:plugin'
+        )
+      )
+        .items()
+        .map((m: any) => m.name)
+    );
+    expect(names).toContain('Language servers');
+    const others = page.locator(`${PANEL} [data-key="x:others"]`);
+    await others.locator('.jp-WorkspaceManager-cardHeader').click();
+    await expect(others).toHaveClass(/jp-mod-open/);
+    await expect(group(others, 'RECENTLY CLOSED')).toHaveCount(1);
+    await expect(group(others, 'LANGUAGE SERVERS')).toHaveCount(0);
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-LISTS-158-LANG-LISTED: a language server of the lab is listed under In no workspace', async ({
+  page
+}) => {
+  const current = await setUp(page, 'lang');
+  try {
+    await languageServer(page, true);
+    const nobody = nobodyCard(page);
+    await nobody.locator('.jp-WorkspaceManager-cardHeader').click();
+    await expect(nobody).toHaveClass(/jp-mod-open/);
+    await expect(
+      rowOf(group(nobody, 'LANGUAGE SERVERS'), 'fake-lsp (python)')
+    ).toBeVisible();
+  } finally {
+    await languageServer(page, false);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-157-OTHERS-ACTIONS: an Other sessions item that can be shut down has its button; pressing it removes the item', async ({
+  page,
+  tmpPath
+}) => {
+  const current = await setUp(page, 'forget');
+  const doc = `${tmpPath}/forget-me.txt`;
+  await page.contents.uploadContent('text', 'text', doc);
+  try {
+    // a closed document is an item of Recently Closed, whose shutdown is Forget
+    await openDocument(page, doc);
+    await page.evaluate(async path => {
+      const app = (window as any).jupyterapp;
+      const tab: any = Array.from(app.shell.widgets('main')).find(
+        (w: any) => w.context?.path === path
+      );
+      await tab.context.ready;
+      tab.close();
+    }, doc);
+    const others = page.locator(`${PANEL} [data-key="x:others"]`);
+    await others.locator('.jp-WorkspaceManager-cardHeader').click();
+    const recent = others
+      .locator('.jp-WorkspaceManager-group')
+      .filter({ hasText: /^RECENTLY CLOSED/ });
+    const item = recent
+      .locator('.jp-WorkspaceManager-row')
+      .filter({ hasText: 'forget-me.txt' });
+    await expect(item).toHaveCount(1, UNDER_LOAD);
+    const forget = item.locator('button[aria-label="Forget"]');
+    await expect(forget).toBeVisible();
+    await forget.click();
+    await expect(item).toHaveCount(0);
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -447,9 +542,9 @@ test('ACC-ACCORD-23-OPEN: Open loads the workspace in this window with its tabs'
   await putWorkspace(page, target, layout([`terminal:${terminal}`]));
   try {
     await setUpExisting(page, current);
-    await cardHeader(page, target).click();
+    await cardHeader(page, target).hover();
     await card(page, target)
-      .locator('.jp-WorkspaceManager-button', { hasText: 'Open' })
+      .locator('button[aria-label="Open workspace"]')
       .click();
     await expect(page).toHaveURL(
       new RegExp(`/lab/workspaces/${target}(\\?.*)?$`)
@@ -698,13 +793,12 @@ test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows
     await menuItem(page, 'Confirm delete').click();
     await expectRefused(page, 'Delete workspace');
 
-    await cardHeader(page, x).click();
-    await card(page, x)
-      .locator('.jp-WorkspaceManager-button', { hasText: 'Open' })
-      .click();
+    // a header click switches, as Open workspace does
+    await card(page, x).locator('.jp-WorkspaceManager-name').click();
     await expectRefused(page, 'Open workspace');
 
     // a row of the workspace opens it
+    await triangle(page, x).click();
     await card(page, x).locator('.jp-WorkspaceManager-row').first().click();
     await expectRefused(page, 'Open workspace');
 
@@ -798,7 +892,7 @@ test('ACC-ACCORD-69-CARD: other cards have tinted headers; an open one has a neu
     expect(await background(cardHeader(page, a))).not.toBe(
       await background(cardHeader(page, b))
     );
-    await cardHeader(page, a).click();
+    await triangle(page, a).click();
     await expect(card(page, a)).toHaveClass(/jp-mod-open/);
     const open = await card(page, a).evaluate(n => {
       const s = getComputedStyle(n);
@@ -962,34 +1056,163 @@ test('ACC-ACCORD-98-HOVER-ACTIONS: the open and close-all icons of a closed card
   }
 });
 
-test("ACC-ACCORD-131-OPEN-BUTTONS: an open card ends with Open and Close all tabs; Open is disabled on this window's card", async ({
+test('ACC-ACCORD-153-HOVER-NAME: on hover the icons take the place of the age, so a long name keeps its width', async ({
   page
 }) => {
-  const current = await setUp(page, 'buttons', { a: {} });
-  const other = `${current}-a`;
-  const buttons = (id: string) =>
-    card(page, id).locator('.jp-WorkspaceManager-buttons button');
+  const suffix = 'a-name-too-long-for-the-card';
+  const current = await setUp(page, 'hovername', { [suffix]: {} });
+  const header = cardHeader(page, `${current}-${suffix}`);
+  const name = header.locator('.jp-WorkspaceManager-name');
+  const age = header.locator('.jp-WorkspaceManager-age');
+  const icons = header.locator('.jp-WorkspaceManager-hoverActions button');
+  const width = () => name.evaluate(n => n.getBoundingClientRect().width);
   try {
-    for (const [id, disabled] of [
-      [current, true],
-      [other, false]
-    ] as const) {
-      await cardHeader(page, id).click();
-      await expect(buttons(id)).toHaveText(['Open', 'Close all tabs']);
-      // the buttons end the card
-      const last = await card(page, id)
-        .locator('.jp-WorkspaceManager-cardBody')
-        .evaluate(n => n.lastElementChild?.className);
-      expect(last).toBe('jp-WorkspaceManager-buttons');
-      if (disabled) {
-        await expect(buttons(id).nth(0)).toBeDisabled();
-      } else {
-        await expect(buttons(id).nth(0)).toBeEnabled();
+    expect(await panelWidth(page)).toBe(250);
+    // the name is cut, so any width the icons took would show less of it
+    expect(await name.evaluate(n => n.scrollWidth > n.clientWidth)).toBe(true);
+    await expect(age).toBeVisible();
+    await expect(icons.nth(0)).toBeHidden();
+    const before = await width();
+
+    await header.hover();
+    await expect(icons.nth(0)).toBeVisible();
+    await expect(icons.nth(1)).toBeVisible();
+    await expect(age).toBeHidden();
+    expect(await width()).toBe(before);
+  } finally {
+    await deleteWorkspaces(page, ids(current, suffix));
+  }
+});
+
+test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header the icons hide when the pointer leaves; Tab still shows and reaches them', async ({
+  page
+}) => {
+  const current = await setUp(page, 'hoverclick', { a: {} });
+  const other = `${current}-a`;
+  const header = cardHeader(page, other);
+  const icons = header.locator('.jp-WorkspaceManager-hoverActions button');
+  const focused = (label: string) =>
+    expect(header.locator(`button[aria-label="${label}"]`)).toBeFocused();
+  try {
+    // click an open card's header to close it, move the pointer off the card:
+    // this window's card, as a header click on another workspace's card switches
+    const mine = cardHeader(page, current);
+    const myIcons = mine.locator('.jp-WorkspaceManager-hoverActions button');
+    await mine.click();
+    await expect(mine).toHaveAttribute('aria-expanded', 'true');
+    await mine.click();
+    await expect(mine).toHaveAttribute('aria-expanded', 'false');
+    await expect(mine).toBeFocused();
+    await page.mouse.move(0, 0);
+    await expect(myIcons.nth(0)).toBeHidden();
+    await expect(myIcons.nth(1)).toBeHidden();
+
+    // a click on an icon: Close all tabs of a workspace without terminals asks nothing
+    await header.hover();
+    await icons.nth(1).click();
+    await page.mouse.move(0, 0);
+    await expect(icons.nth(0)).toBeHidden();
+    await expect(icons.nth(1)).toBeHidden();
+
+    // keyboard focus shows them, and Tab moves from the header through both icons
+    await cardHeader(page, current).focus();
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press('Tab');
+      if (await header.evaluate(n => n === document.activeElement)) {
+        break;
       }
-      await expect(buttons(id).nth(1)).toBeEnabled();
     }
+    await expect(header).toBeFocused();
+    await expect(icons.nth(0)).toBeVisible();
+    await page.keyboard.press('Tab');
+    await focused('Expand');
+    await page.keyboard.press('Tab');
+    await focused('Open workspace');
+    await page.keyboard.press('Tab');
+    await focused('Close all tabs');
+    await expect(icons.nth(0)).toBeVisible();
+    await page.keyboard.press('Tab');
+    await focused('Workspace menu');
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
+  }
+});
+
+test('ACC-ACCORD-167-NO-BUTTONS: an open card ends with its last row, without Open or Close all tabs; both stay in its ... menu', async ({
+  page,
+  tmpPath
+}) => {
+  const current = await setUp(page, 'buttons', {
+    a: layout([`editor:${tmpPath}/one.txt`, `editor:${tmpPath}/two.txt`])
+  });
+  const other = `${current}-a`;
+  const body = card(page, other).locator('.jp-WorkspaceManager-cardBody');
+  try {
+    await triangle(page, other).click();
+    await expect(body.locator('.jp-WorkspaceManager-row')).toHaveCount(2);
+    for (const name of ['Open', 'Close all tabs']) {
+      await expect(body.getByRole('button', { name, exact: true })).toHaveCount(
+        0
+      );
+    }
+    // the last row ends the card
+    expect(
+      await body.evaluate(n =>
+        n.lastElementChild?.lastElementChild?.classList.contains(
+          'jp-WorkspaceManager-row'
+        )
+      )
+    ).toBe(true);
+
+    await menuButton(page, other).click();
+    await expect(menuItem(page, 'Open workspace')).toBeVisible();
+    await expect(menuItem(page, 'Close all tabs')).toBeVisible();
+    await page.keyboard.press('Escape');
+  } finally {
+    await deleteWorkspaces(page, ids(current, 'a'));
+  }
+});
+
+test("ACC-ACCORD-163-HEADER-SWITCH: a click on the name of another workspace's card switches this window to it", async ({
+  page
+}) => {
+  const current = await setUp(page, 'switch', { a: {} });
+  const other = `${current}-a`;
+  try {
+    await card(page, other).locator('.jp-WorkspaceManager-name').click();
+    await expect(page).toHaveURL(
+      new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+    );
+  } finally {
+    await deleteWorkspaces(page, ids(current, 'a'));
+  }
+});
+
+test("ACC-ACCORD-164-HEADER-TOGGLE: a header click opens and closes this window's card, In no workspace and Other sessions", async ({
+  page
+}) => {
+  const terminal = await startTerminal(page);
+  const current = await setUp(page, 'toggle');
+  const url = page.url();
+  try {
+    for (const c of [
+      card(page, current),
+      nobodyCard(page),
+      page.locator(`${PANEL} [data-key="x:others"]`)
+    ]) {
+      const header = c.locator('.jp-WorkspaceManager-cardHeader');
+      await header.click();
+      await expect(c).toHaveClass(/jp-mod-open/);
+      await expect(header).toHaveAttribute('aria-expanded', 'true');
+      expect(page.url()).toBe(url);
+      await header.click();
+      await expect(c).not.toHaveClass(/jp-mod-open/);
+      await expect(header).toHaveAttribute('aria-expanded', 'false');
+      expect(page.url()).toBe(url);
+    }
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current]);
   }
 });
 

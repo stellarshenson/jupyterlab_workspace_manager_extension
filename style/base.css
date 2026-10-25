@@ -78,7 +78,7 @@
 .jp-WorkspaceManager-header > .jp-WorkspaceManager-title {
   flex: 0 1 auto;
   min-width: 0;
-  margin-left: 14px;
+  margin-left: 8px;
   white-space: nowrap;
   font-weight: 600;
   color: var(--jp-ui-font-color0);
@@ -111,6 +111,7 @@
   min-width: 24px;
   height: 24px;
   padding: 0;
+  margin: 0;
   border: none;
   border-radius: 2px;
   background: transparent;
@@ -302,12 +303,7 @@
 }
 
 .jp-WorkspaceManager-headerLine + .jp-WorkspaceManager-headerLine {
-  padding-left: 22px;
-}
-
-.jp-WorkspaceManager-caret {
-  display: flex;
-  flex: 0 0 16px;
+  padding-left: 28px;
 }
 
 .jp-WorkspaceManager-name {
@@ -384,6 +380,11 @@
   cursor: pointer;
 }
 
+/* the shutdown button of an Other sessions item, at the row's end */
+.jp-WorkspaceManager-row > .jp-WorkspaceManager-iconButton {
+  margin-left: auto;
+}
+
 .jp-WorkspaceManager-iconButton:disabled {
   cursor: default;
   opacity: 0.4;
@@ -393,14 +394,19 @@
   background: var(--jp-layout-color3);
 }
 
-/* The open and close-all-tabs icons of a closed card: on hover or focus */
+/* The open and close-all-tabs icons of a closed card: on hover or keyboard focus */
 .jp-WorkspaceManager-hoverActions {
   display: none;
   gap: 2px;
 }
 
+/*
+    :focus-within keeps the icons while Tab moves from the header to them; a
+    header focused by a click is excluded, and a click never focuses an icon
+*/
 .jp-WorkspaceManager-cardHeader:hover .jp-WorkspaceManager-hoverActions,
-.jp-WorkspaceManager-cardHeader:focus-within .jp-WorkspaceManager-hoverActions {
+.jp-WorkspaceManager-cardHeader:focus-within:not(:focus:not(:focus-visible))
+  .jp-WorkspaceManager-hoverActions {
   display: flex;
 }
 
@@ -435,8 +441,14 @@
   height: 16px;
 }
 
+/*
+ * The label, the detail and an also in name share the room the icon and the age leave (basis 0, each
+ * at most its text): the label and the detail share it equally (grow 1000 each), so they shorten
+ * together; the name takes a share of 1, so it shortens first
+ */
 .jp-WorkspaceManager-rowLabel {
-  flex: 0 1 auto;
+  flex: 1000 1 0;
+  max-width: max-content;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -445,12 +457,37 @@
 }
 
 .jp-WorkspaceManager-rowDetail {
-  flex: 0 1 auto;
+  flex: 1000 1 0;
+  max-width: max-content;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--jp-ui-font-color1);
+}
+
+/* the folder takes a share of 1 against the file name's 1000, so it shortens first */
+.jp-WorkspaceManager-rowDetail.jp-WorkspaceManager-rowFolder {
+  flex: 1 1 0;
+}
+
+/* the words also in and the name are items of the row: the words stay whole, the name shortens */
+.jp-WorkspaceManager-rowDetail.jp-WorkspaceManager-rowAlso {
+  display: contents;
+}
+
+/* at its narrowest the name shows only the ellipsis, 1em wide */
+.jp-WorkspaceManager-rowAlsoName {
+  flex: 1 1 0;
+  max-width: max-content;
+  min-width: 1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the browser keeps a line's first character before the ellipsis: a zero-width one leaves the ellipsis room */
+.jp-WorkspaceManager-rowAlsoName::before {
+  content: '\2060';
 }
 
 .jp-WorkspaceManager-row:hover .jp-WorkspaceManager-rowDetail {
@@ -459,6 +496,26 @@
 
 .jp-WorkspaceManager-row > .jp-WorkspaceManager-age {
   margin-left: auto;
+}
+
+/* the child rows of an Other sessions item, under its icon */
+.jp-WorkspaceManager-row.jp-mod-child {
+  padding-left: 38px;
+}
+
+/* A header's age is as wide as the two hover icons (2 x 22px, 2px gap), which take its place */
+.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age {
+  justify-content: flex-end;
+  min-width: 46px;
+}
+
+.jp-WorkspaceManager-cardHeader:hover
+  .jp-WorkspaceManager-hoverActions
+  + .jp-WorkspaceManager-age,
+.jp-WorkspaceManager-cardHeader:focus-within:not(:focus:not(:focus-visible))
+  .jp-WorkspaceManager-hoverActions
+  + .jp-WorkspaceManager-age {
+  display: none;
 }
 
 .jp-WorkspaceManager-empty,
@@ -538,6 +595,7 @@
   fill: var(--jp-workspace-manager-lavender);
 }
 
+/* only the icon of Delete workspace is red (the bin, armed the warning sign); its label and background stay the menu's */
 .jp-WorkspaceManager-menu .lm-Menu-item[data-command='delete'] .jp-icon3[fill] {
   fill: var(--jp-error-color1);
 }

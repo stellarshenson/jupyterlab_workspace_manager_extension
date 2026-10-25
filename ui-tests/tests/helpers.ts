@@ -17,6 +17,43 @@ export const COLOUR_LABELS = [
 /** The workspace panel. */
 export const PANEL = '#jp-running-sessions';
 
+/** The width of the panel: the left sidebar at JupyterLab's default 250 px. */
+export const panelWidth = (page: Page): Promise<number> =>
+  page.locator(PANEL).evaluate(n => n.getBoundingClientRect().width);
+
+/** The texts of the elements under `selector` that are cut: scrollWidth over clientWidth. */
+export const cut = (scope: Locator, selector: string): Promise<string[]> =>
+  scope
+    .locator(selector)
+    .evaluateAll(nodes =>
+      nodes.filter(n => n.scrollWidth > n.clientWidth).map(n => n.textContent!)
+    );
+
+/**
+ * How the element under `selector` in a row shows its text: `width` of its box,
+ * `start` the width of its first four characters, `inside` its box within the
+ * row's, `whole` nothing cut. A 0 px element still holds its text, so a test
+ * of a row's layout reads widths.
+ */
+export const shows = (
+  row: Locator,
+  selector: string
+): Promise<{ width: number; start: number; inside: boolean; whole: boolean }> =>
+  row.evaluate((r, selector) => {
+    const e = r.querySelector(selector)!;
+    const text = document.createTreeWalker(e, NodeFilter.SHOW_TEXT).nextNode()!;
+    const start = document.createRange();
+    start.setStart(text, 0);
+    start.setEnd(text, Math.min(4, text.textContent!.length));
+    const [box, outer] = [e.getBoundingClientRect(), r.getBoundingClientRect()];
+    return {
+      width: box.width,
+      start: start.getBoundingClientRect().width,
+      inside: box.left >= outer.left && box.right <= outer.right,
+      whole: e.scrollWidth <= e.clientWidth
+    };
+  }, selector);
+
 /** The sidebar tab of the panel. */
 export const PANEL_TAB = '.jp-SideBar [data-id="jp-running-sessions"]';
 
@@ -29,6 +66,10 @@ export const card = (page: Page, id: string): Locator =>
 
 export const cardHeader = (page: Page, id: string): Locator =>
   card(page, id).locator('.jp-WorkspaceManager-cardHeader');
+
+/** The triangle of a card: it opens or closes the card; a header click on another workspace's card switches to it. */
+export const triangle = (page: Page, id: string): Locator =>
+  card(page, id).locator('button.jp-WorkspaceManager-caret');
 
 export const headerButton = (page: Page, label: string): Locator =>
   page.locator(
@@ -96,7 +137,7 @@ export async function openPanel(page: Page): Promise<void> {
 export async function refresh(page: Page): Promise<void> {
   const button = headerButton(page, 'Refresh');
   await button.click();
-  await expect(button).toBeEnabled(UNDER_LOAD);
+  await expect(button).toBeEnabled(HEAVY_LOAD);
 }
 
 /** Save a workspace on the server; `data` is its state, such as a layout. */
@@ -142,13 +183,37 @@ export async function patchMeta(
 /**
  * Open this window in its own new workspace, saved first so the first reload
  * lists it. Needs `mockState: false`.
+ *
+ * Galata waits 15 s for the app to start and offers no timeout for that wait,
+ * so it is raised here for this navigation alone; at host load 88 a page took
+ * longer and ACC-LISTS-135 failed at it.
  */
 export async function gotoWorkspace(
   page: IJupyterLabPageFixture,
   id: string
 ): Promise<void> {
   await putWorkspace(page, id);
-  await page.goto(`workspaces/${id}`);
+  const fixture = page as unknown as {
+    waitForAppStarted: () => Promise<void>;
+  };
+  const wait = fixture.waitForAppStarted;
+  fixture.waitForAppStarted = () =>
+    page.waitForCondition(
+      () =>
+        page.evaluate(async () => {
+          if (typeof (window as any).jupyterapp === 'object') {
+            await (window as any).jupyterapp.started;
+            return true;
+          }
+          return false;
+        }),
+      HEAVY_LOAD.timeout
+    );
+  try {
+    await page.goto(`workspaces/${id}`, { timeout: HEAVY_LOAD.timeout });
+  } finally {
+    fixture.waitForAppStarted = wait;
+  }
 }
 
 /**
@@ -290,6 +355,14 @@ export const NEXT_POLL = { timeout: 15000 };
  */
 export const UNDER_LOAD = { timeout: 20000 };
 
+/**
+ * For a wait that failed at host load average 88 on this 64-core workstation:
+ * the app started past Galata's 15 s, a refresh stayed disabled past 20 s, a
+ * card count past Playwright's 5 s. It sits above the 30 s presence report, so
+ * never use it to wait for the report: the periodic one would satisfy it.
+ */
+export const HEAVY_LOAD = { timeout: 60000 };
+
 /** The card In no workspace. */
 export const nobodyCard = (page: Page): Locator =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-nobody`);
@@ -335,6 +408,12 @@ export async function serverList(page: Page, url: string): Promise<any[]> {
 /** The names of the terminals the server runs. */
 export async function terminalNames(page: Page): Promise<string[]> {
   return (await serverList(page, '/api/terminals')).map(t => t.name);
+}
+
+/** The display name of a kernelspec, as the server lists it and the kernel picker shows it. */
+export async function displayName(page: Page, name: string): Promise<string> {
+  const specs = await (await page.request.get('/api/kernelspecs')).json();
+  return specs.kernelspecs[name].spec.display_name;
 }
 
 /** The ids of the kernels the server runs. */
@@ -430,4 +509,36 @@ export function activeTab(page: Page): Promise<string | undefined> {
     const w = (window as any).jupyterapp.shell.currentWidget;
     return w?.content?.session?.name ?? w?.context?.path;
   });
+}
+
+/**
+ * Put a connection of a fake language server into the lab's connection manager
+ * (`add`) or take it out, then tell the Language servers section, so In no
+ * workspace lists it as `fake-lsp (python)`. It carries what the panel's
+ * shutdown reads: a document to unregister and a dispose.
+ */
+export async function languageServer(page: Page, add: boolean): Promise<void> {
+  await page.evaluate(async add => {
+    const galata = (window as any).galata;
+    const manager = await galata.getPlugin('@jupyterlab/lsp-extension:plugin');
+    const key = 'workspace-manager-test';
+    if (add) {
+      manager.connections.set(key, {
+        serverIdentifier: 'fake-lsp',
+        serverLanguage: 'python',
+        dispose: () => undefined
+      });
+      manager.documents.set(key, { uri: key });
+    } else {
+      manager.connections.delete(key);
+      manager.documents.delete(key);
+    }
+    const managers = await galata.getPlugin(
+      '@jupyterlab/running-extension:plugin'
+    );
+    managers
+      .items()
+      .find((m: any) => m.name === 'Language servers')
+      .runningChanged.emit(undefined);
+  }, add);
 }

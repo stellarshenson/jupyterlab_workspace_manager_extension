@@ -3,7 +3,6 @@ import type { Locator, Page } from '@playwright/test';
 
 import {
   card,
-  cardHeader,
   deleteWorkspaces,
   enterWorkspace,
   fresh,
@@ -16,6 +15,7 @@ import {
   rowOf,
   sendToTerminal,
   startTerminal,
+  triangle,
   UNDER_LOAD
 } from './helpers';
 
@@ -61,7 +61,7 @@ test('ACC-FILTER-56-TOGGLE: the filter button shows the field; pressed again it 
   );
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, w).click();
+    await triangle(page, w).click();
     const rows = card(page, w).locator(ROW);
     await expect(rows).toHaveCount(2);
     await expect(field(page)).toHaveCount(0);
@@ -82,7 +82,7 @@ test('ACC-FILTER-56-TOGGLE: the filter button shows the field; pressed again it 
   }
 });
 
-test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching rows and cards show, the header reads N of M; a workspace's name shows all its rows", async ({
+test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching rows and cards show, the header reads (N of M); a workspace's name shows all its rows", async ({
   page,
   tmpPath
 }) => {
@@ -127,7 +127,7 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching rows and card
     await expect(rowOf(card(page, held), `terminal ${named}`)).toBeVisible();
     await expect(
       card(page, held).locator('.jp-WorkspaceManager-counts')
-    ).toHaveText('1 of 2');
+    ).toHaveText('(1 of 2)');
 
     await field(page).fill(held);
     await expect(cards(page)).toHaveCount(1);
@@ -135,7 +135,7 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching rows and card
     await expect(card(page, held).locator(ROW)).toHaveCount(2);
     await expect(
       card(page, held).locator('.jp-WorkspaceManager-counts')
-    ).toHaveText('2 of 2');
+    ).toHaveText('(2 of 2)');
   } finally {
     await Promise.all(
       [named, plain].map(t => page.request.delete(`/api/terminals/${t}`))
@@ -158,7 +158,7 @@ test('ACC-FILTER-61-CLEAR, ACC-FILTER-83-RESTORE: the clear button empties the f
   await putWorkspace(page, b, layout([`editor:${tmpPath}/kiwi-b.txt`]));
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, a).click();
+    await triangle(page, a).click();
     await expect(openCards(page)).toHaveCount(1);
 
     await filter(page, 'kiwi');
@@ -179,7 +179,7 @@ test('ACC-FILTER-61-CLEAR, ACC-FILTER-83-RESTORE: the clear button empties the f
   }
 });
 
-test('ACC-FILTER-82-OPEN-MATCHES: every card with a match is open; a header click then opens or closes that card only, and the query stays', async ({
+test("ACC-FILTER-82-OPEN-MATCHES: every card with a match is open; a click on a card's triangle then opens or closes that card only, and the query stays", async ({
   page,
   tmpPath
 }) => {
@@ -189,23 +189,27 @@ test('ACC-FILTER-82-OPEN-MATCHES: every card with a match is open; a header clic
   await putWorkspace(page, b, layout([`editor:${tmpPath}/kiwi-two.txt`]));
   await putWorkspace(page, c, layout([`editor:${tmpPath}/plain.txt`]));
   const expanded = (id: string) =>
-    cardHeader(page, id).getAttribute('aria-expanded');
+    triangle(page, id).getAttribute('aria-expanded');
   try {
     await enterWorkspace(page, current);
+    const url = page.url();
     await filter(page, 'kiwi');
     await expect(workspaceCards(page)).toHaveCount(2);
-    await expect(cardHeader(page, a)).toHaveAttribute('aria-expanded', 'true');
-    await expect(cardHeader(page, b)).toHaveAttribute('aria-expanded', 'true');
+    await expect(triangle(page, a)).toHaveAttribute('aria-expanded', 'true');
+    await expect(triangle(page, b)).toHaveAttribute('aria-expanded', 'true');
 
-    await cardHeader(page, a).click();
-    await expect(cardHeader(page, a)).toHaveAttribute('aria-expanded', 'false');
+    await triangle(page, a).click();
+    await expect(triangle(page, a)).toHaveAttribute('aria-expanded', 'false');
+    await expect(card(page, a)).not.toHaveClass(/jp-mod-open/);
     expect(await expanded(b)).toBe('true');
     await expect(field(page)).toHaveValue('kiwi');
 
-    await cardHeader(page, a).click();
-    await expect(cardHeader(page, a)).toHaveAttribute('aria-expanded', 'true');
+    await triangle(page, a).click();
+    await expect(triangle(page, a)).toHaveAttribute('aria-expanded', 'true');
+    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
     expect(await expanded(b)).toBe('true');
     await expect(field(page)).toHaveValue('kiwi');
+    expect(page.url()).toBe(url);
   } finally {
     await deleteWorkspaces(page, [current, a, b, c]);
   }

@@ -25,6 +25,18 @@ const sections = (over: Partial<IModelInput> = {}) =>
       { name: '8', process: 'fish' }
     ],
     kernels: [k1],
+    specs: {
+      default: 'julia-1.10',
+      kernelspecs: {
+        'julia-1.10': {
+          name: 'julia-1.10',
+          display_name: 'Julia (multi-threaded)',
+          language: 'julia',
+          argv: [],
+          resources: {}
+        }
+      }
+    },
     sessions: [
       {
         id: 's1',
@@ -103,6 +115,16 @@ describe('filter', () => {
       ['alpha', ['model.ipynb'], [], ['k1']] // the notebook, as a tab and as a kernel's notebook
     ]);
     expect(rowsFor('beta')).toEqual([['beta', [], [], []]]);
+  });
+
+  it('ACC-KERNEL-156-DISPLAY-NAME: the filter matches a kernel by its display name and by its kernelspec id', () => {
+    const kernelsFor = (query: string) =>
+      filterSections(sections(), query, false).cards.map(c => [
+        c.section.id,
+        c.kernels.map(k => k.id)
+      ]);
+    expect(kernelsFor('multi threaded')).toEqual([['alpha', ['k1']]]); // display name only
+    expect(kernelsFor('julia-1.10')).toEqual([['alpha', ['k1']]]); // id only
   });
 
   it('ACC-FILTER-116-HIDDEN-SEARCH: a hidden workspace is searched only while the eye shows it', () => {

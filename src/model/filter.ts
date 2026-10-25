@@ -72,7 +72,12 @@ export function filterSections(
       `terminal ${t.name}`,
       t.title
     ]);
-    const kernels = keep(section.kernels, k => [k.name, k.detail, k.path]);
+    const kernels = keep(section.kernels, k => [
+      k.label,
+      k.name,
+      k.detail,
+      k.path
+    ]);
     const shown = tabs.length + terminals.length + kernels.length;
     if (all || shown) {
       const total =

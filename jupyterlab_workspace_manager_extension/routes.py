@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from time import monotonic
+from time import time
 
 from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
@@ -10,12 +10,19 @@ import tornado
 
 NAMESPACE = "jupyterlab-workspace-manager-extension"
 RECORDS_FILE = "workspace-manager.json"
+# Window id -> {workspace, reported}; on disk, so a restarted server knows the windows of the last 90 s
+PRESENCE_FILE = "workspace-manager-presence.json"
 # The colour the rotation gave last, beside the records; no workspace id holds a "/"
 LAST_COLOUR = "/last-colour"
+# Workspace id -> time a record was written while the workspace had no file yet
+UNSAVED = "/unsaved"
 COLOURS = ("rose", "peach", "lemon", "mint", "sky", "lavender")
 PURPOSE_MAX = 100
 # A window reports every 30 s; its report counts for 90 s, so one lost report is tolerated
 PRESENCE_SECONDS = 90
+# JupyterLab saves a new workspace about a second after its window loads; a record kept this long
+# without a file belongs to a workspace that was never saved
+UNSAVED_SECONDS = 90
 RECORD_FIELDS = {
     "purpose": lambda value: isinstance(value, str) and len(value) <= PURPOSE_MAX,
     "colour": lambda value: value in COLOURS,
@@ -49,9 +56,15 @@ def records_path(serverapp):
     return Path(lab.workspaces_dir) / RECORDS_FILE
 
 
+def saved(path, workspace):
+    """Whether the workspace has its file beside the records file at path."""
+    return (path.parent / (slugify(workspace) + WORKSPACE_EXTENSION)).exists()
+
+
 def save_records(path, records):
     """Write the whole file to a temporary file and rename it into place."""
-    temporary = path.with_name(RECORDS_FILE + ".tmp")
+    path.parent.mkdir(parents=True, exist_ok=True)  # JupyterLab creates the folder at its first save
+    temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w", encoding="utf-8") as file:
         json.dump(records, file, indent=2, sort_keys=True)
         file.flush()
@@ -70,7 +83,7 @@ def load_records(path, log):
     except FileNotFoundError:
         return {}
     except ValueError as error:
-        bad = path.with_name(RECORDS_FILE + ".bad")
+        bad = path.with_name(path.name + ".bad")
         os.replace(path, bad)
         log.warning(f"Unreadable workspace records file {path} ({error}) moved to {bad}; starting empty")
         save_records(path, {})
@@ -83,13 +96,22 @@ class MetaHandler(APIHandler):
     def get(self):
         path = records_path(self.serverapp)
         records = load_records(path, self.log)
+        marks = records.pop(UNSAVED, {})
+        now = time()
+        # abs: a clock set back must not keep a mark longer
+        unsaved = {
+            workspace: written
+            for workspace, written in marks.items()
+            if not saved(path, workspace) and abs(now - written) <= UNSAVED_SECONDS
+        }
         kept = {
             workspace: record
             for workspace, record in records.items()
-            if workspace == LAST_COLOUR or (path.parent / (slugify(workspace) + WORKSPACE_EXTENSION)).exists()
+            if workspace == LAST_COLOUR or workspace in unsaved or saved(path, workspace)
         }
-        if kept != records:  # a workspace was deleted, by the panel or by the culler
-            save_records(path, kept)
+        # a workspace was deleted, by the panel or by the culler, or was saved, or was never saved
+        if kept != records or unsaved != marks:
+            save_records(path, {**kept, UNSAVED: unsaved} if unsaved else kept)
         self.finish(json.dumps(kept))
 
 
@@ -104,7 +126,7 @@ class MetaRecordHandler(APIHandler):
             or not all(field in RECORD_FIELDS and RECORD_FIELDS[field](value) for field, value in change.items())
             or not isinstance(given, bool)
             or (given and "colour" not in change)
-            or workspace == LAST_COLOUR
+            or workspace in (LAST_COLOUR, UNSAVED)
         ):
             raise tornado.web.HTTPError(
                 400,
@@ -121,24 +143,31 @@ class MetaRecordHandler(APIHandler):
         record.update(change)
         if record.get("purpose") == "":  # an empty purpose is not stored
             del record["purpose"]
+        if not saved(path, workspace):  # GET keeps the record until JupyterLab first saves the workspace
+            records.setdefault(UNSAVED, {})[workspace] = time()
         save_records(path, records)
         self.finish(json.dumps(record))
 
 
-class PresenceHandler(APIHandler):
-    def initialize(self, windows):
-        self.windows = windows  # window id -> (workspace, report time)
+def reports(serverapp, log):
+    """The presence file's path and the reports of the last 90 s by window id."""
+    path = records_path(serverapp).with_name(PRESENCE_FILE)
+    now = time()
+    # abs: a clock set back must not keep a closed window's report longer
+    return path, {
+        window: report
+        for window, report in load_records(path, log).items()
+        if abs(now - report["reported"]) <= PRESENCE_SECONDS
+    }
 
+
+class PresenceHandler(APIHandler):
     @tornado.web.authenticated
     def get(self):
         """The workspaces that windows other than ?window= reported in the last 90 s."""
         window = self.get_query_argument("window", "")
-        now = monotonic()
-        workspaces = {
-            workspace
-            for other, (workspace, reported) in self.windows.items()
-            if other != window and now - reported <= PRESENCE_SECONDS
-        }
+        _, windows = reports(self.serverapp, self.log)
+        workspaces = {report["workspace"] for other, report in windows.items() if other != window}
         self.finish(json.dumps({"workspaces": sorted(workspaces)}))
 
     @tornado.web.authenticated
@@ -149,10 +178,9 @@ class PresenceHandler(APIHandler):
             isinstance(report.get(key), str) and report[key] for key in ("window", "workspace")
         ):
             raise tornado.web.HTTPError(400, "body: {window, workspace} as non-empty strings")
-        now = monotonic()
-        for stale in [w for w, (_, reported) in self.windows.items() if now - reported > PRESENCE_SECONDS]:
-            del self.windows[stale]
-        self.windows[report["window"]] = (report["workspace"], now)
+        path, windows = reports(self.serverapp, self.log)
+        windows[report["window"]] = {"workspace": report["workspace"], "reported": time()}
+        save_records(path, windows)
         self.set_status(204)
         self.finish()
 
@@ -168,7 +196,7 @@ def setup_route_handlers(web_app):
         (route("terminals"), TerminalsHandler),
         (route("meta"), MetaHandler),
         (route("meta", "([^/]+)"), MetaRecordHandler),
-        (route("presence"), PresenceHandler, {"windows": {}}),
+        (route("presence"), PresenceHandler),
     ]
 
     web_app.add_handlers(host_pattern, handlers)

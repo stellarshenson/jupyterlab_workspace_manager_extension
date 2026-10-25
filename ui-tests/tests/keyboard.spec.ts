@@ -7,8 +7,11 @@ import {
   fresh,
   gotoWorkspace,
   headerButton,
+  menuItem,
+  onlyWorkspaces,
   openPanel,
   PANEL,
+  PANEL_TAB,
   patchMeta,
   putWorkspace,
   refresh,
@@ -18,48 +21,108 @@ import {
 
 test.use({ autoGoto: false });
 
+/** Press Tab from the refresh button until an element `selector` finds has the focus; that element. */
+async function tabTo(page: Page, selector: string): Promise<Locator> {
+  await headerButton(page, 'Refresh').focus();
+  for (let i = 0; i < 20; i++) {
+    await page.keyboard.press('Tab');
+    const reached = await page.evaluate(
+      s => !!document.activeElement?.matches(s),
+      selector
+    );
+    if (reached) {
+      return page.locator(`${selector}:focus`);
+    }
+  }
+  throw new Error(`Tab never reached ${selector}`);
+}
+
 /** Press Tab from the refresh button until a card header has the focus. */
 async function tabToCardHeader(page: Page): Promise<Locator> {
   // until the first load lands, the Other sessions card is the only card
   await expect(card(page, 'default')).toBeVisible();
-  await headerButton(page, 'Refresh').focus();
-  for (let i = 0; i < 10; i++) {
-    await page.keyboard.press('Tab');
-    const reached = await page.evaluate(() =>
-      document.activeElement?.classList.contains(
-        'jp-WorkspaceManager-cardHeader'
-      )
-    );
-    if (reached) {
-      return page.locator(`${PANEL} .jp-WorkspaceManager-cardHeader:focus`);
-    }
-  }
-  throw new Error('Tab never reached a card header');
+  return tabTo(page, `${PANEL} .jp-WorkspaceManager-cardHeader`);
 }
 
-test('ACC-PANEL-91-KEYBOARD: Tab reaches a card header, Enter opens it, Space closes it', async ({
+const openCards = (page: Page) =>
+  page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`);
+
+test('ACC-PANEL-165-TRIANGLE-KEYS: Tab reaches the triangle of a card, Enter opens the card, Space closes it', async ({
   page
 }) => {
   await page.goto();
   await openPanel(page);
-  const header = await tabToCardHeader(page);
-  await expect(header).toHaveAttribute('role', 'button');
-  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(card(page, 'default')).toBeVisible();
+  const triangle = await tabTo(
+    page,
+    `${PANEL} button.jp-WorkspaceManager-caret`
+  );
+  await expect(triangle).toHaveAttribute('aria-expanded', 'false');
 
   await page.keyboard.press('Enter');
-  await expect(header).toHaveAttribute('aria-expanded', 'true');
-  await expect(
-    page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`)
-  ).toHaveCount(1);
-  await expect(
-    page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`)
-  ).toContainText('Close all tabs');
+  await expect(triangle).toHaveAttribute('aria-expanded', 'true');
+  await expect(openCards(page)).toHaveCount(1);
 
   await page.keyboard.press(' ');
-  await expect(header).toHaveAttribute('aria-expanded', 'false');
-  await expect(
-    page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`)
-  ).toHaveCount(0);
+  await expect(triangle).toHaveAttribute('aria-expanded', 'false');
+  await expect(openCards(page)).toHaveCount(0);
+});
+
+test('DEF-PANEL-7-MENU-FOCUS: closing a card or row menu, by Escape or by an action, returns the focus to what opened it', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await tabToCardHeader(page);
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('Tab');
+    if (
+      await page.evaluate(
+        () =>
+          document.activeElement?.getAttribute('aria-label') ===
+          'Workspace menu'
+      )
+    ) {
+      break;
+    }
+  }
+  // mark the focused element: the locators below find that one element again
+  const mark = (name: string) =>
+    page.evaluate(
+      n => document.activeElement!.setAttribute('data-test', n),
+      name
+    );
+  await mark('menu-button');
+  const button = page.locator('[data-test="menu-button"]');
+  await expect(button).toHaveAttribute('aria-label', 'Workspace menu');
+  const menu = page.locator('.jp-WorkspaceManager-menu');
+
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(button).toBeFocused();
+
+  // an action: Set description... opens a dialog, Escape closes it
+  await page.keyboard.press('Enter');
+  await menuItem(page, 'Set description...').click();
+  await expect(page.locator('.jp-Dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.jp-Dialog')).toHaveCount(0);
+  await expect(button).toBeFocused();
+
+  // a row: the context-menu key opens its menu, Escape closes it
+  await card(page, 'default')
+    .locator('.jp-WorkspaceManager-cardHeader')
+    .click();
+  const row = card(page, 'default').locator('.jp-WorkspaceManager-row').first();
+  await row.focus();
+  await mark('row');
+  await page.keyboard.press('ContextMenu');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator('[data-test="row"]')).toBeFocused();
 });
 
 test('ACC-PANEL-92-ROW-KEYS: ArrowDown moves to the next row, Enter activates its tab', async ({
@@ -137,6 +200,39 @@ test('ACC-PANEL-93-FOCUS: keyboard focus shows a 1px brand outline, a click none
 test.describe('with the workspaces of the server', () => {
   test.use({ mockState: false });
 
+  test("ACC-PANEL-166-HEADER-ENTER: Enter on the header of another workspace's card switches to it; on this window's card header it opens the card", async ({
+    page
+  }) => {
+    const current = fresh('enter');
+    const other = `${current}-other`;
+    const header = `${PANEL} [data-workspace="${other}"] > .jp-WorkspaceManager-cardHeader`;
+    await putWorkspace(page, other);
+    try {
+      await onlyWorkspaces(page, id => id.startsWith(current));
+      await gotoWorkspace(page, current);
+      await openPanel(page);
+      await refresh(page);
+      await expect(card(page, other)).toBeVisible();
+      await tabTo(page, header);
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(
+        new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+      );
+
+      // the window is in the other workspace now: its card is this window's
+      await expect(page.locator(PANEL_TAB)).toBeVisible({ timeout: 60000 });
+      await openPanel(page);
+      await refresh(page);
+      const mine = await tabTo(page, header);
+      await expect(mine).toHaveAttribute('aria-expanded', 'false');
+      await page.keyboard.press('Enter');
+      await expect(mine).toHaveAttribute('aria-expanded', 'true');
+      await expect(card(page, other)).toHaveClass(/jp-mod-open/);
+    } finally {
+      await deleteWorkspaces(page, [current, other]);
+    }
+  });
+
   test('ACC-PANEL-138-ICON-LABELS: every icon button has a tooltip and an aria-label', async ({
     page
   }) => {
@@ -177,6 +273,7 @@ test.describe('with the workspaces of the server', () => {
           'Show hidden workspaces',
           'Refresh',
           'Clear filter',
+          'Expand',
           'Open workspace',
           'Close all tabs',
           'Workspace menu',

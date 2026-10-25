@@ -4,16 +4,21 @@ import type { Page } from '@playwright/test';
 import {
   card,
   cardHeader,
+  cut,
   deleteWorkspaces,
   fresh,
   gotoWorkspace,
   headerButton,
+  onlyWorkspaces,
   openPanel,
   PANEL,
+  panelWidth,
   patchMeta,
+  layout,
   putWorkspace,
   refresh,
-  startTerminal
+  startTerminal,
+  triangle
 } from './helpers';
 
 test.use({ autoGoto: false, mockState: false });
@@ -196,13 +201,15 @@ async function textsOfOpenCards(
   ids: { current: string; coloured: string[] }
 ): Promise<IText[]> {
   const found: IText[] = [];
-  for (const header of [
-    cardHeader(page, ids.current),
-    cardHeader(page, ids.coloured[0]),
-    page.locator(`${PANEL} [data-key="x:none"] .jp-WorkspaceManager-cardHeader`)
+  for (const caret of [
+    triangle(page, ids.current),
+    triangle(page, ids.coloured[0]),
+    page.locator(
+      `${PANEL} [data-key="x:none"] button.jp-WorkspaceManager-caret`
+    )
   ]) {
-    await header.click();
-    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await caret.click();
+    await expect(caret).toHaveAttribute('aria-expanded', 'true');
     await page.mouse.move(0, 0);
     found.push(...(await texts(page)));
   }
@@ -317,5 +324,87 @@ test('ACC-PANEL-94-THEME: a theme change repaints the cards without a reload', a
     expect(await page.evaluate(() => (window as any).notReloaded)).toBe(true);
   } finally {
     await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title, the Other sessions label and their counts show in full', async ({
+  page
+}) => {
+  const current = fresh('narrow');
+  // ten cards, so the title count has two digits
+  const others = Array.from({ length: 9 }, (_, i) => `${current}-${i}`);
+  await Promise.all(others.map(id => putWorkspace(page, id)));
+  try {
+    await onlyWorkspaces(page, id => id.startsWith(current));
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    expect(await panelWidth(page)).toBe(250);
+    const panel = page.locator(PANEL);
+    await expect(panel.locator('.jp-WorkspaceManager-titleCount')).toHaveText(
+      '(10)'
+    );
+    const othersHeader = panel.locator(
+      '[data-key="x:others"] .jp-WorkspaceManager-cardHeader'
+    );
+    await expect(
+      othersHeader.locator('.jp-WorkspaceManager-counts')
+    ).toHaveText(/^\(\d+\)$/);
+    for (const theme of [DARK, LIGHT]) {
+      await page.theme.setTheme(theme);
+      expect(
+        await cut(
+          panel,
+          '.jp-WorkspaceManager-titleLabel, .jp-WorkspaceManager-titleCount'
+        ),
+        theme
+      ).toEqual([]);
+      expect(
+        await cut(
+          othersHeader,
+          '.jp-WorkspaceManager-name, .jp-WorkspaceManager-counts'
+        ),
+        theme
+      ).toEqual([]);
+    }
+  } finally {
+    await deleteWorkspaces(page, [current, ...others]);
+  }
+});
+
+test('ACC-PANEL-168-COUNT-BRACKETS: the title count reads WORKSPACES (4); the counts beside the header icons stay bare', async ({
+  page
+}) => {
+  const current = fresh('brackets');
+  const others = [1, 2, 3].map(i => `${current}-${i}`);
+  const terminal = await startTerminal(page);
+  await putWorkspace(
+    page,
+    others[0],
+    layout([`terminal:${terminal}`, 'editor:docs/notes.md'])
+  );
+  await Promise.all(others.slice(1).map(id => putWorkspace(page, id)));
+  try {
+    await onlyWorkspaces(page, id => id.startsWith(current));
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    const title = page.locator(`${PANEL} .jp-WorkspaceManager-title`);
+    await expect(title.locator('.jp-WorkspaceManager-titleLabel')).toHaveText(
+      'WORKSPACES'
+    );
+    await expect(title.locator('.jp-WorkspaceManager-titleCount')).toHaveText(
+      '(4)'
+    );
+    // the label and the count, as the page draws them
+    expect(await title.evaluate(n => (n as HTMLElement).innerText)).toMatch(
+      /^WORKSPACES\s*\(4\)$/
+    );
+    await expect(
+      cardHeader(page, others[0]).locator('.jp-WorkspaceManager-count')
+    ).toHaveText(['1', '1', '0']);
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current, ...others]);
   }
 });

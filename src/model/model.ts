@@ -1,4 +1,9 @@
-import type { Kernel, Session, Workspace } from '@jupyterlab/services';
+import type {
+  Kernel,
+  KernelSpec,
+  Session,
+  Workspace
+} from '@jupyterlab/services';
 import type { Colour } from './palette';
 
 /** A workspace's record in the extension's file, as `GET meta` returns it per id. */
@@ -45,7 +50,12 @@ export interface ITerminalRow {
 
 export interface IKernelRow {
   id: string;
+  /** the kernelspec id */
   name: string;
+  /** the display name of its kernelspec; the id when the spec is unknown */
+  label: string;
+  /** the tooltip: the session path, then the kernelspec id */
+  title: string;
   /** the session path of its notebook or console; empty without a session */
   path: string;
   /** the notebook's file name or the console's name */
@@ -76,10 +86,14 @@ export interface IModelInput {
   terminals: ITerminal[];
   kernels: Kernel.IModel[];
   sessions: Session.IModel[];
+  /** the kernelspecs JupyterLab loaded; null before they load */
+  specs: KernelSpec.ISpecModels | null;
   /** this window's workspace id */
   current: string;
   /** the open tabs of this window, which stand for its workspace's saved layout */
   liveTabs: ITab[];
+  /** the running language servers, which In no workspace lists */
+  languageServers?: number;
 }
 
 /** The dot of a kernel row: idle, busy, or unknown for every other state. */
@@ -103,7 +117,7 @@ export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
 /**
  * One section per workspace, hidden ones included and flagged: this window's
  * workspace first, the others by `last_modified` newest first, then In no
- * workspace when it holds a terminal or a kernel.
+ * workspace when it holds a terminal, a kernel or a language server.
  */
 export function buildSections(input: IModelInput): ISection[] {
   const { records, current } = input;
@@ -138,7 +152,13 @@ export function buildSections(input: IModelInput): ISection[] {
     const terminals = new Set<string>();
     const kernels = new Map<string, Session.IModel>();
     const docs: ITabRow[] = [];
+    const seen = new Set<string>();
     for (const tab of tabs) {
+      // two views of one document share its key: one row
+      if (seen.has(tab.key)) {
+        continue;
+      }
+      seen.add(tab.key);
       const kind = prefix(tab.key);
       if (kind === 'terminal') {
         terminals.add(suffix(tab.key));
@@ -181,6 +201,8 @@ export function buildSections(input: IModelInput): ISection[] {
   ) => ({
     id: k.id,
     name: k.name,
+    label: input.specs?.kernelspecs[k.name]?.display_name ?? k.name,
+    title: session?.path ? `${session.path}\n${k.name}` : k.name,
     path: session?.path ?? '',
     detail: !session
       ? ''
@@ -237,7 +259,11 @@ export function buildSections(input: IModelInput): ISection[] {
         )
       )
   };
-  if (nobody.terminals.length || nobody.kernels.length) {
+  if (
+    nobody.terminals.length ||
+    nobody.kernels.length ||
+    input.languageServers
+  ) {
     sections.push({
       id: null,
       current: false,

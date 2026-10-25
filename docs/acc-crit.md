@@ -28,7 +28,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:15Z @kj added
   - log: 2026-10-24T10:03:58Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-PANEL-4-OTHERS` **Sections of other extensions** - HIGH; a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace
+- [x] `ACC-PANEL-4-OTHERS` **Sections of other extensions** - HIGH; a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace, and Language servers, which In no workspace lists
   - evidence: 2 test(s) in Jest panel.spec.ts, Galata sections.spec.ts passed in make test of final-verify (make-test.log, Jest 41 of 41 passed); full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata sections.spec.ts: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section
   - test-tags: UNIT, FUNCTIONAL
@@ -37,6 +37,8 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-23T23:03:48Z @kj edited test "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there" -> "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section"; reason: analyst review round 1 (wf_be2467c8-b64)
   - log: 2026-10-24T02:45:24Z @kj edited test "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section" -> "Jest panel.spec.ts: register a fake manager with 2 items, assert both under Other sessions; Galata sections.spec.ts: Recently Closed listed there, and no Open Tabs, Kernels, Terminals or Workspaces section"; reason: test line named no Galata spec file, so no Galata stage owned it, 2026-10-24
   - log: 2026-10-24T10:03:58Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-24T19:37:01Z @kj amended text "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace" -> "a section another extension registers through `IRunningSessionManagers` is listed under Other sessions with its items, except Open Tabs, Kernels, Terminals and Workspaces, which the cards replace, and Language servers, which In no workspace lists"; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
+  - log: 2026-10-24T23:10:13Z @kj re-verified: sections.spec.ts:185 passed in both full runs and the Jest panel suite passed in make test: Recently Closed is under Other sessions, no section the cards replace is.
 - [x] `ACC-PANEL-5-ICON` **Own sidebar icon** - MEDIUM; the sidebar tab shows the extension's own one-colour LabIcon, four panes in a 2 by 2 grid with the top-left one filled, never `ui-components:running`
   - evidence: 1 test(s) in Galata panel.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata panel.spec.ts: assert the tab svg `data-icon` names the extension's icon
@@ -105,6 +107,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-23T21:53:29Z @kj added
   - log: 2026-10-24T10:03:59Z @kj closed; reason: final verification of the implementation, 2026-10-24
 - [x] `ACC-PANEL-89-SEARCH-TABS` **Search tabs button** - LOW; the Search tabs button that `@jupyterlab/running-extension:search-tabs` adds is in the panel header and opens its dialog
+  - overridden-by: ACC-PANEL-169-NO-SEARCH
   - evidence: 1 test(s) in Galata panel.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata panel.spec.ts: click the button, assert the search dialog
   - test-tags: FUNCTIONAL
@@ -117,6 +120,8 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-23T21:53:29Z @kj added
   - log: 2026-10-24T10:03:59Z @kj closed; reason: final verification of the implementation, 2026-10-24
 - [x] `ACC-PANEL-91-KEYBOARD` **Card headers by keyboard** - HIGH; a card header is a button: Tab reaches it, Enter or Space opens or closes the card, and `aria-expanded` follows the state
+  - overridden-by: ACC-PANEL-165-TRIANGLE-KEYS
+  - overridden-by: ACC-PANEL-166-HEADER-ENTER
   - evidence: 1 test(s) in Galata keyboard.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata keyboard.spec.ts: Tab to a header, press Enter, assert open and `aria-expanded` true; Space closes
   - test-tags: FUNCTIONAL
@@ -234,6 +239,61 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test-tags: UNIT
   - log: 2026-10-23T22:26:06Z @kj added
   - log: 2026-10-24T10:04:00Z @kj closed; reason: final verification of the implementation, 2026-10-24
+- [x] `ACC-PANEL-152-NARROW-LABELS` **Labels whole at 250 px** - MEDIUM; at the default sidebar width of 250 px the panel title with its count and the Other sessions label with its count show in full; the Other sessions count reads (N), not N sections
+  - evidence: legibility.spec.ts:330 passed in the 6-worker and default-worker full runs: at 250 px the title (10) and the Other sessions count draw whole in both themes.
+  - related: ACC-PANEL-137-OTHERS-CLOSED
+  - test: Galata legibility.spec.ts: sidebar at 250 px, assert scrollWidth <= clientWidth for the panel title and the Other sessions label, and the Other sessions count reads (N)
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T16:05:30Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
+  - log: 2026-10-24T20:03:39Z @kj amended text "at the default sidebar width of 250 px the panel title with its count and the Other sessions label with its count show in full; the Other sessions count reads N, not N sections" -> "at the default sidebar width of 250 px the panel title with its count and the Other sessions label with its count show in full; the Other sessions count reads (N), not N sections"; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T21:20:54Z @kj edited test "Galata legibility.spec.ts: sidebar at 250 px, assert scrollWidth <= clientWidth for the panel title and the Other sessions label, and the Other sessions count is a bare number" -> "Galata legibility.spec.ts: sidebar at 250 px, assert scrollWidth <= clientWidth for the panel title and the Other sessions label, and the Other sessions count reads (N)"
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-157-OTHERS-ACTIONS` **Other sessions keep their actions** - MEDIUM; Other sessions rows keep the actions the replaced panel gave them: a shutdown button on each item that can be shut down, Shut Down All with its confirmation on each section that offers it, and the child rows of an item
+  - evidence: sections.spec.ts:286 passed in both full runs and the Jest panel suite passed in make test: an Other sessions item's button shuts it down and removes the item.
+  - related: ACC-PANEL-4-OTHERS
+  - test: Jest panel.spec.ts: a fake manager whose item has shutdown and children, assert the button calls shutdown, the children render, and Shut Down All confirms then calls shutdownAll; Galata sections.spec.ts: an Other sessions item that can be shut down, press its button, assert the item gone
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-24T16:05:31Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-159-LANG-OTHERS` **No Language servers under Other sessions** - MEDIUM; Other sessions has no Language servers section
+  - evidence: sections.spec.ts:243 passed in both full runs: Other sessions holds no Language servers section while the lab registers its Language servers manager.
+  - related: ACC-PANEL-4-OTHERS
+  - test: Galata sections.spec.ts: open Other sessions, assert no Language servers section, while the lab registers its Language servers manager
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T19:37:00Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-165-TRIANGLE-KEYS` **Triangle by keyboard** - MEDIUM; a card's triangle is a button: Tab reaches it, Enter or Space opens or closes the card, and `aria-expanded` follows the state
+  - evidence: keyboard.spec.ts:50 passed in both full runs: Tab reaches the triangle, Enter opens the card, Space closes it, aria-expanded follows.
+  - overrides: ACC-PANEL-91-KEYBOARD
+  - test: Galata keyboard.spec.ts: Tab to the triangle of a card, press Enter, assert the card open and `aria-expanded` true; press Space, assert it closed
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-166-HEADER-ENTER` **Header by keyboard** - MEDIUM; Tab reaches a card header, and Enter on it does what a click on it does
+  - evidence: keyboard.spec.ts:203 passed in both full runs: Enter on another workspace's header switches the URL, on this window's header it opens the card.
+  - overrides: ACC-PANEL-91-KEYBOARD
+  - test: Galata keyboard.spec.ts: Tab to the header of another workspace's card, press Enter, assert the URL switched; Tab to this window's card header, press Enter, assert it opens
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-168-COUNT-BRACKETS` **Counts in brackets** - MEDIUM; a count that follows a label is written in brackets: WORKSPACES (4), TABS (2), Other sessions (2), and a filter's N of M as (N of M); the numbers beside the tab, terminal and kernel icons of a card header stay bare
+  - evidence: legibility.spec.ts:375 passed in both full runs and the Jest panel suite passed in make test: WORKSPACES (4) and the counts beside the header icons stay bare.
+  - related: ACC-PANEL-80-WS-COUNT
+  - related: ACC-LISTS-134-GROUP-COUNT
+  - related: ACC-PANEL-137-OTHERS-CLOSED
+  - related: ACC-FILTER-60-MATCH-COUNT
+  - test: Jest panel.spec.ts: assert the title count, a group label and the Other sessions count each read (N), and a filtered group label (N of M); Galata legibility.spec.ts: assert WORKSPACES (4) and the card header icon counts without brackets
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-PANEL-169-NO-SEARCH` **No Search tabs button** - LOW; the panel header has no Search Tabs and Running Sessions button; the command stays in the command palette
+  - evidence: panel.spec.ts:313 passed in both full runs: no running:show-modal button in the panel header, and the palette still lists the command.
+  - overrides: ACC-PANEL-89-SEARCH-TABS
+  - related: ACC-FILTER-58-FIELDS
+  - test: Galata panel.spec.ts: assert no button with the tooltip Search Tabs and Running Sessions in the panel header, and the command palette lists Search Tabs and Running Sessions
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:07:40Z @kj added; reason: the Star Colonel, 2026-10-24 22:15: the Search tabs button is not needed, the panel's filter covers search
+  - log: 2026-10-24T23:10:13Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
 
 ## Workspace sections `ACCORD`
 
@@ -362,7 +422,7 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:37Z @kj added
   - log: 2026-10-24T10:04:01Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-ACCORD-28-CLOSE-ELSEWHERE` **Edge: workspace open in another window** - HIGH; Close all tabs, Delete workspace, Open workspace (the button, the header icon and the menu item), Open in new browser tab and a row click are refused for a workspace that another browser window shows, and the message says so
+- [x] `ACC-ACCORD-28-CLOSE-ELSEWHERE` **Edge: workspace open in another window** - HIGH; Close all tabs, Delete workspace, Open workspace (the header click, the header icon and the menu item), Open in new browser tab and a row click are refused for a workspace that another browser window shows, and the message says so
   - evidence: 1 test(s) in Galata sections.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged; then from the first page use Open in new browser tab on a third workspace Y; in the new page try Close all tabs and Delete workspace on the first page's workspace; assert both refused
   - test-tags: FUNCTIONAL
@@ -371,6 +431,8 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - log: 2026-10-23T23:03:47Z @kj edited test "Galata sections.spec.ts: second page on workspace X, close all on X from the first page, assert refusal and layout unchanged" -> "Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged"; reason: analyst review round 1 (wf_be2467c8-b64)
   - log: 2026-10-23T23:19:52Z @kj edited test "Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged" -> "Galata sections.spec.ts: second page on workspace X; from the first page try each of these actions on X; assert a refusal for each, the first page's URL unchanged and X's layout and record unchanged; then from the first page use Open in new browser tab on a third workspace Y; in the new page try Close all tabs and Delete workspace on the first page's workspace; assert both refused"; reason: analyst review round 2 (wf_0ab9c6d9-e04)
   - log: 2026-10-24T10:04:01Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-24T20:03:39Z @kj amended text "Close all tabs, Delete workspace, Open workspace (the button, the header icon and the menu item), Open in new browser tab and a row click are refused for a workspace that another browser window shows, and the message says so" -> "Close all tabs, Delete workspace, Open workspace (the header click, the header icon and the menu item), Open in new browser tab and a row click are refused for a workspace that another browser window shows, and the message says so"; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:13Z @kj re-verified: sections.spec.ts:781 passed in the default-worker full run and in an isolated rerun; it timed out once in the 6-worker run at the Refresh wait under host load.
 - [x] `ACC-ACCORD-29-MENU` **Workspace menu** - HIGH; the ... button opens the menu: Open workspace, Open in new browser tab, Close all tabs, Set description..., Colour, Hide workspace, Delete workspace
   - evidence: 1 test(s) in Galata menu.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata menu.spec.ts: click ..., assert the seven labels in this order
@@ -444,6 +506,7 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - log: 2026-10-23T21:40:53Z @kj added
   - log: 2026-10-24T10:04:02Z @kj closed; reason: final verification of the implementation, 2026-10-24
 - [x] `ACC-ACCORD-78-CLOSE-OPEN` **Close the open card** - MEDIUM; a click on the header of the open card closes it, leaving no card open
+  - overridden-by: ACC-ACCORD-162-TRIANGLE
   - evidence: 1 test(s) in Galata sections.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata sections.spec.ts: open a card, click its header, assert no card open
   - test-tags: FUNCTIONAL
@@ -560,6 +623,7 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - log: 2026-10-23T22:13:49Z @kj added
   - log: 2026-10-24T10:04:03Z @kj closed; reason: final verification of the implementation, 2026-10-24
 - [x] `ACC-ACCORD-131-OPEN-BUTTONS` **Buttons of an open card** - MEDIUM; an open card ends with the buttons Open and Close all tabs; Open is disabled on this window's card
+  - overridden-by: ACC-ACCORD-167-NO-BUTTONS
   - evidence: 1 test(s) in Galata sections.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata sections.spec.ts: open this window's card and another, assert both buttons and Open disabled only on the first
   - test-tags: FUNCTIONAL
@@ -585,6 +649,54 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T22:28:12Z @kj added
   - log: 2026-10-24T10:04:03Z @kj closed; reason: final verification of the implementation, 2026-10-24
+- [x] `ACC-ACCORD-153-HOVER-NAME` **Hover keeps the name** - MEDIUM; while a card header's hover icons show, they take the place of the age, so the workspace name keeps the width it had before the hover
+  - evidence: sections.spec.ts:1086 passed in both full runs: on hover the icons take the age's place, so the long name keeps its width.
+  - related: ACC-ACCORD-98-HOVER-ACTIONS
+  - related: ACC-ACCORD-20-AGE
+  - test: Galata sections.spec.ts: sidebar at 250 px, a closed card with a long name, measure the name width, hover the header, assert the same width, the icons visible and the age hidden
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T16:05:30Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
+  - log: 2026-10-24T23:10:11Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-ACCORD-155-ARMED-COLOUR` **Armed delete shows a warning icon** - MEDIUM; an armed Confirm delete shows a warning icon in `--jp-error-color1` in place of the bin; at rest, armed and active the label keeps the menu's normal text colour and the row the normal selection background
+  - evidence: menu.spec.ts:265 passed in both full runs: Delete shows the red bin, armed a red warning icon, with the Set description label and background at rest, active and armed.
+  - related: ACC-ACCORD-31-DELETE
+  - related: ACC-ACCORD-103-DELETE-DISARM
+  - test: Galata menu.spec.ts: in Light and Steel, open the card menu, assert the bin fill equals the computed `--jp-error-color1` at rest and when active, and the label colour and active background equal those of Set description...; click Delete workspace, assert Confirm delete shows the warning icon with that fill and the label colour unchanged; assert no other entry's icon is red
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T16:05:30Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
+  - log: 2026-10-24T19:31:11Z @kj amended text "an armed Confirm delete shows its label in `--jp-error-color1`, as its bin, so the armed state differs from Delete workspace by colour as well as by its words" -> "an armed Confirm delete shows a warning icon in `--jp-error-color1` in place of the bin; at rest, armed and active the label keeps the menu's normal text colour and the row the normal selection background"; reason: design-system pattern Destructive menu entry (owner ruling 2026-10-24 19:05): only the icon is red, the label keeps the normal colour; the Star Colonel chose a warning icon to mark the armed state, 2026-10-24
+  - log: 2026-10-24T19:31:11Z @kj edited title "Armed delete in the error colour" -> "Armed delete shows a warning icon"; reason: design-system pattern Destructive menu entry (owner ruling 2026-10-24 19:05): only the icon is red, the label keeps the normal colour; the Star Colonel chose a warning icon to mark the armed state, 2026-10-24
+  - log: 2026-10-24T19:31:11Z @kj edited test "Galata menu.spec.ts: open the card menu, read the label colour of Delete workspace, click it, assert the label reads Confirm delete in the computed `--jp-error-color1` and differs from the colour before" -> "Galata menu.spec.ts: in Light and Steel, open the card menu, assert the bin fill equals the computed `--jp-error-color1` at rest and when active, and the label colour and active background equal those of Set description...; click Delete workspace, assert Confirm delete shows the warning icon with that fill and the label colour unchanged; assert no other entry's icon is red"; reason: design-system pattern Destructive menu entry (owner ruling 2026-10-24 19:05): only the icon is red, the label keeps the normal colour; the Star Colonel chose a warning icon to mark the armed state, 2026-10-24
+  - log: 2026-10-24T23:10:11Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-ACCORD-162-TRIANGLE` **Triangle opens and closes** - HIGH; a click on a card's triangle opens or closes that card and never switches this window to another workspace
+  - evidence: sections.spec.ts:123 passed in both full runs: one card open at a time, another workspace's triangle opens and closes it, never switches, aria-expanded follows.
+  - related: ACC-ACCORD-77-CARET
+  - overrides: ACC-ACCORD-78-CLOSE-OPEN
+  - test: Galata sections.spec.ts: click the triangle of another workspace's closed card, assert it open and the page URL unchanged; click it again, assert it closed
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:03:37Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:11Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-ACCORD-163-HEADER-SWITCH` **Header click switches** - HIGH; a click on the header of another workspace's card, outside its triangle and its buttons, switches this window to that workspace, as Open workspace does
+  - evidence: sections.spec.ts:1203 passed in both full runs: a click on another workspace's card name makes this page's URL that workspace.
+  - related: ACC-ACCORD-28-CLOSE-ELSEWHERE
+  - test: Galata sections.spec.ts: click the name of another workspace's card, assert the page URL ends in /lab/workspaces/<name>
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-ACCORD-164-HEADER-TOGGLE` **Header click on a card to stay on** - MEDIUM; a click on the header of this window's card, of In no workspace or of Other sessions opens or closes that card
+  - evidence: sections.spec.ts:1218 passed in both full runs: a header click opens and closes this window's card, In no workspace and Other sessions, and the URL stays.
+  - test: Galata sections.spec.ts: click the header of this window's card, of In no workspace and of Other sessions, assert each opens and the URL unchanged; click again, assert each closes
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-ACCORD-167-NO-BUTTONS` **No buttons in an open card** - MEDIUM; an open card ends with its last row and shows no Open or Close all tabs button; both actions stay in its ... menu
+  - evidence: sections.spec.ts:1168 passed in both full runs: an open card ends with its last row, no Open or Close all tabs button; both are in the ... menu.
+  - related: ACC-ACCORD-29-MENU
+  - overrides: ACC-ACCORD-131-OPEN-BUTTONS
+  - test: Galata sections.spec.ts: open a card with rows, assert no button labelled Open or Close all tabs inside the card body and both items in its ... menu
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T20:03:38Z @kj added; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
 
 ## Section content `LISTS`
 
@@ -690,13 +802,16 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - test-tags: UNIT
   - log: 2026-10-23T21:54:03Z @kj added
   - log: 2026-10-24T10:04:04Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-LISTS-110-SHUTDOWN-ALL` **Shut down all without a workspace** - MEDIUM; the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals and kernels
-  - evidence: Galata content.spec.ts:156 passed in final-verify full rig run galata-full (92/92, --workers=6, --retries=0)
-  - test: Galata content.spec.ts: a terminal and a kernel in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal and 1 kernel, confirm, assert both gone from `/api/terminals` and `/api/kernels`
+- [x] `ACC-LISTS-110-SHUTDOWN-ALL` **Shut down all without a workspace** - MEDIUM; the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals, kernels and language servers, and shuts all of them down
+  - evidence: content.spec.ts:172 passed in both final-verify-fixes2 full runs (106 of 106 at 6 and at the default workers, --retries=0): the dialog names 1 terminal, 1 kernel and 1 language server, and all three are gone
+  - test: Galata content.spec.ts: a terminal, a kernel and a language server in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal, 1 kernel and 1 language server, confirm, assert the terminal and kernel are gone from /api/terminals and /api/kernels and the language server's connection is gone
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:54:03Z @kj added
   - log: 2026-10-24T10:04:27Z @kj edited test "Galata content.spec.ts: two terminals in no workspace, Shut down all, confirm, assert `/api/terminals` empty of them" -> "Galata content.spec.ts: a terminal and a kernel in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal and 1 kernel, confirm, assert both gone from `/api/terminals` and `/api/kernels`"; reason: stage galata-c check: the test covered less than the criterion states, 2026-10-24
   - log: 2026-10-24T11:09:00Z @kj closed; reason: final verification of the follow-up run, 2026-10-24
+  - log: 2026-10-25T00:41:08Z @kj amended text "the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals and kernels" -> "the ... menu of In no workspace offers Shut down all; it asks once, naming the number of terminals, kernels and language servers, and shuts all of them down"; reason: the Star Colonel, 2026-10-25: language servers can be shut down
+  - log: 2026-10-25T00:41:08Z @kj edited test "Galata content.spec.ts: a terminal and a kernel in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal and 1 kernel, confirm, assert both gone from `/api/terminals` and `/api/kernels`" -> "Galata content.spec.ts: a terminal, a kernel and a language server in no workspace, Galata kernel mock off, Shut down all, assert the dialog names 1 terminal, 1 kernel and 1 language server, confirm, assert the terminal and kernel are gone from /api/terminals and /api/kernels and the language server's connection is gone"; reason: the Star Colonel, 2026-10-25: language servers can be shut down
+  - log: 2026-10-25T01:29:08Z @kj edited evidence "Galata content.spec.ts:156 passed in final-verify full rig run galata-full (92/92, --workers=6, --retries=0)" -> "content.spec.ts:172 passed in both final-verify-fixes2 full runs (106 of 106 at 6 and at the default workers, --retries=0): the dialog names 1 terminal, 1 kernel and 1 language server, and all three are gone"; reason: test changed for the Star Colonel's ruling that language servers can be shut down
 - [x] `ACC-LISTS-134-GROUP-COUNT` **Group labels** - LOW; inside an open card each group starts with its name in capitals and the number of its rows
   - evidence: 1 test(s) in Galata content.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata content.spec.ts: assert `TABS 3`, `TERMINALS 5`, `KERNELS 1` for a known workspace
@@ -709,6 +824,38 @@ Which tabs, terminals and kernels a section lists, and what a row click does
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T22:13:50Z @kj added
   - log: 2026-10-24T10:04:04Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-24T23:10:13Z @kj final verification 2026-10-25: content.spec.ts:721 failed once in the 6-worker full run at host load average 88, a 15 s app-start wait, and passed in the default-worker run and in an isolated rerun; stays closed, whether DEF-GALATA-3-DEFAULT-WORKERS-1 reopens is the Star Colonel's call
+- [x] `ACC-LISTS-154-TAB-SHRINK` **Folder gives way first** - MEDIUM; in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the label and the detail shorten together, each keeping its first characters, and the age stays whole inside the row
+  - evidence: content.spec.ts:277 passed in both full runs: a terminal row shortens to 'also in ...' then label and detail together, the mark ends in an ellipsis.
+  - related: ACC-LISTS-37-TWO-WORKSPACES
+  - test: Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces, the other named with 26 characters, assert the process name whole, the age whole inside the row, and the mark showing also in; a kernel whose display name is longer than the row, assert its notebook name shows its first characters
+  - test-tags: FUNCTIONAL
+  - log: 2026-10-24T16:05:30Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
+  - log: 2026-10-24T17:06:08Z @kj amended text "in a row too narrow for its text, a tab's folder shortens before its file name does, and an also in <name> mark is never shortened" -> "in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the detail, then the label, and the age stays whole inside the row"; reason: a screenshot at 250 px showed the mark also in model-training-experiments at 199 of 234 px, the process name and terminal name at 0 px and the age outside the card, 2026-10-24
+  - log: 2026-10-24T17:06:08Z @kj edited test "Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces with a long name, assert the also in mark whole" -> "Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces, the other named with 26 characters, assert the process name whole, the age whole inside the row, and the mark showing also in"; reason: a screenshot at 250 px showed the mark also in model-training-experiments at 199 of 234 px, the process name and terminal name at 0 px and the age outside the card, 2026-10-24
+  - log: 2026-10-24T19:08:32Z @kj amended text "in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the detail, then the label, and the age stays whole inside the row" -> "in a row too narrow for its text, a tab's folder shortens before its file name does; in a terminal or kernel row, an also in <name> mark shortens first, down to the words also in, then the label and the detail shorten together, each keeping its first characters, and the age stays whole inside the row"; reason: a screenshot at 250 px showed the display name Python [conda env:base] * take the kernel row and the notebook name at 0 px, which breaks ACC-KERNEL-48-ROW, 2026-10-24
+  - log: 2026-10-24T19:08:33Z @kj edited test "Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces, the other named with 26 characters, assert the process name whole, the age whole inside the row, and the mark showing also in" -> "Galata content.spec.ts: sidebar at 250 px, a tab with a short file name in a deep folder, assert the file name whole and the folder truncated; a terminal in two workspaces, the other named with 26 characters, assert the process name whole, the age whole inside the row, and the mark showing also in; a kernel whose display name is longer than the row, assert its notebook name shows its first characters"; reason: a screenshot at 250 px showed the display name Python [conda env:base] * take the kernel row and the notebook name at 0 px, which breaks ACC-KERNEL-48-ROW, 2026-10-24
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-LISTS-158-LANG-LISTED` **Language servers in no workspace** - MEDIUM; running language servers are listed in the In no workspace card, in a group Language servers after its kernels
+  - evidence: sections.spec.ts:268 passed in both full runs and the Jest panel suite passed in make test: pylsp (python) and bash-lsp (bash) are listed under In no workspace.
+  - related: ACC-LISTS-38-NO-WORKSPACE
+  - test: Jest panel.spec.ts: a fake manager named Language servers with 2 items, assert both rows in In no workspace after its kernel rows; Galata sections.spec.ts: a language server item in the lab's Language servers manager, assert its row under In no workspace
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-24T19:36:58Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-LISTS-160-LANG-ONLY` **Edge: only language servers** - MEDIUM; the In no workspace card shows when it holds language servers and no terminal or kernel
+  - evidence: The Jest panel suite passed in make test: with one language server and nothing else, In no workspace shows with that one row.
+  - test: Jest panel.spec.ts: every terminal and kernel in a workspace and one language server, assert the In no workspace card shown with its language server row
+  - test-tags: UNIT
+  - log: 2026-10-24T19:37:01Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `ACC-LISTS-161-LANG-ACTIONS` **Language servers keep their actions** - MEDIUM; language server rows in In no workspace keep the actions ACC-PANEL-157-OTHERS-ACTIONS gives Other sessions rows: the shutdown button, and Shut Down All with its confirmation
+  - evidence: The Jest panel suite passed in make test: a language server's shutdown button calls shutdown, and Shut Down All asks first then calls shutdownAll once.
+  - related: ACC-PANEL-157-OTHERS-ACTIONS
+  - test: Jest panel.spec.ts: a language server item with shutdown, press its button, assert shutdown called; press Shut Down All, confirm, assert shutdownAll called
+  - test-tags: UNIT
+  - log: 2026-10-24T19:37:01Z @kj added; reason: the Star Colonel, 2026-10-24: language servers are listed where the panel lists terminals and kernels in no workspace
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
 
 ## Terminal rows `TERM`
 
@@ -813,6 +960,14 @@ What a kernel row shows
   - log: 2026-10-23T23:39:36Z @kj edited test "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click A's kernel row, assert A's tab active; click B's kernel row, assert B open in an active tab" -> "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; click A's kernel row, assert A's tab active"; reason: analyst review round 5 (wf_866e427b-435)
   - log: 2026-10-24T10:04:27Z @kj edited test "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; click A's kernel row, assert A's tab active" -> "Galata kernels.spec.ts: notebook A open in this window, a session with a path for notebook B in no workspace by REST; click B's kernel row, assert B open in an active tab; focus A's row, press Enter, assert A's tab active; click the kernel row of a notebook in workspace W, assert W open in this window"; reason: stage galata-c check: the test covered less than the criterion states, 2026-10-24
   - log: 2026-10-24T11:09:00Z @kj closed; reason: final verification of the follow-up run, 2026-10-24
+- [x] `ACC-KERNEL-156-DISPLAY-NAME` **Kernel display name** - MEDIUM; a kernel row shows the display name of its kernelspec, as the kernel picker does, and its tooltip names the kernelspec id; a kernel whose spec is unknown shows the id; the filter matches both
+  - evidence: kernels.spec.ts:50 passed in both full runs and the model and filter Jest suites passed in make test: a kernel row shows the kernelspec display name, the id in its tooltip.
+  - related: ACC-KERNEL-48-ROW
+  - related: ACC-FILTER-58-FIELDS
+  - test: Jest model.spec.ts: a python3 kernel whose spec reads Python 3 (ipykernel), assert the row label and the id in the tooltip; an unknown spec, assert the id; Jest filter.spec.ts: a match on the display name and on the id; Galata kernels.spec.ts: assert the row shows the display name of GET /api/kernelspecs
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-24T16:05:31Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
+  - log: 2026-10-24T23:10:12Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
 
 ## Hidden workspaces `HIDDEN`
 
@@ -830,6 +985,7 @@ The hide toggle of a workspace and the header button that shows hidden workspace
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:39Z @kj added
   - log: 2026-10-24T10:04:05Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-24T23:10:13Z @kj final verification 2026-10-25: hidden.spec.ts:115 failed once in the default-worker full run at host load average 88, a 5 s toHaveCount wait, and passed in an isolated rerun; stays closed, whether DEF-GALATA-3-DEFAULT-WORKERS-1 reopens is the Star Colonel's call
 - [x] `ACC-HIDDEN-52-SHOW-HIDDEN` **Show hidden workspaces** - HIGH; the eye button in the header shows the hidden workspaces among the others, each with the word hidden and an eye button
   - evidence: 1 test(s) in Galata hidden.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata hidden.spec.ts: hide 1, press the header eye, assert its section visible and with the hidden class
@@ -909,15 +1065,18 @@ The filter field that finds anything in the panel, as in the AI assistants panel
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T13:58:45Z @kj added
   - log: 2026-10-24T10:04:06Z @kj closed; reason: final verification of the implementation, 2026-10-24
-- [x] `ACC-FILTER-82-OPEN-MATCHES` **Matching cards open** - HIGH; while a filter is active, every card with a match is open; a header click then opens or closes that card only, and the filter stays
+- [x] `ACC-FILTER-82-OPEN-MATCHES` **Matching cards open** - HIGH; while a filter is active, every card with a match is open; a click on a card's triangle then opens or closes that card only, and the filter stays
   - evidence: 1 test(s) in Galata filter.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
-  - test: Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged; click the same header again, assert both cards open
+  - test: Galata filter.spec.ts: three workspaces, one without a match; filter for kiwi, assert two cards and both triangles expanded; click one card's triangle, assert that card closed, the other expanded and the query unchanged; click the same triangle again, assert it open and the query unchanged
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T21:53:29Z @kj added
   - log: 2026-10-23T23:32:31Z @kj amended text "while a filter is active, every card with a match is open" -> "while a filter is active, every card with a match is open; a header click then opens or closes that card only, and the filter stays"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
   - log: 2026-10-23T23:32:31Z @kj edited test "Galata filter.spec.ts: two workspaces with a match, assert both cards open" -> "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged"; reason: Star Colonel's choices on the review deferrals, 2026-10-24
   - log: 2026-10-23T23:39:36Z @kj edited test "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged" -> "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged; click the same header again, assert both cards open"; reason: analyst review round 5 (wf_866e427b-435)
   - log: 2026-10-24T10:04:06Z @kj closed; reason: final verification of the implementation, 2026-10-24
+  - log: 2026-10-24T20:03:39Z @kj amended text "while a filter is active, every card with a match is open; a header click then opens or closes that card only, and the filter stays" -> "while a filter is active, every card with a match is open; a click on a card's triangle then opens or closes that card only, and the filter stays"; reason: the Star Colonel, 2026-10-24 22:00: the triangle opens a card, a header click switches to the workspace, the card buttons go, counts in brackets
+  - log: 2026-10-24T22:36:21Z @kj edited test "Galata filter.spec.ts: two workspaces with a match, assert both cards open; click the header of one, assert it closed, the other open and the filter text unchanged; click the same header again, assert both cards open" -> "Galata filter.spec.ts: three workspaces, one without a match; filter for kiwi, assert two cards and both triangles expanded; click one card's triangle, assert that card closed, the other expanded and the query unchanged; click the same triangle again, assert it open and the query unchanged"
+  - log: 2026-10-24T23:10:13Z @kj re-verified: filter.spec.ts:182 passed in both full runs: every card with a match is open, the triangle closes and opens one card only, the query stays.
 - [x] `ACC-FILTER-83-RESTORE` **Open card returns** - MEDIUM; clearing the filter returns the cards to the open state they had before the filter
   - evidence: 1 test(s) in Galata filter.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata filter.spec.ts: open card A, filter, clear, assert only A open

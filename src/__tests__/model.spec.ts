@@ -45,9 +45,18 @@ const input = (over: Partial<IModelInput>): IModelInput => ({
   terminals: [],
   kernels: [],
   sessions: [],
+  specs: null,
   current: 'default',
   liveTabs: [],
   ...over
+});
+
+/** The kernelspecs JupyterLab loads, holding one spec. */
+const specs = (name: string, display_name: string) => ({
+  default: name,
+  kernelspecs: {
+    [name]: { name, display_name, language: '', argv: [], resources: {} }
+  }
 });
 
 const byId = (sections: ISection[], id: string | null) =>
@@ -132,6 +141,8 @@ describe('model', () => {
       {
         id: 'k1',
         name: 'python3',
+        label: 'python3',
+        title: 'work/x.ipynb\npython3',
         path: 'work/x.ipynb',
         detail: 'x.ipynb',
         lastActivity: '2026-10-24T11:00:00.000000Z',
@@ -241,6 +252,45 @@ describe('model', () => {
       'jp-WorkspaceManager-dot jp-mod-idle',
       'jp-WorkspaceManager-dot jp-mod-busy'
     ]);
+  });
+
+  it('ACC-KERNEL-156-DISPLAY-NAME: a kernel row shows the display name of its kernelspec, the id in its tooltip; an unknown spec shows the id', () => {
+    const k1 = kernel('k1');
+    const k2 = { ...kernel('k2'), name: 'xpython' };
+    const sections = buildSections(
+      input({
+        workspaces: [
+          ws('a', '2026-10-23T10:00:00Z', ['notebook:work/x.ipynb'])
+        ],
+        sessions: [session('work/x.ipynb', k1)],
+        kernels: [k1, k2],
+        specs: specs('python3', 'Python 3 (ipykernel)')
+      })
+    );
+    const [row] = byId(sections, 'a').kernels;
+    expect(row.label).toBe('Python 3 (ipykernel)');
+    expect(row.title).toBe('work/x.ipynb\npython3');
+    const [unknown] = byId(sections, null).kernels;
+    expect(unknown.label).toBe('xpython');
+    expect(unknown.title).toBe('xpython');
+    // before JupyterLab has loaded the kernelspecs
+    const early = buildSections(input({ kernels: [k1] }));
+    expect(byId(early, null).kernels[0].label).toBe('python3');
+  });
+
+  it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one tab row', () => {
+    const k1 = kernel('k1');
+    const view = { key: 'notebook:a.ipynb', path: 'a.ipynb', title: 'a.ipynb' };
+    const sections = buildSections(
+      input({
+        sessions: [session('a.ipynb', k1)],
+        kernels: [k1],
+        liveTabs: [view, { key: 'editor:b.md', path: 'b.md' }, { ...view }]
+      })
+    );
+    const a = byId(sections, 'default');
+    expect(a.tabs.map(t => t.key)).toEqual(['notebook:a.ipynb', 'editor:b.md']);
+    expect(a.kernels.map(k => k.id)).toEqual(['k1']);
   });
 
   it('ACC-KERNEL-133-STATE-OTHER: every other state takes the unknown dot', () => {

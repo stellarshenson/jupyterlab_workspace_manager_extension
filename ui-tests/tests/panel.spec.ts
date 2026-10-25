@@ -18,8 +18,14 @@ import {
 // Load the page inside the test, so every console message of the load is caught
 test.use({ autoGoto: false });
 
-/** The sections the cards replace; every other one is under Other sessions. */
-const REPLACED = ['Open Tabs', 'Kernels', 'Terminals', 'Workspaces'];
+/** The sections the cards replace, and Language servers, which In no workspace lists; every other one is under Other sessions. */
+const REPLACED = [
+  'Open Tabs',
+  'Kernels',
+  'Terminals',
+  'Workspaces',
+  'Language servers'
+];
 /** Requested by every reload of the panel and by nothing else. */
 const POLLED = '/jupyterlab-workspace-manager-extension/terminals';
 
@@ -113,7 +119,7 @@ test('ACC-PANEL-137-OTHERS-CLOSED: Other sessions is closed at load and counts t
     return managers.items().map((m: any) => m.name);
   });
   const others = names.filter(n => !REPLACED.includes(n));
-  // the four the cards replace are registered, so the count below excludes them
+  // the five are registered, so the count below excludes them
   expect(names).toEqual(expect.arrayContaining(REPLACED));
   expect(others.length).toBeGreaterThan(0);
 
@@ -122,7 +128,7 @@ test('ACC-PANEL-137-OTHERS-CLOSED: Other sessions is closed at load and counts t
   await expect(header).toHaveAttribute('aria-expanded', 'false');
   await expect(othersCard).not.toHaveClass(/jp-mod-open/);
   await expect(header.locator('.jp-WorkspaceManager-counts')).toHaveText(
-    `${others.length} ${others.length === 1 ? 'section' : 'sections'}`
+    `(${others.length})`
   );
 });
 
@@ -236,7 +242,7 @@ test.describe('with the workspaces of the server', () => {
       await openPanel(page);
       await refresh(page);
       const count = page.locator(`${PANEL} .jp-WorkspaceManager-titleCount`);
-      await expect(count).toHaveText('4');
+      await expect(count).toHaveText('(4)');
 
       await card(page, three[0])
         .locator('button[aria-label="Workspace menu"]')
@@ -247,11 +253,11 @@ test.describe('with the workspaces of the server', () => {
         })
         .click();
       await expect(card(page, three[0])).toHaveCount(0);
-      await expect(count).toHaveText('3');
+      await expect(count).toHaveText('(3)');
 
       await headerButton(page, 'Show hidden workspaces').click();
       await expect(card(page, three[0])).toBeVisible();
-      await expect(count).toHaveText('4');
+      await expect(count).toHaveText('(4)');
     } finally {
       await deleteWorkspaces(page, [current, ...three]);
     }
@@ -304,21 +310,38 @@ test('ACC-PANEL-88-STATUSBAR: the status bar item of terminals and kernels shows
   await expect(page.locator(PANEL)).toHaveClass(/jp-WorkspaceManager/);
 });
 
-test('ACC-PANEL-89-SEARCH-TABS: the Search tabs button in the header opens its dialog', async ({
+test('ACC-PANEL-169-NO-SEARCH, DEF-PANEL-13-SEARCH-ICON: no Search Tabs and Running Sessions button in the panel header; the command palette lists the command', async ({
   page
 }) => {
   await page.goto();
   await openPanel(page);
-  await page
-    .locator(
-      `${PANEL} .jp-WorkspaceManager-header [data-command="running:show-modal"]`
+  await expect(card(page, 'default')).toBeVisible();
+  // @jupyterlab/running-extension:search-tabs ran: it adds the command, and the button to the panel it finds
+  expect(
+    await page.evaluate(() =>
+      (window as any).jupyterapp.commands.hasCommand('running:show-modal')
     )
-    .click();
-  const dialog = page.locator('.jp-Dialog.jp-SearchableSessions-modal');
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator('.jp-Dialog-header')).toContainText(
-    'Tabs and Running Sessions'
+  ).toBe(true);
+  const header = page.locator(`${PANEL} .jp-WorkspaceManager-header`);
+  await expect(
+    header.locator('[data-command="running:show-modal"]')
+  ).toHaveCount(0);
+  await expect(
+    header.locator('[title="Search Tabs and Running Sessions"]')
+  ).toHaveCount(0);
+
+  await page.evaluate(() =>
+    (window as any).jupyterapp.commands.execute(
+      'apputils:activate-command-palette'
+    )
   );
+  const palette = page.locator('.jp-ModalCommandPalette');
+  await palette.locator('.lm-CommandPalette-input').fill('Search Tabs');
+  await expect(
+    palette.locator('.lm-CommandPalette-item', {
+      hasText: 'Search Tabs and Running Sessions'
+    })
+  ).toHaveCount(1);
 });
 
 test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the buttons of other extensions, each 24px square', async ({
@@ -326,6 +349,19 @@ test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the bu
 }) => {
   await page.goto();
   await openPanel(page);
+  // a button another extension adds to the toolbar of the panel, as search-tabs did
+  await page.evaluate(async () => {
+    const panel: any = await (window as any).galata.getPlugin(
+      'jupyterlab_workspace_manager_extension:plugin'
+    );
+    // the title is a plain Lumino widget: its class makes the item
+    const Widget = panel.toolbar.layout.widgets[0].constructor;
+    const node = document.createElement('button');
+    node.className = 'jp-ToolbarButtonComponent';
+    node.title = 'Button of another extension';
+    node.setAttribute('aria-label', node.title);
+    panel.toolbar.addItem('another-extension', new Widget({ node }));
+  });
   const buttons = await page
     .locator(`${PANEL} .jp-WorkspaceManager-header`)
     .locator('button, jp-button')
@@ -344,7 +380,7 @@ test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the bu
     'Show hidden workspaces',
     'Refresh'
   ]);
-  expect(buttons[4].label).toMatch(/^Search Tabs/);
+  expect(buttons[4].label).toBe('Button of another extension');
   for (const b of buttons) {
     expect([b.label, b.size]).toEqual([b.label, [24, 24]]);
   }

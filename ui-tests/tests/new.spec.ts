@@ -3,7 +3,6 @@ import type { Page } from '@playwright/test';
 
 import {
   card,
-  cardHeader,
   colourOf,
   COLOURS,
   deleteWorkspaces,
@@ -16,6 +15,7 @@ import {
   PANEL,
   putWorkspace,
   refresh,
+  triangle,
   UNDER_LOAD
 } from './helpers';
 
@@ -213,7 +213,7 @@ test('ACC-PANEL-146-NEW-STAY: after Create the window stays and the new card is 
     await page.evaluate(() => ((window as any).stayed = true));
 
     await create(page, created);
-    await expect(cardHeader(page, created)).toHaveAttribute(
+    await expect(triangle(page, created)).toHaveAttribute(
       'aria-expanded',
       'true'
     );

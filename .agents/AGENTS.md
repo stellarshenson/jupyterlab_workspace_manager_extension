@@ -37,8 +37,8 @@ optional purpose, its age and counts in the header, then its tabs, terminals and
   Colonel's order and the open questions the design answers
 - **Design before code** - the proposal lives in `docs/design/`; acceptance criteria and
   implementation wait for the Star Colonel's approval of it
-- **State** - the code is the template placeholder (hello route, activation log); update this
-  section when the architecture exists
+- **State** - routes `terminals` (process names), `meta`/`meta/<id>` (records) and `presence`
+  (open windows); frontend `index.ts`, `api.ts`, `request.ts`, `icons.ts`, `model/`, `panel/`
 - **Sibling that must keep working** - `../jupyterlab_kernel_terminal_workspace_culler_extension`
   culls idle kernels, terminals and workspaces in the same lab; read its server code before any
   change that reads or writes workspaces, terminals or kernels

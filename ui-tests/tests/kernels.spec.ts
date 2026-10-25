@@ -7,6 +7,7 @@ import {
   cardHeader,
   deleteWorkspaces,
   dialog,
+  displayName,
   enterWorkspace,
   fresh,
   fromRowMenu,
@@ -16,12 +17,15 @@ import {
   NEXT_POLL,
   nobodyCard,
   openDocument,
+  panelWidth,
   putNotebook,
   putWorkspace,
   refresh,
   rowOf,
   serverList,
+  shows,
   startSession,
+  triangle,
   UNDER_LOAD
 } from './helpers';
 
@@ -43,7 +47,7 @@ async function sessionOf(page: Page, path: string): Promise<any> {
   return session;
 }
 
-test('ACC-KERNEL-48-ROW, ACC-KERNEL-114-SHUTDOWN: a kernel row shows name, notebook and age; Shut down kernel ends it and the notebook stays open', async ({
+test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a kernel row shows the display name of its kernelspec, the id in its tooltip, its notebook and age; Shut down kernel ends it and the notebook stays open', async ({
   page,
   tmpPath
 }) => {
@@ -59,13 +63,33 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-114-SHUTDOWN: a kernel row shows name, noteb
     const kernels = group(card(page, current), 'KERNELS');
     const row = kernels.locator(ROW);
     await expect(row).toHaveCount(1);
+    const display = await displayName(page, session.kernel.name);
+    expect(display).not.toBe(session.kernel.name);
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-      session.kernel.name
+      display
+    );
+    await expect(row).toHaveAttribute(
+      'title',
+      `${notebook}\n${session.kernel.name}`
     );
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
       'kernelled.ipynb'
     );
     await expect(row.locator('.jp-WorkspaceManager-age')).toHaveText('now');
+    // at the 250 px sidebar the name and the notebook each show their first characters, the age whole
+    expect(await panelWidth(page)).toBe(250);
+    for (const part of [
+      '.jp-WorkspaceManager-rowLabel',
+      '.jp-WorkspaceManager-rowDetail'
+    ]) {
+      const s = await shows(row, part);
+      expect(s.inside, part).toBe(true);
+      expect(s.width, part).toBeGreaterThanOrEqual(s.start);
+    }
+    expect(await shows(row, '.jp-WorkspaceManager-age')).toMatchObject({
+      inside: true,
+      whole: true
+    });
     // the age is the server's last_activity: a kernel idle for over 5 minutes shows 5m
     const idle = new Date(Date.now() - 330000).toISOString();
     const list = /\/api\/kernels(\?.*)?$/;
@@ -158,7 +182,7 @@ test.describe('kernels and sessions of the server', () => {
       await page.keyboard.press('Enter');
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(a);
 
-      await cardHeader(page, other).click();
+      await triangle(page, other).click();
       await rowOf(
         group(card(page, other), 'KERNELS'),
         `${tag}-c.ipynb`

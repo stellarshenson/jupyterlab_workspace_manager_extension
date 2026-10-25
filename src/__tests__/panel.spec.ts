@@ -3,6 +3,11 @@
 import { PageConfig } from '@jupyterlab/coreutils';
 import { RunningSessionManagers } from '@jupyterlab/running';
 import { ServerConnection } from '@jupyterlab/services';
+import {
+  acceptDialog,
+  dismissDialog,
+  waitForDialog
+} from '@jupyterlab/testutils';
 import { CommandRegistry } from '@lumino/commands';
 import { MessageLoop } from '@lumino/messaging';
 import { Signal } from '@lumino/signaling';
@@ -62,7 +67,9 @@ function fakeServer(server: IServer) {
       status,
       statusText: '',
       headers: new Headers(),
-      json: async () => body,
+      // a copy, as a real server sends: a later change to `server` must not reach data the panel holds
+      json: async () =>
+        body === undefined ? body : JSON.parse(JSON.stringify(body)),
       text: async () => (body === undefined ? '' : JSON.stringify(body))
     }) as unknown as Response;
   const route = (method: string, path: string, body: any): Response => {
@@ -163,9 +170,30 @@ function fakeServer(server: IServer) {
   };
 }
 
+const PYTHON = 'Python 3 (ipykernel)';
+
 function fakeApp(settings: ServerConnection.ISettings, live: Widget[] = []) {
   return {
-    serviceManager: { serverSettings: settings },
+    serviceManager: {
+      serverSettings: settings,
+      kernelspecs: {
+        specs: {
+          default: 'python3',
+          kernelspecs: {
+            python3: {
+              name: 'python3',
+              display_name: PYTHON,
+              language: 'python',
+              argv: [],
+              resources: {}
+            }
+          }
+        },
+        specsChanged: new Signal<any, any>({})
+      },
+      terminals: { shutdown: jest.fn(async () => undefined) },
+      kernels: { shutdown: jest.fn(async () => undefined) }
+    },
     shell: {
       widgets: (area: string) =>
         (area === 'main' ? live : [])[Symbol.iterator](),
@@ -203,6 +231,15 @@ function standard(): IServer {
   };
 }
 
+/** A fake section of another extension whose items have only a label. */
+const manager = (name: string, labels: string[]) => ({
+  name,
+  running: () => labels.map(label => ({ label: () => label, icon: () => '' })),
+  refreshRunning: () => undefined,
+  runningChanged: new Signal<any, any>({}),
+  shutdownAll: () => undefined
+});
+
 let panels: WorkspacePanel[] = [];
 
 async function mount(
@@ -210,8 +247,9 @@ async function mount(
   options: { live?: Widget[]; managers?: RunningSessionManagers } = {}
 ) {
   const fake = fakeServer(server);
+  const app = fakeApp(fake.settings, options.live);
   const panel = new WorkspacePanel({
-    app: fakeApp(fake.settings, options.live),
+    app,
     current: 'default',
     window: 'w1',
     managers: options.managers ?? null
@@ -219,8 +257,27 @@ async function mount(
   panels.push(panel);
   Widget.attach(panel, document.body);
   await settle();
-  return { panel, fake, ...fake };
+  return { panel, fake, app, ...fake };
 }
+
+/** Choose the item at `index` of the open menu by keyboard; Lumino reads keyCode. */
+function chooseMenuItem(index: number) {
+  const menu = document.querySelector('.jp-WorkspaceManager-menu')!;
+  const key = (keyCode: number) => {
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(event, 'keyCode', { value: keyCode });
+    menu.dispatchEvent(event);
+  };
+  for (let i = 0; i <= index; i++) {
+    key(40); // ArrowDown
+  }
+  key(13); // Enter
+}
+
+const dialogText = () => document.querySelector('.jp-Dialog')?.textContent;
 
 const $ = (panel: Widget, selector: string) =>
   panel.node.querySelector<HTMLElement>(selector);
@@ -231,6 +288,9 @@ const header = (panel: Widget, key: string) =>
   card(panel, key).querySelector<HTMLElement>(
     '.jp-WorkspaceManager-cardHeader'
   )!;
+/** The triangle of a card: it opens or closes the card. */
+const triangle = (panel: Widget, key: string) =>
+  header(panel, key).querySelector<HTMLElement>('.jp-WorkspaceManager-caret')!;
 const refreshButton = (panel: Widget) =>
   $(panel, 'button[aria-label="Refresh"]') as HTMLButtonElement;
 
@@ -242,30 +302,256 @@ afterEach(() => {
 });
 
 describe('panel', () => {
-  it('ACC-PANEL-4-OTHERS: sections of other extensions are listed under Other sessions, the replaced ones are not', async () => {
+  it('ACC-PANEL-4-OTHERS: sections of other extensions are listed under Other sessions, the replaced ones and Language servers are not', async () => {
     const managers = new RunningSessionManagers();
-    const manager = (name: string, labels: string[]) => ({
-      name,
-      running: () =>
-        labels.map(label => ({ label: () => label, icon: () => '' })),
-      refreshRunning: () => undefined,
-      runningChanged: new Signal<any, any>({}),
-      shutdownAll: () => undefined
-    });
-    managers.add(manager('Language servers', ['pylsp', 'bash-lsp']));
-    for (const name of ['Open Tabs', 'Kernels', 'Terminals', 'Workspaces']) {
+    managers.add(manager('Debug sessions', ['debug-a', 'debug-b']));
+    for (const name of [
+      'Open Tabs',
+      'Kernels',
+      'Terminals',
+      'Workspaces',
+      'Language servers'
+    ]) {
       managers.add(manager(name, [`item of ${name}`]));
     }
     const { panel } = await mount(standard(), { managers });
 
     const others = card(panel, 'x:others');
-    expect(others.textContent).toContain('1 section');
+    expect(
+      others.querySelector('.jp-WorkspaceManager-counts')!.textContent
+    ).toBe('(1)');
     header(panel, 'x:others').click();
     const text = card(panel, 'x:others').textContent!;
-    expect(text).toContain('LANGUAGE SERVERS');
-    expect(text).toContain('pylsp');
-    expect(text).toContain('bash-lsp');
-    expect(panel.node.textContent).not.toMatch(/item of/);
+    expect(text).toContain('DEBUG SESSIONS');
+    expect(text).toContain('debug-a');
+    expect(text).toContain('debug-b');
+    expect(text).not.toMatch(/item of|LANGUAGE SERVERS/);
+  });
+
+  it('ACC-LISTS-158-LANG-LISTED: language servers are listed in In no workspace, in a group after its kernels', async () => {
+    const managers = new RunningSessionManagers();
+    managers.add(
+      manager('Language servers', ['pylsp (python)', 'bash-lsp (bash)'])
+    );
+    const { panel } = await mount(standard(), { managers });
+
+    header(panel, 'x:none').click();
+    const nobody = card(panel, 'x:none');
+    const labels = Array.from(
+      nobody.querySelectorAll('.jp-WorkspaceManager-groupLabel')
+    ).map(l => l.firstChild!.textContent!.trim());
+    expect(labels).toEqual(['KERNELS', 'LANGUAGE SERVERS']);
+    const rows = Array.from(
+      nobody.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+    ).map(r => r.textContent);
+    expect(rows.slice(1)).toEqual(['pylsp (python)', 'bash-lsp (bash)']);
+    expect(rows[0]).toContain(PYTHON);
+    // the only other section, so no Other sessions card
+    expect($(panel, '[data-key="x:others"]')).toBeNull();
+  });
+
+  it('ACC-LISTS-160-LANG-ONLY: In no workspace shows when it holds a language server and no terminal or kernel', async () => {
+    const server = standard();
+    // the kernel of a notebook of auto-6; terminal 1 is in auto-6 already
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:1',
+      'notebook:a.ipynb'
+    ]);
+    const managers = new RunningSessionManagers();
+    managers.add(manager('Language servers', ['pylsp (python)']));
+    const { panel } = await mount(server, { managers });
+
+    header(panel, 'x:none').click();
+    const nobody = card(panel, 'x:none');
+    const rows = Array.from(
+      nobody.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+    ).map(r => r.textContent);
+    expect(rows).toEqual(['pylsp (python)']);
+    expect(nobody.textContent).not.toContain('No tabs, terminals or kernels');
+  });
+
+  it('ACC-LISTS-161-LANG-ACTIONS: a language server row in In no workspace keeps its shutdown button; Shut Down All asks, then shuts all down', async () => {
+    const managers = new RunningSessionManagers();
+    const shutdown = jest.fn();
+    const shutdownAll = jest.fn();
+    managers.add({
+      ...manager('Language servers', []),
+      running: () => [
+        { label: () => 'pylsp (python)', icon: () => '', shutdown }
+      ],
+      shutdownAll,
+      shutdownLabel: 'Shut Down',
+      shutdownAllLabel: 'Shut Down All',
+      shutdownAllConfirmationText:
+        'Are you sure you want to permanently shut down all running language servers?'
+    });
+    const { panel } = await mount(standard(), { managers });
+    header(panel, 'x:none').click();
+    const nobody = card(panel, 'x:none');
+
+    nobody
+      .querySelector<HTMLElement>('button[aria-label="Shut Down"]')!
+      .click();
+    expect(shutdown).toHaveBeenCalledTimes(1);
+
+    const all = Array.from(nobody.querySelectorAll('button')).find(
+      b => b.textContent === 'Shut Down All'
+    )!;
+    all.click();
+    await waitForDialog();
+    expect(dialogText()).toContain('shut down all running language servers?');
+    await dismissDialog();
+    await settle();
+    expect(shutdownAll).not.toHaveBeenCalled();
+    all.click();
+    await acceptDialog();
+    await settle();
+    expect(shutdownAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACC-PANEL-157-OTHERS-ACTIONS: an Other sessions item keeps its shutdown button and its child rows; Shut Down All asks, then shuts all down', async () => {
+    const managers = new RunningSessionManagers();
+    const open = jest.fn();
+    const shutdown = jest.fn();
+    const shutdownChild = jest.fn();
+    const shutdownAll = jest.fn();
+    managers.add({
+      name: 'Debug sessions',
+      running: () => [
+        {
+          label: () => 'pylsp',
+          icon: () => '',
+          open,
+          shutdown,
+          children: [
+            {
+              label: () => 'a.py',
+              icon: () => '',
+              shutdown: shutdownChild
+            }
+          ]
+        }
+      ],
+      refreshRunning: () => undefined,
+      runningChanged: new Signal<any, any>({}),
+      shutdownAll,
+      shutdownLabel: 'Stop',
+      shutdownAllLabel: 'Stop All',
+      shutdownAllConfirmationText: 'Stop every debug session?'
+    });
+    const { panel } = await mount(standard(), { managers });
+    header(panel, 'x:others').click();
+    const others = card(panel, 'x:others');
+    const rows = Array.from(
+      others.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+    );
+    expect(rows.map(r => r.textContent)).toEqual(['pylsp', 'a.py']);
+    expect(rows[1].classList).toContain('jp-mod-child');
+
+    rows[0].querySelector<HTMLElement>('button[aria-label="Stop"]')!.click();
+    expect(shutdown).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
+    // as the replaced panel: a child row's button takes the default label
+    rows[1]
+      .querySelector<HTMLElement>('button[aria-label="Shut Down"]')!
+      .click();
+    expect(shutdownChild).toHaveBeenCalledTimes(1);
+
+    const all = Array.from(others.querySelectorAll('button')).find(
+      b => b.textContent === 'Stop All'
+    )!;
+    all.click();
+    await waitForDialog();
+    expect(dialogText()).toContain('Stop All?');
+    expect(dialogText()).toContain('Stop every debug session?');
+    await dismissDialog();
+    await settle();
+    expect(shutdownAll).not.toHaveBeenCalled();
+    all.click();
+    await acceptDialog();
+    await settle();
+    expect(shutdownAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one row; a click activates a view, Close tab closes both', async () => {
+    const views = [0, 1].map(i => {
+      const view = new Widget();
+      view.id = `view-${i}`;
+      view.title.label = 'a.md';
+      (view as any).context = { path: 'a.md' };
+      return view;
+    });
+    const closed = views.map(v => jest.spyOn(v, 'close'));
+    const { panel, app } = await mount(standard(), { live: views });
+    header(panel, 'w:default').click();
+    const rows = card(panel, 'w:default').querySelectorAll<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    );
+    expect(rows).toHaveLength(1);
+    rows[0].click();
+    expect(app.shell.activateById).toHaveBeenCalledWith('view-0');
+
+    rows[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    chooseMenuItem(0); // Close tab
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(closed[0]).toHaveBeenCalledTimes(1);
+    expect(closed[1]).toHaveBeenCalledTimes(1);
+  });
+
+  it('DEF-PANEL-11-SHUTDOWN-STALE: Shut down all shuts down what is in no workspace when the user confirms', async () => {
+    const server = standard();
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
+    });
+    const shutdownServer = jest.fn();
+    const managers = new RunningSessionManagers();
+    managers.add({
+      ...manager('Language servers', []),
+      running: () => [
+        {
+          label: () => 'pylsp (python)',
+          icon: () => '',
+          shutdown: shutdownServer
+        }
+      ]
+    });
+    const { panel, app } = await mount(server, { managers });
+    card(panel, 'x:none')
+      .querySelector<HTMLElement>(
+        'button[aria-label="Menu of In no workspace"]'
+      )!
+      .click();
+    chooseMenuItem(0); // Shut down all
+    await waitForDialog();
+    expect(dialogText()).toContain(
+      '1 terminal, 1 kernel and 1 language server'
+    );
+    // while the dialog is open, another window opens the kernel's notebook in auto-6
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 0, [
+      'terminal:1',
+      'notebook:a.ipynb'
+    ]);
+    await acceptDialog();
+    await settle();
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['9']]);
+    expect(app.serviceManager.kernels.shutdown).not.toHaveBeenCalled();
+    expect(shutdownServer).toHaveBeenCalledTimes(1);
   });
 
   it('ACC-PANEL-7-REFRESH-BUSY: the refresh button turns and waits for the requests, at least 500 ms', async () => {
@@ -319,7 +605,7 @@ describe('panel', () => {
     await settle();
 
     // a card open, a row focused, the list scrolled
-    header(panel, 'w:auto-6').click();
+    triangle(panel, 'w:auto-6').click();
     const list = $(panel, '.jp-WorkspaceManager-list')!;
     list.scrollTop = 40;
     const row = card(panel, 'w:auto-6').querySelector<HTMLElement>(
@@ -346,7 +632,7 @@ describe('panel', () => {
     expect(list.scrollTop).toBe(40);
     expect(document.activeElement).toBe(row);
     expect(card(panel, 'w:auto-6').classList).toContain('jp-mod-open');
-    expect(header(panel, 'w:auto-6').getAttribute('aria-expanded')).toBe(
+    expect(triangle(panel, 'w:auto-6').getAttribute('aria-expanded')).toBe(
       'true'
     );
 
@@ -413,19 +699,19 @@ describe('panel', () => {
     expect(log).toContain('GET /api/terminals');
     expect(card(panel, 'w:default')).toBeTruthy();
     expect(card(panel, 'w:auto-6')).toBeTruthy();
-    header(panel, 'w:auto-6').click();
+    triangle(panel, 'w:auto-6').click();
     const rows = $$(panel, '.jp-WorkspaceManager-row').map(r => r.textContent);
     expect(rows).toContain('terminal 1now');
     expect(card(panel, 'w:auto-6').textContent).not.toContain('claude');
     header(panel, 'x:none').click();
-    expect(card(panel, 'x:none').textContent).toContain('python3');
+    expect(card(panel, 'x:none').textContent).toContain(PYTHON);
   });
 
   it('ACC-PANEL-96-LOAD-ERROR, DEF-PANEL-2-PARTIAL-RELOAD: a failed list keeps its rows under one line naming it, the other lists update; the next good reload removes the line', async () => {
     const server = standard();
     const { panel } = await mount(server);
     header(panel, 'x:none').click();
-    expect(card(panel, 'x:none').textContent).toContain('python3');
+    expect(card(panel, 'x:none').textContent).toContain(PYTHON);
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
 
     // the kernel list fails while its kernel ends and a terminal starts
@@ -441,13 +727,13 @@ describe('panel', () => {
     expect(lines.map(l => l.textContent)).toEqual([
       'Reload failed: kernels (Unhandled error)'
     ]);
-    expect(card(panel, 'x:none').textContent).toContain('python3');
+    expect(card(panel, 'x:none').textContent).toContain(PYTHON);
     expect(card(panel, 'x:none').textContent).toContain('htop');
 
     server.failing = false;
     await panel.refresh();
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
-    expect(card(panel, 'x:none').textContent).not.toContain('python3');
+    expect(card(panel, 'x:none').textContent).not.toContain(PYTHON);
     expect(card(panel, 'x:none').textContent).toContain('htop');
   });
 
@@ -520,7 +806,48 @@ describe('panel', () => {
     ]);
   });
 
-  it('ACC-ACCORD-101-PURPOSE-TEXT: a workspace name, a purpose, a terminal tab title, a process name, a file name and a folder holding markup show as text', async () => {
+  it('ACC-PANEL-168-COUNT-BRACKETS: a count after a label reads (N), a filtered card (N of M); the header icon counts stay bare', async () => {
+    const managers = new RunningSessionManagers();
+    managers.add(manager('Debug sessions', ['debug-a']));
+    managers.add(manager('Recently Closed', ['a.md']));
+    const { panel } = await mount(standard(), { managers });
+    expect($(panel, '.jp-WorkspaceManager-titleCount')!.textContent).toBe(
+      '(2)'
+    );
+    expect(
+      card(panel, 'x:others').querySelector('.jp-WorkspaceManager-counts')!
+        .textContent
+    ).toBe('(2)');
+    expect(
+      Array.from(
+        header(panel, 'w:auto-6').querySelectorAll('.jp-WorkspaceManager-count')
+      ).map(c => c.textContent)
+    ).toEqual(['1', '1', '0']);
+
+    triangle(panel, 'w:auto-6').click();
+    expect(
+      Array.from(
+        card(panel, 'w:auto-6').querySelectorAll(
+          '.jp-WorkspaceManager-groupLabel'
+        )
+      ).map(l => l.textContent)
+    ).toEqual(['TABS (1)', 'TERMINALS (1)']);
+
+    $(panel, 'button[aria-label="Filter"]')!.click();
+    const input = $(panel, '.jp-WorkspaceManager-filterInput')!;
+    // React reads a typed value through the input event
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )!.set!.call(input, 'claude');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(
+      header(panel, 'w:auto-6').querySelector('.jp-WorkspaceManager-counts')!
+        .textContent
+    ).toBe('(1 of 2)');
+  });
+
+  it('ACC-ACCORD-101-PURPOSE-TEXT:a workspace name, a purpose, a terminal tab title, a process name, a file name and a folder holding markup show as text', async () => {
     const server = standard();
     server.records.default = { purpose: MARKUP };
     server.workspaces[0] = workspace('default', 1, [
@@ -565,13 +892,16 @@ describe('panel', () => {
     expect(terminalRow.title).toBe(MARKUP);
   });
 
-  it('ACC-KERNEL-72-GLYPH: a kernel row shows kernelIcon', async () => {
+  it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME: a kernel row shows kernelIcon and the display name of its kernelspec, the id in its tooltip', async () => {
     const { panel } = await mount(standard());
     header(panel, 'x:none').click();
-    const row = card(panel, 'x:none').querySelector(
+    const row = card(panel, 'x:none').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
     )!;
-    expect(row.textContent).toContain('python3');
+    expect(
+      row.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+    ).toBe(PYTHON);
+    expect(row.title).toBe('python3');
     expect(
       row
         .querySelector('.jp-WorkspaceManager-rowIcon svg')!

@@ -262,6 +262,105 @@ test('ACC-ACCORD-31-DELETE: two separate clicks delete the workspace', async ({
   }
 });
 
+test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace shows a red bin and, armed, a red warning icon in its place; at rest, active and armed its label and background are those of Set description...', async ({
+  page
+}) => {
+  const { current, other } = await setUp(page, 'armed');
+  // How an item is drawn: background, label colour, its icon and the fill of the icon's jp-icon3 path
+  const paint = (label: string) =>
+    menuItem(page, label).evaluate(n => ({
+      background: getComputedStyle(n).backgroundColor,
+      label: getComputedStyle(n.querySelector('.lm-Menu-itemLabel')!).color,
+      icon: n.querySelector('.lm-Menu-itemIcon svg')!.getAttribute('data-icon'),
+      fill: getComputedStyle(
+        n.querySelector('.lm-Menu-itemIcon .jp-icon3[fill]')!
+      ).fill
+    }));
+  try {
+    for (const theme of ['JupyterLab Light', 'Galaxa Dark Theme - Steel']) {
+      await page.theme.setTheme(theme);
+      await menuButton(page, other).click();
+      const error = await page.evaluate(() => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--jp-error-color1)';
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      });
+      // the labels of the items with a red fill or stroke in their icon
+      const red = () =>
+        items(page).evaluateAll(
+          (nodes, error) =>
+            nodes
+              .filter(n =>
+                Array.from(n.querySelectorAll('.lm-Menu-itemIcon svg *')).some(
+                  e =>
+                    getComputedStyle(e).fill === error ||
+                    getComputedStyle(e).stroke === error
+                )
+              )
+              .map(n => n.querySelector('.lm-Menu-itemLabel')!.textContent),
+          error
+        );
+      // the reference's pencil is a jp-icon3 path, as the bin and the warning sign are
+      const plain = await paint('Set description...');
+      expect(plain.fill, theme).not.toBe(error);
+      const bin = 'ui-components:delete';
+      const warning = 'jupyterlab_workspace_manager_extension:warning';
+
+      // at rest: a red bin, the reference's label colour and background
+      expect(await red(), theme).toEqual(['Delete workspace']);
+      expect(await paint('Delete workspace'), theme).toEqual({
+        background: plain.background,
+        label: plain.label,
+        icon: bin,
+        fill: error
+      });
+
+      // active under the pointer: the reference's active label colour and background
+      await menuItem(page, 'Set description...').hover();
+      await expect(menuItem(page, 'Set description...')).toHaveClass(
+        /lm-mod-active/
+      );
+      const active = await paint('Set description...');
+      expect(active.background, theme).not.toBe(plain.background);
+      await menuItem(page, 'Delete workspace').hover();
+      await expect(menuItem(page, 'Delete workspace')).toHaveClass(
+        /lm-mod-active/
+      );
+      expect(await paint('Delete workspace'), theme).toEqual({
+        ...active,
+        icon: bin,
+        fill: error
+      });
+
+      // armed, still active: the warning sign takes the bin's place, the label and background stay
+      await menuItem(page, 'Delete workspace').click();
+      await expect(menuItem(page, 'Confirm delete')).toHaveClass(
+        /lm-mod-active/
+      );
+      expect(await paint('Confirm delete'), theme).toEqual({
+        ...active,
+        icon: warning,
+        fill: error
+      });
+      expect(await red(), theme).toEqual(['Confirm delete']);
+      // armed, at rest: the pointer on the reference
+      await menuItem(page, 'Set description...').hover();
+      expect(await paint('Confirm delete'), theme).toEqual({
+        ...plain,
+        icon: warning,
+        fill: error
+      });
+      await page.keyboard.press('Escape');
+      await expect(items(page)).toHaveCount(0);
+    }
+  } finally {
+    await deleteWorkspaces(page, [current, other]);
+  }
+});
+
 test("ACC-ACCORD-32-DELETE-CURRENT: Delete workspace and Open in new browser tab are disabled on this window's workspace", async ({
   page
 }) => {

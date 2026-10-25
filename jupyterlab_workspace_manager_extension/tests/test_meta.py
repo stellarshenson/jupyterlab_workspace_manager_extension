@@ -13,20 +13,6 @@ LAST_COLOUR = "/last-colour"
 RECORD = {"purpose": "Review the feedback", "colour": "mint", "hidden": True}
 
 
-@pytest.fixture
-def custom_workspaces_dir(tmp_path):
-    return tmp_path / "custom-workspaces"
-
-
-@pytest.fixture
-def jp_server_config(jp_server_config, custom_workspaces_dir):
-    server = {
-        **jp_server_config["ServerApp"],
-        "jpserver_extensions": {"jupyterlab": True, "jupyterlab_workspace_manager_extension": True},
-    }
-    return {**jp_server_config, "ServerApp": server, "LabApp": {"workspaces_dir": str(custom_workspaces_dir)}}
-
-
 async def put_workspace(jp_fetch, name):
     body = json.dumps({"data": {}, "metadata": {"id": name}})
     await jp_fetch("lab", "api", "workspaces", name, method="PUT", body=body)
@@ -246,3 +232,37 @@ async def test_endpoints_end_nothing(jp_fetch, custom_workspaces_dir):
     terminals = json.loads((await jp_fetch("api", "terminals")).body)
     assert [t["name"] for t in terminals] == [terminal]
     assert workspace_files(custom_workspaces_dir) == before
+
+
+async def test_record_before_first_save_kept(jp_fetch, custom_workspaces_dir, clock):
+    """DEF-SERVER-9: a record given before JupyterLab first saves the workspace, with no folder yet, is kept."""
+    assert not custom_workspaces_dir.exists()
+
+    assert await patch(jp_fetch, "new", {"colour": "sky", "given": True}) == {"colour": "sky"}
+
+    assert await get_meta(jp_fetch) == {"new": {"colour": "sky"}, LAST_COLOUR: "sky"}
+    await put_workspace(jp_fetch, "new")
+    clock[0] += 3600
+    assert await get_meta(jp_fetch) == {"new": {"colour": "sky"}, LAST_COLOUR: "sky"}
+
+
+async def test_record_of_never_saved_workspace_pruned(jp_fetch, clock):
+    """DEF-SERVER-9: a workspace never saved loses its record 90 s after the record was written."""
+    await patch(jp_fetch, "never", {"purpose": "kept a while"})
+
+    clock[0] += 90
+    assert await get_meta(jp_fetch) == {"never": {"purpose": "kept a while"}}
+
+    clock[0] += 1
+    assert await get_meta(jp_fetch) == {}
+
+
+async def test_record_given_before_save_follows_the_file(jp_fetch):
+    """DEF-SERVER-9: once the workspace is saved, a delete prunes the record given before the save."""
+    await patch(jp_fetch, "early", RECORD)
+    await put_workspace(jp_fetch, "early")
+    assert await get_meta(jp_fetch) == {"early": RECORD}
+
+    await jp_fetch("lab", "api", "workspaces", "early", method="DELETE")
+
+    assert await get_meta(jp_fetch) == {}

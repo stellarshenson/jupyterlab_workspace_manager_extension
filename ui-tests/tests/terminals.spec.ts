@@ -19,6 +19,7 @@ import {
   serverList,
   startTerminal,
   terminalNames,
+  triangle,
   UNDER_LOAD
 } from './helpers';
 
@@ -139,7 +140,7 @@ test('ACC-TERM-111-SHUTDOWN: Shut down terminal ends the terminal, and its row l
   await putWorkspace(page, other, layout([`terminal:${terminal}`]));
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, other).click();
+    await triangle(page, other).click();
     await fromRowMenu(
       rowOf(card(page, other), `terminal ${terminal}`),
       'Shut down terminal'
@@ -170,7 +171,7 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
   const row = () => rowOf(card(page, a), `terminal ${terminal}`);
   try {
     await enterWorkspace(page, current);
-    await cardHeader(page, a).click();
+    await triangle(page, a).click();
 
     await fromRowMenu(row(), 'Shut down terminal');
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
