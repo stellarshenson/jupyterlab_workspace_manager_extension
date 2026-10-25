@@ -2,7 +2,7 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
-## [0.1.2] - 2026-10-25
+## [0.8.16] - 2026-10-25
 
 ### Added
 
@@ -21,7 +21,6 @@
 - The header shows how much a card holds, an open card ends with its last row, and Open and Close all tabs moved into its menu
 - At the 250 px sidebar width the title and the labels shorten in a fixed order, and the hover icons take the age's place so a long name keeps its width
 - A kernel row is named by its kernelspec display name, and two views of one document make one row
-- An action on a workspace another browser window shows is refused, instead of both windows writing it
 
 ### Fixed
 
