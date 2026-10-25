@@ -1,4 +1,4 @@
-# jupyterlab_workspace_manager_extension
+# Workspace panel for JupyterLab
 
 [![GitHub Actions](https://github.com/stellarshenson/jupyterlab_workspace_manager_extension/actions/workflows/build.yml/badge.svg)](https://github.com/stellarshenson/jupyterlab_workspace_manager_extension/actions/workflows/build.yml)
 [![npm version](https://img.shields.io/npm/v/jupyterlab_workspace_manager_extension.svg)](https://www.npmjs.com/package/jupyterlab_workspace_manager_extension)
@@ -8,37 +8,40 @@
 [![Brought To You By KOLOMOLO](https://img.shields.io/badge/Brought%20To%20You%20By-KOLOMOLO-00ffff?style=flat)](https://kolomolo.com)
 [![Donate PayPal](https://img.shields.io/badge/Donate-PayPal-blue?style=flat)](https://www.paypal.com/donate/?hosted_button_id=B4KPBJDLLXTSA)
 
-The Running Terminals and Kernels panel, organised by workspace. Each JupyterLab workspace becomes one section of an accordion: its colour, its purpose, how long ago it was used, and the tabs, terminals and kernels it holds.
+This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: one section per workspace, one section open at a time.
 
-> [!NOTE]
-> The features below are the planned scope. The design proposal in `docs/design/` waits for approval; the code is still the template placeholder.
+![The workspace panel](https://raw.githubusercontent.com/stellarshenson/jupyterlab_workspace_manager_extension/main/docs/images/panel.png)
+
+_Fig 1 - The panel with one workspace open, and its Other sessions and In no workspace sections closed_
 
 ## Features
 
-- **Workspaces as accordion sections** - one section per workspace, and opening one section closes the open one
-- **Workspace colour** - a colour strip on the edge of each section, assigned in rotation from a palette like the tab colours of `jupyterlab_colourful_tab_extension`
-- **Purpose and age** - an optional purpose text, and the time since the workspace was last used
-- **Counts in the header** - the number of terminals and kernels of the workspace
-- **Header actions** - open the workspace with its tabs, close all tabs of the workspace
-- **Tabs, terminals, kernels** - inside a section, the tabs of the workspace, then its terminals and kernels
-- **Terminal activity and process** - each terminal shows when it was last active and the name of the process running in it
+- **Workspace section** - the colour strip, the optional purpose, the age and the number of tabs, terminals and kernels the workspace holds
+- **Triangle** - opens or closes a section
+- **Header** - a click on the name of another workspace switches this window to it, and a click on this window's workspace closes it
+- **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, delete
+- **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last section
+- **In no workspace** - the terminals, kernels and language servers that belong to no workspace, with shut down for one item and for all of them
+- **Other sessions** - the open tabs, kernels, language servers and recently closed documents of the lab
+- **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them
+- **New workspace** - the + button creates a workspace and asks for its name and an optional description
 
 ## Requirements
 
-- JupyterLab >= 4.6
+The extension needs JupyterLab 4.6 or later.
 
 ## Install
 
-To install the extension, execute:
+Install the package from PyPI.
 
 ```bash
-pip install jupyterlab_workspace_manager_extension
+pip install jupyterlab-workspace-manager-extension
 ```
 
 ## Uninstall
 
-To remove the extension, execute:
+Remove the package.
 
 ```bash
-pip uninstall jupyterlab_workspace_manager_extension
+pip uninstall jupyterlab-workspace-manager-extension
 ```
