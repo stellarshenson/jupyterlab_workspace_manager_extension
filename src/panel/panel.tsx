@@ -1231,11 +1231,15 @@ export class WorkspacePanel
   ): Promise<void> {
     // a TERMINALS row carries every holder, a card row the others only
     const others = t.alsoIn.filter(id => id !== section?.id);
+    // the dialog names every holder but this window's workspace
+    const names = t.alsoIn.filter(
+      id => !(section?.current && id === section.id)
+    );
     if (
       others.length &&
       !(await confirm(
         `Shut down terminal ${t.name}?`,
-        `Workspace ${others.join(', ')} also holds this terminal.`,
+        holdersSentence(names, others, 'terminal'),
         'Shut down'
       ))
     ) {
@@ -1250,11 +1254,15 @@ export class WorkspacePanel
   ): Promise<void> {
     // a KERNELS row carries every holder, a card row the others only
     const others = k.alsoIn.filter(id => id !== section?.id);
+    // the dialog names every holder but this window's workspace
+    const names = k.alsoIn.filter(
+      id => !(section?.current && id === section.id)
+    );
     if (
       others.length &&
       !(await confirm(
         `Shut down kernel ${k.label}?`,
-        `Workspace ${others.join(', ')} also holds this kernel.`,
+        holdersSentence(names, others, 'kernel'),
         'Shut down'
       ))
     ) {
@@ -1450,6 +1458,24 @@ function running(
   m?: IRunningSessions.IManager
 ): IRunningSessions.IRunningItem[] {
   return m?.running({ mode: m.supportsMultipleViews ? 'tree' : 'list' }) ?? [];
+}
+
+/**
+ * The body of the shutdown question: "Workspace B also holds this kernel.",
+ * "Workspaces A, B and C also hold this kernel."; without "also" when `names`
+ * is longer than `others`: the list then names the workspace the row acts in.
+ */
+function holdersSentence(
+  names: string[],
+  others: string[],
+  item: string
+): string {
+  const also = names.length > others.length ? '' : ' also';
+  if (names.length === 1) {
+    return `Workspace ${names[0]}${also} holds this ${item}.`;
+  }
+  const list = `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `Workspaces ${list}${also} hold this ${item}.`;
 }
 
 /**

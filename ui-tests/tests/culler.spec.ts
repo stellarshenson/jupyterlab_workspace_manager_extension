@@ -16,7 +16,8 @@ import {
   saved,
   startSession,
   startTerminal,
-  terminalNames
+  terminalNames,
+  UNDER_LOAD
 } from './helpers';
 
 // the workspaces, terminals and kernels of the server, as the culler extension sees them
@@ -64,11 +65,15 @@ test('ACC-CULLER-65-CULLED: a workspace, a terminal and a kernel removed outside
     await refresh(page);
 
     await expect(card(page, gone)).toHaveCount(0);
-    await expect(countOf(card(page, held), 'Terminals')).toHaveText('0');
+    // the server's list lags the DELETE; the row leaves at the next 10 s poll
+    await expect(countOf(card(page, held), 'Terminals')).toHaveText(
+      '0',
+      UNDER_LOAD
+    );
     await expect(countOf(card(page, held), 'Kernels')).toHaveText('0');
     await expect(
       page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
-    ).toHaveCount(0);
+    ).toHaveCount(0, UNDER_LOAD);
     await expect(
       page.locator(`${PANEL} .jp-WorkspaceManager-error`)
     ).toHaveCount(0);

@@ -291,6 +291,7 @@ function chooseMenuItem(index: number) {
 }
 
 const dialogText = () => document.querySelector('.jp-Dialog')?.textContent;
+const dialogBody = () => document.querySelector('.jp-Dialog-body')?.textContent;
 
 const $ = (panel: Widget, selector: string) =>
   panel.node.querySelector<HTMLElement>(selector);
@@ -1188,18 +1189,79 @@ describe('panel', () => {
       ['k2'],
       ['k2']
     ]);
+
+    // the shared kernel from the KERNELS section: neither holder is this window's, both are named
+    shutDown('a.ipynb', openSection(panel, 'kernels'));
+    await waitForDialog();
+    const text = dialogText();
+    await dismissDialog(); // before the assertion, so a failure leaves no dialog open
+    expect(text).toContain('Workspaces auto-6 and auto-7 hold this kernel.');
   });
 
-  it('ACC-TERM-112-SHUTDOWN-SHARED: Shut down terminal from the TERMINALS section on a terminal one workspace holds stops at once', async () => {
-    const { panel, app } = await mount(standard());
+  it('ACC-TERM-112-SHUTDOWN-SHARED: Shut down terminal from the TERMINALS section on a terminal one workspace holds stops at once; on a terminal two other workspaces hold it names both', async () => {
+    const server = standard();
+    server.terminals.push(
+      ...['2', '3', '4'].map(name => ({
+        name,
+        last_activity: iso(0),
+        process: 'bash'
+      }))
+    );
+    // terminal 3 in this window's workspace and auto-7; terminal 4 in auto-6, auto-7 and auto-8
+    server.workspaces[0] = workspace('default', 1, ['terminal:3']);
+    server.workspaces[1] = workspace('auto-6', 60 * 24 * 3, [
+      'terminal:1',
+      'editor:docs/README.md',
+      'terminal:4'
+    ]);
+    server.workspaces.push(
+      workspace('auto-7', 30, ['terminal:2', 'terminal:3', 'terminal:4']),
+      workspace('auto-8', 20, ['terminal:2', 'terminal:4'])
+    );
+    const shown = new Widget();
+    (shown as any).content = { hasClass: () => true, session: { name: '3' } };
+    const { panel, app } = await mount(server, { live: [shown] });
+    const shutDown = (index: number) => {
+      openSection(panel, 'terminals')
+        .querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+        [index].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      chooseMenuItem(0); // Shut down terminal
+    };
     // terminal 1, held by auto-6 alone
-    openSection(panel, 'terminals')
-      .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
-      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-    chooseMenuItem(0); // Shut down terminal
+    shutDown(0);
     await settle();
     expect(dialogText()).toBeUndefined();
     expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
+
+    // terminal 2, held by auto-7 and auto-8, neither this window's
+    shutDown(1);
+    await waitForDialog();
+    const text = dialogText();
+    await dismissDialog(); // before the assertion, so a failure leaves no dialog open
+    expect(text).toContain('Workspaces auto-7 and auto-8 hold this terminal.');
+
+    // terminal 3, held by this window's workspace and auto-7: only auto-7 is named
+    shutDown(2);
+    await waitForDialog();
+    const shared = dialogBody();
+    await dismissDialog();
+    expect(shared).toBe('Workspace auto-7 also holds this terminal.');
+
+    // terminal 4 from auto-6's card: the two other holders are named
+    openSection(panel, 'workspaces');
+    triangle(panel, 'w:auto-6').click();
+    Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    )
+      .find(r => r.title.startsWith('terminal 4\n'))!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    chooseMenuItem(0); // Shut down terminal
+    await waitForDialog();
+    const three = dialogBody();
+    await dismissDialog();
+    expect(three).toBe('Workspaces auto-7 and auto-8 also hold this terminal.');
   });
 
   it('ACC-ACCORD-191-DRAG-ORDER: Move up in the card menu moves the card at once with one stored position, the same in a second window; Move down is disabled on the last card', async () => {

@@ -409,7 +409,8 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(terminal);
-    await expect(row).toHaveCount(0);
+    // the server's list lags the DELETE; the row leaves at the next 10 s poll
+    await expect(row).toHaveCount(0, UNDER_LOAD);
 
     // the language server row keeps its shutdown button
     await openSection(page, 'servers');
