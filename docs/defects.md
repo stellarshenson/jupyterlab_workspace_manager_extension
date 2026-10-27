@@ -135,6 +135,70 @@ the sidebar panel, its header and its loads
   - log: 2026-10-26T19:18:47Z @kj added
   - log: 2026-10-26T19:20:23Z @kj fixed: `_reload` in `src/panel/panel.tsx` calls `_givePositions()` only when the load returned the records (`if (data.records)`); a failed records request gives no position
   - log: 2026-10-26T19:20:23Z @kj closed
+- [x] `DEF-PANEL-21-TITLE-COLUMN` **Panel title off the label column** - MINOR; WORKBENCH starts 8 px from the panel edge, the section labels 28 px; expected: the same x; fix: title margin-left 18px, the label x after the caret fix; `style/base.css`
+  - evidence: Galata render.spec.ts HDR-07 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: open the panel: WORKBENCH starts left of WORKSPACES
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:41Z @kj `.jp-WorkspaceManager-header > .jp-WorkspaceManager-title` has margin-left 8px; the label sits after 2px padding, a 22px caret button and a 4px gap
+  - log: 2026-10-27T21:58:41Z @kj added
+  - log: 2026-10-27T21:58:41Z @kj closed: fixed: title margin-left 18px, the section label x
+- [x] `DEF-PANEL-22-SECTION-CARET` **Section header caret is a second button** - MINOR; each section header holds a caret button (Expand or Collapse) inside the role=button header, a second tab stop, label at 28 px; expected: one button, the caret an aria-hidden 14 px span, label at 18 px; `src/panel/panel.tsx`, `style/base.css`
+  - evidence: Galata render.spec.ts SEC-06 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: Tab from the WORKSPACES header: the focus lands on a caret button inside it
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:41Z @kj `_renderSection` renders `caret()`, the iconButton of the card triangle, in the section header
+  - log: 2026-10-27T21:58:41Z @kj added
+  - log: 2026-10-27T21:58:41Z @kj closed: fixed: caret is a span with aria-hidden, 14px wide on a 4px inset; label at 18px
+- [x] `DEF-PANEL-23-CARD-GROWS` **Open card widens by its border** - MINOR; opening another workspace's card moves its box from x 41, width 234 to x 40, width 236 at 250 px; expected: x and width kept; `style/base.css`
+  - evidence: Galata render.spec.ts WS-12 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: open a card other than this window's: its edges move out 1 px
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:46Z @kj the open-card rule swaps margin 4px 8px for 3px 7px and adds a 1px border
+  - log: 2026-10-27T21:58:46Z @kj added
+  - log: 2026-10-27T21:58:46Z @kj closed: fixed: the open card keeps margin 4px 8px; the border lies inside its box
+- [x] `DEF-PANEL-24-COUNT-GLYPHS` **Count glyphs not in colour 1** - MINOR; JupyterLab Light: Tabs and Terminals count glyphs paint rgb(97, 97, 97), Kernels rgb(66, 66, 66); expected --jp-ui-font-color1; `style/base.css`
+  - evidence: Galata render.spec.ts WS-18 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: JupyterLab Light: read the computed fill or stroke of the three count glyphs of a card header
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:46Z @kj no rule maps the jp-icon fill and stroke of the count glyphs; JupyterLab paints jp-icon3 and jp-icon2
+  - log: 2026-10-27T21:58:46Z @kj added
+  - log: 2026-10-27T21:58:46Z @kj closed: fixed: count glyph fill and stroke --jp-ui-font-color1
+- [x] `DEF-PANEL-25-BUTTON-SIZE` **Card header buttons 22 px** - MINOR; triangle, Open workspace, Close all tabs, the ... menu and the eye of a hidden card are 22 x 22 px; expected 24 x 24 as the mockup draws them; `style/base.css`
+  - evidence: Galata render.spec.ts WS-20 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: hover a closed card and measure its buttons
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:46Z @kj `.jp-WorkspaceManager-iconButton` is 22px
+  - log: 2026-10-27T21:58:46Z @kj added
+  - log: 2026-10-27T21:58:47Z @kj closed: fixed: 24px buttons in card headers; header age 50px, second line indent 30px
+- [x] `DEF-PANEL-26-LSP-SHUTDOWN` **Language server shutdown button always shown** - MINOR; the shutdown button of a LANGUAGE SERVERS row shows at rest; expected: hidden until hover or keyboard focus, as in the replaced Running panel; `style/base.css`
+  - evidence: Galata render.spec.ts ROW-04 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: open LANGUAGE SERVERS with a server running, pointer away from the row: the button shows
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:47Z @kj no rule hides `.jp-WorkspaceManager-row > .jp-WorkspaceManager-iconButton` at rest
+  - log: 2026-10-27T21:58:47Z @kj added
+  - log: 2026-10-27T21:58:47Z @kj closed: fixed: hidden at rest, visible on row hover, row focus-visible or its own focus-visible; sections.spec.ts ACC-PANEL-157 hovers the row first
+  - log: 2026-10-27T22:44:34Z @kj changed: row focus-visible and button focus-visible replaced by row focus-within unless focused by a click, as on card headers; Tab from the row reached the document body; ROW-04 Tabs to the button (tmp/workflows/sections/logs/galata-r10-red.log, galata-r10.log)
+- [x] `DEF-PANEL-27-ROW-STOPS` **Every row is a tab stop** - MINOR; in an open card or section every row has tabIndex 0, so Tab walks row by row; expected: one tab stop per list, moved by the arrow keys; `src/panel/panel.tsx`
+  - evidence: Galata render.spec.ts ROW-07 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: open a card with 3 rows, focus the first, press Tab: the focus goes to the second row
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:47Z @kj `row()` sets tabIndex 0 on every row; `moveFocus` works in card bodies only
+  - log: 2026-10-27T21:58:47Z @kj added
+  - log: 2026-10-27T21:58:47Z @kj closed: fixed: roving tabindex, the stop on the row focused last, else the first; arrow keys in section bodies too
+- [x] `DEF-PANEL-28-FILTER-HEIGHT` **Filter field 28 px tall** - MINOR; the filter field is 28 px tall; expected 24 px; `style/base.css`
+  - evidence: Galata render.spec.ts FILT-01 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: press Filter and measure the field
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:47Z @kj `.jp-WorkspaceManager-filterInput` is 26px inside the 1px border of the field
+  - log: 2026-10-27T21:58:47Z @kj added
+  - log: 2026-10-27T21:58:47Z @kj closed: fixed: input 22px, field 24px
+- [x] `DEF-PANEL-29-FOCUS-OUTLINE` **Focus outline clipped or 2 px** - MINOR; keyboard focus on a card header or a card row shows no left side of the outline; on a triangle or a header button the outline is 2 px; expected a whole 1 px --jp-brand-color1 outline; `style/base.css`
+  - evidence: Galata render.spec.ts LEG-05 failed in render-1 (tmp/workflows/sections/logs/render-1.log) and passed after the fix; full Galata suite 155 of 155, --retries=0 (tmp/workflows/sections/logs/fix-1.log); make test exit 0, Jest 76 of 76, pytest 103 (tmp/workflows/sections/logs/make-test-fix-1.log)
+  - repro: Tab to the header of this window's card: the outline has no left side
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-27T21:58:47Z @kj the absolute `.jp-WorkspaceManager-card::before` strip paints over the -1px outline of the in-flow header and rows; `.jp-ThemedContainer button:focus-visible` (0,2,1) outranks `.jp-WorkspaceManager :focus-visible` (0,2,0)
+  - log: 2026-10-27T21:58:47Z @kj added
+  - log: 2026-10-27T21:58:47Z @kj closed: fixed: card header and rows start at the strip right edge; a button rule under .jp-ThemedContainer sets the 1px outline
 
 ## Functional tests `GALATA`
 

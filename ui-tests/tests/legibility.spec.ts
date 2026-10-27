@@ -209,7 +209,8 @@ async function textsOfOpenCards(
   for (const caret of [
     triangle(page, ids.current),
     triangle(page, ids.coloured[0]),
-    sectionHeader(page, 'terminals').locator('button.jp-WorkspaceManager-caret')
+    // a section header is one button; its caret is decoration
+    sectionHeader(page, 'terminals')
   ]) {
     await caret.click();
     await expect(caret).toHaveAttribute('aria-expanded', 'true');

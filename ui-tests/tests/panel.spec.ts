@@ -463,7 +463,7 @@ test('ACC-PANEL-192-SECTION-TITLES: each section header is a flat title across t
   for (const [name, label] of SECTIONS) {
     const header = sectionHeader(page, name);
     await expect(
-      header.locator('button.jp-WorkspaceManager-caret svg')
+      header.locator('.jp-WorkspaceManager-caret svg')
     ).toHaveAttribute('data-icon', /^ui-components:caret-(right|down)$/);
     await expect(
       header.locator('.jp-WorkspaceManager-sectionLabel')

@@ -598,6 +598,13 @@ export class WorkspacePanel
       target.scrollIntoView?.({ block: 'nearest' });
       this._scrollTo = null;
     }
+    // one tab stop per list: the row focused last, else the first
+    this.content.node.querySelectorAll(LIST).forEach(list => {
+      const rows = rowsOf(list);
+      if (rows.length && !rows.some(r => r.tabIndex === 0)) {
+        rows[0].tabIndex = 0;
+      }
+    });
   }
 
   private _renderFilter(): React.ReactElement {
@@ -670,7 +677,14 @@ export class WorkspacePanel
             }
           }}
         >
-          {caret(open, () => this._toggleSection(key))}
+          {/* the header is the one button; its caret is decoration */}
+          <span className="jp-WorkspaceManager-caret" aria-hidden="true">
+            {open ? (
+              <caretDownIcon.react tag="span" />
+            ) : (
+              <caretRightIcon.react tag="span" />
+            )}
+          </span>
           <span className="jp-WorkspaceManager-sectionLabel">{label}</span>
           <span className="jp-WorkspaceManager-sectionCount">({n})</span>
           {shutdown && (
@@ -1532,13 +1546,20 @@ function count(icon: LabIcon, label: string, n: number): React.ReactElement {
   );
 }
 
-/** Move the keyboard focus to the row before or after this one in its card. */
+/** The lists of rows, each one tab stop: an open card's body, an open section's body. */
+const LIST = '.jp-WorkspaceManager-cardBody, .jp-WorkspaceManager-sectionBody';
+
+/** The rows of one list; the WORKSPACES body has none, its rows are its cards'. */
+function rowsOf(list: Element): HTMLElement[] {
+  return Array.from(
+    list.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+  ).filter(r => r.closest(LIST) === list);
+}
+
+/** Move the keyboard focus to the row before or after this one in its list. */
 function moveFocus(from: HTMLElement, step: number): void {
-  const rows = Array.from(
-    from
-      .closest('.jp-WorkspaceManager-cardBody')
-      ?.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row') ?? []
-  );
+  const list = from.closest(LIST);
+  const rows = list ? rowsOf(list) : [];
   rows[rows.indexOf(from) + step]?.focus();
 }
 
@@ -1566,8 +1587,15 @@ function row(props: {
     <div
       key={props.key}
       className={`jp-WorkspaceManager-row${props.child ? ' jp-mod-child' : ''}`}
-      tabIndex={0}
+      // the list's tab stop is set on the DOM (_render), where React never resets it
+      tabIndex={-1}
       title={props.title}
+      onFocus={e => {
+        const list = e.currentTarget.closest(LIST);
+        for (const r of list ? rowsOf(list) : []) {
+          r.tabIndex = r === e.currentTarget ? 0 : -1;
+        }
+      }}
       onClick={props.open}
       onKeyDown={e => {
         if (e.key === 'Enter') {

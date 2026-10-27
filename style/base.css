@@ -60,6 +60,15 @@
   height: 16px;
 }
 
+/* the count glyphs in colour 1, their numbers in colour 0 */
+.jp-WorkspaceManager-count [class*='jp-icon'][fill] {
+  fill: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-count [class*='jp-icon'][stroke] {
+  stroke: var(--jp-ui-font-color1);
+}
+
 /* One line: the title gives way before a button wraps */
 .jp-WorkspaceManager-header::part(positioning-region) {
   flex-wrap: nowrap;
@@ -74,11 +83,11 @@
   box-shadow: none;
 }
 
-/* The word gives way to the buttons before the count does; at 250 px it wraps */
+/* The word gives way to the buttons before the count does; at 250 px it wraps. It starts on the x of the section labels */
 .jp-WorkspaceManager-header > .jp-WorkspaceManager-title {
   flex: 0 1 auto;
   min-width: 0;
-  margin-left: 8px;
+  margin-left: 18px;
   font-weight: 600;
   color: var(--jp-ui-font-color0);
 }
@@ -167,13 +176,23 @@
   align-items: center;
   gap: 4px;
   min-height: 25px;
-  padding: 2px 6px 2px 2px;
+  padding: 2px 6px 2px 4px;
   border-bottom: var(--jp-border-width) solid var(--jp-toolbar-border-color);
   background: var(--jp-layout-color1);
   box-shadow: var(--jp-toolbar-box-shadow);
   letter-spacing: 1px;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+/* the caret: a 14 px column on the 4 px inset; it takes back the gap, so the label starts at 18 px */
+.jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-caret {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  margin-right: -4px;
 }
 
 /* the label keeps its whole text; a Shut down all too wide for the line wraps below it */
@@ -213,7 +232,7 @@
 .jp-WorkspaceManager-filterInput {
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
+  height: 22px;
   padding: 0;
   border: none;
   outline: none;
@@ -228,8 +247,9 @@
   color: var(--jp-ui-font-color1);
 }
 
-/* Keyboard focus only: a mouse click shows no outline */
-.jp-WorkspaceManager :focus-visible {
+/* Keyboard focus only: a mouse click shows no outline; the second selector outranks `.jp-ThemedContainer button:focus-visible` (2px) */
+.jp-WorkspaceManager :focus-visible,
+.jp-ThemedContainer .jp-WorkspaceManager button:focus-visible {
   outline: 1px solid var(--jp-brand-color1);
   outline-offset: -1px;
 }
@@ -288,9 +308,8 @@
   --wm-active: var(--jp-workspace-manager-lavender-active);
 }
 
-/* the border takes the margin's place, so opening moves nothing */
+/* the border lies inside the card's box, so opening changes neither its x nor its width */
 .jp-WorkspaceManager-card.jp-mod-open:not(.jp-mod-current) {
-  margin: 3px 7px;
   border: 1px solid var(--wm-strip);
 }
 
@@ -310,8 +329,10 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
+/* the header and the rows of a card start at the strip's right edge: the strip would cover their focus outline */
 .jp-WorkspaceManager-cardHeader {
-  padding: 6px 8px 6px 12px;
+  margin-left: 4px;
+  padding: 6px 8px;
   background: color-mix(in srgb, var(--wm-strip) 8%, var(--jp-layout-color1));
   cursor: pointer;
 }
@@ -328,7 +349,7 @@
 }
 
 .jp-WorkspaceManager-headerLine + .jp-WorkspaceManager-headerLine {
-  padding-left: 28px;
+  padding-left: 30px;
 }
 
 .jp-WorkspaceManager-name {
@@ -405,9 +426,23 @@
   cursor: pointer;
 }
 
-/* the shutdown button of a language server item, at the row's end */
+/* The buttons of a card header are 24 px square */
+.jp-WorkspaceManager-cardHeader .jp-WorkspaceManager-iconButton {
+  flex-basis: 24px;
+  width: 24px;
+  height: 24px;
+}
+
+/* the shutdown button of a language server item, at the row's end: on hover or keyboard focus, as in the replaced Running panel */
 .jp-WorkspaceManager-row > .jp-WorkspaceManager-iconButton {
   margin-left: auto;
+  visibility: hidden;
+}
+
+.jp-WorkspaceManager-row:hover > .jp-WorkspaceManager-iconButton,
+.jp-WorkspaceManager-row:focus-within:not(:focus:not(:focus-visible))
+  > .jp-WorkspaceManager-iconButton {
+  visibility: visible;
 }
 
 .jp-WorkspaceManager-iconButton:disabled {
@@ -457,6 +492,11 @@
 
 .jp-WorkspaceManager-row:hover {
   background: color-mix(in srgb, var(--jp-ui-font-color0) 12%, transparent);
+}
+
+.jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row {
+  margin-left: 4px;
+  padding-left: 12px;
 }
 
 .jp-WorkspaceManager-rowIcon {
@@ -545,10 +585,10 @@
   padding-left: 38px;
 }
 
-/* A header's age is as wide as the two hover icons (2 x 22px, 2px gap), which take its place */
+/* A header's age is as wide as the two hover icons (2 x 24px, 2px gap), which take its place */
 .jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age {
   justify-content: flex-end;
-  min-width: 46px;
+  min-width: 50px;
 }
 
 .jp-WorkspaceManager-cardHeader:hover

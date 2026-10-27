@@ -412,12 +412,12 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(terminal);
 
-    // the language server row keeps its shutdown button
+    // the language server row keeps its shutdown button, shown on hover
     await openSection(page, 'servers');
+    const server = rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)');
+    await server.hover();
     await expect(
-      rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)').locator(
-        'button[aria-label="Shut Down"]'
-      )
+      server.locator('button[aria-label="Shut Down"]')
     ).toBeVisible();
     // and the header's Shut down all asks once, naming its items
     await sectionHeader(page, 'servers')
