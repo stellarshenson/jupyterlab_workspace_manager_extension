@@ -297,6 +297,17 @@ export class WorkspacePanel
           if (changes !== this._changes) {
             return;
           }
+          // a new terminal may take a shut-down name; its fingerprint tells them apart
+          for (const [name, fingerprint] of this._shutDown) {
+            if (
+              data.terminals &&
+              !data.terminals.some(
+                t => t.name === name && t.fingerprint === fingerprint
+              )
+            ) {
+              this._shutDown.delete(name);
+            }
+          }
           this._data = { ...(this._data ?? EMPTY), ...data };
           this._last = data.last ?? this._last;
           this._error = failed.length
@@ -376,6 +387,10 @@ export class WorkspacePanel
     }
     const model = buildModel({
       ...data,
+      // the server lists a terminal shut down here until its pty closes
+      terminals: data.terminals.filter(
+        t => !t.fingerprint || this._shutDown.get(t.name) !== t.fingerprint
+      ),
       records,
       specs: this._app.serviceManager.kernelspecs.specs,
       current: this._current,
@@ -1054,7 +1069,9 @@ export class WorkspacePanel
       if (kind === 'terminals') {
         await Promise.all(
           model.terminals.map(x =>
-            this._app.serviceManager.terminals.shutdown(x.name)
+            this._app.serviceManager.terminals
+              .shutdown(x.name)
+              .then(() => this._shutDown.set(x.name, x.fingerprint))
           )
         );
       } else {
@@ -1245,7 +1262,10 @@ export class WorkspacePanel
     ) {
       return;
     }
-    await this._act(() => this._app.serviceManager.terminals.shutdown(t.name));
+    await this._act(async () => {
+      await this._app.serviceManager.terminals.shutdown(t.name);
+      this._shutDown.set(t.name, t.fingerprint);
+    });
   }
 
   private async _shutDownKernel(
@@ -1384,6 +1404,8 @@ export class WorkspacePanel
   private _loading: Promise<void> | null = null;
   /** user actions ended so far; a load started before the last one is discarded */
   private _changes = 0;
+  /** name to fingerprint of terminals this panel shut down, kept while a load lists both */
+  private _shutDown = new Map<string, string | null | undefined>();
   private _timer = 0;
   private _tabsTimer = 0;
   /** the views of each open tab key; two views of one document share a key */

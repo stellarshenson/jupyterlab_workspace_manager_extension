@@ -21,6 +21,8 @@ export interface ITerminal {
   last_activity?: string;
   /** null or absent when the foreground process cannot be read */
   process?: string | null;
+  /** the pty process as `<pid>:<start time>`; null without a pty */
+  fingerprint?: string | null;
 }
 
 /**
@@ -42,6 +44,7 @@ export interface ITabRow extends ITab {
 
 export interface ITerminalRow {
   name: string;
+  fingerprint?: string | null;
   process: string | null;
   lastActivity?: string;
   /** the tab title, when this window shows the terminal */
@@ -220,6 +223,7 @@ export function buildModel(input: IModelInput): IModel {
 
   const terminalRow = (t: ITerminal, holders: string[], id?: string) => ({
     name: t.name,
+    fingerprint: t.fingerprint,
     process: t.process ?? null,
     lastActivity: t.last_activity,
     title: titles.get(t.name),

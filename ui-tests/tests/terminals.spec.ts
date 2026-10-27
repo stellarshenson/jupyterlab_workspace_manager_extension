@@ -159,17 +159,17 @@ test('ACC-TERM-111-SHUTDOWN: Shut down terminal ends the terminal, and its row l
       rowOf(card(page, other), `terminal ${terminal}`),
       'Shut down terminal'
     );
+    // the panel removes the row itself; at load the server lists the terminal
+    // for seconds after the DELETE, until its pty closes
+    await expect(
+      page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
+    ).toHaveCount(0);
+    await expect(countOf(card(page, other), 'Terminals')).toHaveText('0');
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(terminal);
     // one workspace holds it: no question
     await expect(dialog(page)).toHaveCount(0);
-    // at load the server lists the terminal for seconds after the DELETE, until
-    // its pty closes; the panel drops the row at its next 10 s poll
-    await expect(
-      page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
-    ).toHaveCount(0, UNDER_LOAD);
-    await expect(countOf(card(page, other), 'Terminals')).toHaveText('0');
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, other]);
@@ -204,16 +204,16 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
 
     await fromRowMenu(row(), 'Shut down terminal');
     await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
-    await expect
-      .poll(() => terminalNames(page), UNDER_LOAD)
-      .not.toContain(terminal);
-    // the server's list lags the DELETE; the row leaves at the next 10 s poll
+    // the panel removes the row itself; the server's list lags the DELETE
     await expect(
       page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
-    ).toHaveCount(0, UNDER_LOAD);
+    ).toHaveCount(0);
     for (const id of [a, b]) {
       await expect(countOf(card(page, id), 'Terminals')).toHaveText('0');
     }
+    await expect
+      .poll(() => terminalNames(page), UNDER_LOAD)
+      .not.toContain(terminal);
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, a, b]);

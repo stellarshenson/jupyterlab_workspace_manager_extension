@@ -406,11 +406,11 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
     const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
     await expect(row).toBeVisible();
     await fromRowMenu(row, 'Shut down terminal');
+    // the panel removes the row itself; the server's list lags the DELETE
+    await expect(row).toHaveCount(0);
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(terminal);
-    // the server's list lags the DELETE; the row leaves at the next 10 s poll
-    await expect(row).toHaveCount(0, UNDER_LOAD);
 
     // the language server row keeps its shutdown button
     await openSection(page, 'servers');

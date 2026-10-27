@@ -4,6 +4,7 @@ import os
 from contextlib import suppress
 from pathlib import Path
 from time import time
+import weakref
 
 from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
@@ -36,6 +37,9 @@ RECORD_FIELDS = {
 # Kernel id -> {pid: psutil.Process} for the kernel and its children; cpu_percent() measures since
 # the previous call on the same object
 PROCESSES = {}
+# Terminal pty -> its fingerprint, read once: terminado reaps the pty process before DELETE answers
+# 204 and lists the terminal until its pty closes, so a second read would give the bare pid
+FINGERPRINTS = weakref.WeakKeyDictionary()
 
 
 def process_name(pty):
@@ -47,6 +51,21 @@ def process_name(pty):
         return None
 
 
+def fingerprint(pty):
+    """The pty process as '<pid>:<start time>', since the OS reuses pids as terminado reuses names;
+    the bare pid when the start time cannot be read; None without a pty."""
+    if pty in FINGERPRINTS:
+        return FINGERPRINTS[pty]
+    pid = getattr(getattr(pty, "ptyproc", None), "pid", None)
+    if pid is None:
+        return None
+    try:
+        FINGERPRINTS[pty] = f"{pid}:{psutil.Process(pid).create_time()}"
+    except psutil.Error:
+        FINGERPRINTS[pty] = str(pid)
+    return FINGERPRINTS[pty]
+
+
 class TerminalsHandler(APIHandler):
     @tornado.web.authenticated
     def get(self):
@@ -54,7 +73,10 @@ class TerminalsHandler(APIHandler):
         manager = self.settings.get("terminal_manager")
         models = manager.list() if manager else []
         for model in models:
-            model["process"] = process_name(manager.terminals[model["name"]])
+            pty = manager.terminals[model["name"]]
+            model["process"] = process_name(pty)
+            # tells a new terminal from a shut-down one that held the same name
+            model["fingerprint"] = fingerprint(pty)
         self.finish(json.dumps(models))
 
 

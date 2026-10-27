@@ -1221,27 +1221,32 @@ describe('panel', () => {
     const shown = new Widget();
     (shown as any).content = { hasClass: () => true, session: { name: '3' } };
     const { panel, app } = await mount(server, { live: [shown] });
-    const shutDown = (index: number) => {
-      openSection(panel, 'terminals')
-        .querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
-        [index].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    // by name: a terminal shut down leaves the section
+    const shutDown = (name: string) => {
+      Array.from(
+        openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+        .find(r => r.title.startsWith(`terminal ${name}\n`))!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
       chooseMenuItem(0); // Shut down terminal
     };
     // terminal 1, held by auto-6 alone
-    shutDown(0);
+    shutDown('1');
     await settle();
     expect(dialogText()).toBeUndefined();
     expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
 
     // terminal 2, held by auto-7 and auto-8, neither this window's
-    shutDown(1);
+    shutDown('2');
     await waitForDialog();
     const text = dialogText();
     await dismissDialog(); // before the assertion, so a failure leaves no dialog open
     expect(text).toContain('Workspaces auto-7 and auto-8 hold this terminal.');
 
     // terminal 3, held by this window's workspace and auto-7: only auto-7 is named
-    shutDown(2);
+    shutDown('3');
     await waitForDialog();
     const shared = dialogBody();
     await dismissDialog();
@@ -1262,6 +1267,96 @@ describe('panel', () => {
     const three = dialogBody();
     await dismissDialog();
     expect(three).toBe('Workspaces auto-7 and auto-8 also hold this terminal.');
+  });
+
+  it('ACC-TERM-200-ROW-LEAVES: after Shut down terminal its row and the card Terminals count leave at once while the server still lists it; a new terminal of that name and another fingerprint shows; a failed shutdown keeps the row; one without a fingerprint stays', async () => {
+    // the fake server keeps listing a terminal after its DELETE, as Jupyter does until the pty closes
+    const server = standard();
+    server.terminals[0].fingerprint = '101:1000.25';
+    const { panel, app } = await mount(server);
+    const rows = () =>
+      Array.from(
+        openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      ).map(r => r.title.split('\n')[0]);
+    const terminalCount = () => {
+      openSection(panel, 'workspaces');
+      return header(panel, 'w:auto-6').querySelector(
+        '.jp-WorkspaceManager-count[title="Terminals"]'
+      )!.textContent;
+    };
+    const shutDown = async () => {
+      openSection(panel, 'terminals')
+        .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      chooseMenuItem(0); // Shut down terminal
+      await settle();
+    };
+    const terminal = (name: string, fingerprint: string | null) => ({
+      name,
+      last_activity: iso(0),
+      process: 'bash',
+      fingerprint
+    });
+    expect(rows()).toEqual(['terminal 1']);
+    expect(terminalCount()).toBe('1');
+
+    await shutDown();
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
+    expect(server.terminals.map(t => t.name)).toEqual(['1']);
+    expect(rows()).toEqual([]);
+    expect(sectionCount(panel, 'terminals')).toBe('(0)');
+    expect(terminalCount()).toBe('0');
+    // a poll while the server still lists it keeps it gone
+    await panel.refresh();
+    expect(rows()).toEqual([]);
+    expect(terminalCount()).toBe('0');
+
+    // the server drops it and a new terminal takes the free name before any
+    // load sees the name missing: another fingerprint, so it shows
+    server.terminals = [terminal('1', '202:1010.5')];
+    await panel.refresh();
+    expect(rows()).toEqual(['terminal 1']);
+    expect(terminalCount()).toBe('1');
+
+    // a failed shutdown keeps the row
+    app.serviceManager.terminals.shutdown.mockRejectedValueOnce(
+      new Error('Terminal not found')
+    );
+    await shutDown();
+    await waitForDialog();
+    await dismissDialog();
+    expect(rows()).toEqual(['terminal 1']);
+    expect(terminalCount()).toBe('1');
+
+    // terminal 1 (202) shut down and still listed; terminal 2 starts
+    await shutDown();
+    server.terminals.push(terminal('2', '301:1020.75'));
+    await panel.refresh();
+    expect(rows()).toEqual(['terminal 2']);
+    // a new terminal 1 while the entry of 202 is still kept: Shut down
+    // all reads the server afresh and shuts down both
+    server.terminals = [
+      terminal('1', '303:1030.5'),
+      terminal('2', '301:1020.75')
+    ];
+    shutDownAll(panel, 'terminals').click();
+    await waitForDialog();
+    await acceptDialog();
+    await settle();
+    expect(app.serviceManager.terminals.shutdown.mock.calls.slice(3)).toEqual([
+      ['1'],
+      ['2']
+    ]);
+    expect(rows()).toEqual([]);
+    expect(terminalCount()).toBe('0');
+
+    // without a fingerprint nothing tells it from a new terminal: it stays
+    server.terminals = [terminal('1', null)];
+    await panel.refresh();
+    await shutDown();
+    expect(rows()).toEqual(['terminal 1']);
   });
 
   it('ACC-ACCORD-191-DRAG-ORDER: Move up in the card menu moves the card at once with one stored position, the same in a second window; Move down is disabled on the last card', async () => {
