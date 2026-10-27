@@ -138,6 +138,32 @@ async def test_purpose_of_100_characters_accepted(jp_fetch):
     assert await patch(jp_fetch, "one", {"purpose": "x" * 100}) == {"purpose": "x" * 100}
 
 
+async def test_position_stored(jp_fetch):
+    """ACC-ACCORD-191-DRAG-ORDER: a card's position is stored in its record and GET returns it to every window."""
+    await put_workspace(jp_fetch, "one")
+    await put_workspace(jp_fetch, "two")
+    await patch(jp_fetch, "one", {"colour": "sky", "position": 0})
+
+    assert await patch(jp_fetch, "two", {"position": -0.5}) == {"position": -0.5}
+
+    assert await get_meta(jp_fetch) == {"one": {"colour": "sky", "position": 0}, "two": {"position": -0.5}}
+
+
+@pytest.mark.parametrize(
+    "body", ['{"position": "1"}', '{"position": true}', '{"position": null}', '{"position": NaN}', '{"position": Infinity}']
+)
+async def test_bad_position_refused(jp_fetch, body):
+    """ACC-ACCORD-191-DRAG-ORDER: a position that is not a finite number answers 400; the record stays."""
+    await put_workspace(jp_fetch, "one")
+    await patch(jp_fetch, "one", {"position": 2})
+
+    with pytest.raises(tornado.httpclient.HTTPClientError) as refused:
+        await jp_fetch(NAMESPACE, "meta", "one", method="PATCH", body=body)
+
+    assert refused.value.code == 400
+    assert await get_meta(jp_fetch) == {"one": {"position": 2}}
+
+
 async def test_failed_rename_keeps_old_file(jp_fetch, custom_workspaces_dir, monkeypatch):
     """ACC-SERVER-120: written to a temporary file and renamed; a failed rename leaves the old file."""
     await put_workspace(jp_fetch, "one")

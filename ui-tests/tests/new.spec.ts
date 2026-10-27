@@ -24,6 +24,10 @@ test.use({ autoGoto: false, mockState: false });
 
 const dialog = (page: Page) => page.locator('.jp-Dialog');
 
+/** The cards of workspaces, in the order shown. */
+const cards = (page: Page) =>
+  page.locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`);
+
 async function openDialog(page: Page): Promise<void> {
   await headerButton(page, 'New workspace').click();
   await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
@@ -205,10 +209,10 @@ test('ACC-PANEL-146-NEW-STAY: after Create the window stays and the new card is 
     await gotoWorkspace(page, current);
     await openPanel(page);
     await refresh(page);
-    // the new card comes near the top: scroll the list to its end first
+    // the new card comes last (ACC-ACCORD-198): scroll the list to its top first
     const list = page.locator(`${PANEL} .jp-WorkspaceManager-list`);
-    await list.evaluate(n => (n.scrollTop = n.scrollHeight));
-    await expect(card(page, current)).not.toBeInViewport();
+    await list.evaluate(n => (n.scrollTop = 0));
+    await expect(cards(page).last()).not.toBeInViewport();
     const url = page.url();
     await page.evaluate(() => ((window as any).stayed = true));
 
@@ -222,5 +226,39 @@ test('ACC-PANEL-146-NEW-STAY: after Create the window stays and the new card is 
     expect(await page.evaluate(() => (window as any).stayed)).toBe(true);
   } finally {
     await deleteWorkspaces(page, [current, created, ...many]);
+  }
+});
+
+test('ACC-ACCORD-198-NEW-LAST: a new workspace takes the last card and the next position after the highest', async ({
+  page
+}) => {
+  const current = fresh('last');
+  const others = [`${current}-a`, `${current}-b`];
+  const created = `${current}-new`;
+  await Promise.all(others.map(id => putWorkspace(page, id)));
+  await onlyWorkspaces(page, id => id.startsWith(current));
+  try {
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    await expect(cards(page)).toHaveCount(3);
+
+    await create(page, created);
+    await expect(cards(page)).toHaveCount(4, UNDER_LOAD);
+    await expect(cards(page).last()).toHaveAttribute('data-workspace', created);
+    // the panel stores it, so a save, which sets metadata.created again, moves no card
+    await expect
+      .poll(async () => {
+        const records = await (
+          await page.request.get('/jupyterlab-workspace-manager-extension/meta')
+        ).json();
+        const highest = Math.max(
+          ...[current, ...others].map(id => records[id]?.position)
+        );
+        return records[created]?.position > highest;
+      }, UNDER_LOAD)
+      .toBe(true);
+  } finally {
+    await deleteWorkspaces(page, [current, created, ...others]);
   }
 });

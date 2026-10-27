@@ -42,6 +42,8 @@ import { age } from '../model/age';
 import { filterSections, type ICard } from '../model/filter';
 import {
   buildModel,
+  formatCpu,
+  formatMemory,
   type IKernelRow,
   type IModel,
   type IRecord,
@@ -54,6 +56,7 @@ import {
   withoutTabs
 } from '../model/model';
 import { newRecord } from '../model/new';
+import { givePositions, moved } from '../model/order';
 import { assignColours, type Colour, nextColour } from '../model/palette';
 import { confirm, descriptionDialog, newWorkspaceDialog } from './dialogs';
 import { actionMenu, workspaceMenu } from './menus';
@@ -69,6 +72,7 @@ const EMPTY: ILoaded = {
   last: null,
   terminals: [],
   kernels: [],
+  resources: {},
   sessions: []
 };
 
@@ -92,8 +96,9 @@ export namespace WorkspacePanel {
  * The workspace panel in the sidebar place of the Running panel: a toolbar
  * header (title and buttons; other extensions add theirs after them), the
  * filter field, then four accordion sections - WORKSPACES holding one card per
- * workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS with what belongs to
- * no workspace. One section is open at a time. The cards are React, rendered
+ * workspace, KERNELS and TERMINALS with every running kernel and terminal, in a
+ * workspace or not, and LANGUAGE SERVERS with the running language servers.
+ * One section is open at a time. The cards are React, rendered
  * synchronously, so a reload keeps the scroll position, the focus and every
  * open card or menu.
  */
@@ -229,6 +234,8 @@ export class WorkspacePanel
       // given before the save: a poll during it would give the card another colour
       const colour = nextColour(this._last);
       this._last = this._colours[form.name] = colour;
+      // a deleted workspace of this name left the position this page gave it
+      delete this._positions[form.name];
       await store.save(form.name, { data: {}, metadata: { id: form.name } });
       this._open = this._scrollTo = `w:${form.name}`;
       await this._store(form.name, {
@@ -296,6 +303,11 @@ export class WorkspacePanel
             ? `Reload failed: ${failed.join(', ')}`
             : '';
           this._giveColours();
+          // with the records failed every position looks missing: giving
+          // them would write over the stored order in every window
+          if (data.records) {
+            this._givePositions();
+          }
         })
         .catch(reason => {
           this._error = `Reload failed: ${reason?.message ?? reason}`;
@@ -312,8 +324,7 @@ export class WorkspacePanel
   private _giveColours(): void {
     const ids = (this._model()?.sections ?? [])
       .filter(s => !s.colour)
-      .map(s => s.id)
-      .reverse();
+      .map(s => s.id);
     if (!ids.length) {
       return;
     }
@@ -332,12 +343,40 @@ export class WorkspacePanel
     }
   }
 
+  /** A workspace without a stored position takes the next one after the last, once, as a colour is given. */
+  private _givePositions(): void {
+    const sections = this._model()?.sections ?? [];
+    // a position the server keeps, or one of a deleted workspace, leaves this page's own
+    for (const id of Object.keys(this._positions)) {
+      if (
+        this._data?.records[id]?.position !== undefined ||
+        !sections.some(s => s.id === id)
+      ) {
+        delete this._positions[id];
+      }
+    }
+    const given = givePositions(sections);
+    for (const id of Object.keys(given)) {
+      this._positions[id] = given[id];
+      // without the server extension the position lasts as long as this page
+      patchMeta(this._settings, id, { position: given[id] }).catch(
+        () => undefined
+      );
+    }
+  }
+
   private _model(data = this._data): IModel | null {
     if (!data) {
       return null;
     }
+    // the sort needs a given position before its write comes back
+    const records = { ...data.records };
+    for (const [id, position] of Object.entries(this._positions)) {
+      records[id] = { position, ...records[id] };
+    }
     const model = buildModel({
       ...data,
+      records,
       specs: this._app.serviceManager.kernelspecs.specs,
       current: this._current,
       liveTabs: this._liveTabs()
@@ -453,8 +492,15 @@ export class WorkspacePanel
       this._query,
       this._showHidden
     );
-    const unowned = model?.unowned ?? { terminals: [], kernels: [] };
-    const servers = running(this._languageServers());
+    const terminals = model?.terminals ?? [];
+    const kernels = model?.kernels ?? [];
+    const manager = this._languageServers();
+    const servers = running(manager);
+    // a terminal or kernel a workspace holds acts as in its card, this window's first
+    const holder = (ids: string[]) =>
+      sections.find(s => s.current && ids.includes(s.id)) ??
+      sections.find(s => ids.includes(s.id)) ??
+      null;
     const hidden = sections.filter(s => s.hidden).length;
     const now = Date.now();
     flushSync(() =>
@@ -466,7 +512,11 @@ export class WorkspacePanel
               {this._error}
             </div>
           )}
-          <div className="jp-WorkspaceManager-list">
+          <div
+            className="jp-WorkspaceManager-list"
+            onDragOver={e => this._dragOver(e)}
+            onDrop={e => this._drop(e)}
+          >
             {this._renderSection(
               'workspaces',
               'WORKSPACES',
@@ -498,30 +548,27 @@ export class WorkspacePanel
                 )}
               </>
             )}
-            {unowned.kernels.length > 0 &&
-              this._renderSection(
-                'kernels',
-                'KERNELS',
-                unowned.kernels.length,
-                unowned.kernels.map(k => this._kernelRow(null, k, now)),
-                'kernels'
-              )}
-            {unowned.terminals.length > 0 &&
-              this._renderSection(
-                'terminals',
-                'TERMINALS',
-                unowned.terminals.length,
-                unowned.terminals.map(t => this._terminalRow(null, t, now)),
-                'terminals'
-              )}
-            {servers.length > 0 &&
-              this._renderSection(
-                'servers',
-                'LANGUAGE SERVERS',
-                servers.length,
-                this._managerRows(this._languageServers()!),
-                'servers'
-              )}
+            {this._renderSection(
+              'kernels',
+              'KERNELS',
+              kernels.length,
+              kernels.map(k => this._kernelRow(holder(k.alsoIn), k, now, true)),
+              'kernels'
+            )}
+            {this._renderSection(
+              'terminals',
+              'TERMINALS',
+              terminals.length,
+              terminals.map(t => this._terminalRow(holder(t.alsoIn), t, now)),
+              'terminals'
+            )}
+            {this._renderSection(
+              'servers',
+              'LANGUAGE SERVERS',
+              servers.length,
+              manager ? this._managerRows(manager) : [],
+              'servers'
+            )}
           </div>
         </>
       )
@@ -575,7 +622,8 @@ export class WorkspacePanel
 
   /**
    * One accordion section: the header carries the label, the count and, for the
-   * sections below WORKSPACES, a Shut down all; only the open section shows its body.
+   * sections below WORKSPACES, a Shut down all; only the open section shows its body,
+   * and one of those three with nothing in it says so.
    */
   private _renderSection(
     key: string,
@@ -613,6 +661,7 @@ export class WorkspacePanel
           {shutdown && (
             <button
               className="jp-WorkspaceManager-button"
+              disabled={!n}
               onClick={e => {
                 e.stopPropagation();
                 void this._shutDownSection(shutdown);
@@ -622,7 +671,17 @@ export class WorkspacePanel
             </button>
           )}
         </div>
-        {open && <div className="jp-WorkspaceManager-sectionBody">{body}</div>}
+        {open && (
+          <div className="jp-WorkspaceManager-sectionBody">
+            {shutdown && !n ? (
+              <div className="jp-WorkspaceManager-empty">
+                No {label.toLowerCase()}
+              </div>
+            ) : (
+              body
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -643,7 +702,10 @@ export class WorkspacePanel
       section.current ? 'jp-mod-current' : '',
       // not jp-mod-hidden: JupyterLab sets display: none on that class
       section.hidden ? 'jp-mod-hiddenWorkspace' : '',
-      open ? 'jp-mod-open' : ''
+      open ? 'jp-mod-open' : '',
+      this._dropLine?.id === id
+        ? `jp-mod-drop${this._dropLine.after ? 'After' : 'Before'}`
+        : ''
     ];
     const when = age(section.lastModified, now);
     // the header of another workspace's card switches to it; the triangle opens the card
@@ -663,6 +725,16 @@ export class WorkspacePanel
           tabIndex={0}
           aria-expanded={switches ? undefined : open}
           title={section.purpose ? `${name}\n${section.purpose}` : name}
+          draggable={!filtering}
+          onDragStart={e => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', id);
+            this._dragged = id;
+          }}
+          onDragEnd={() => {
+            this._dragged = this._dropLine = null;
+            this._render();
+          }}
           onClick={click}
           onKeyDown={e => {
             if (
@@ -806,7 +878,7 @@ export class WorkspacePanel
   }
 
   private _terminalRow(
-    /** null for a row of the TERMINALS section: a terminal in no workspace */
+    /** null for a terminal in no workspace */
     section: ISection | null,
     t: ITerminalRow,
     now: number
@@ -817,7 +889,6 @@ export class WorkspacePanel
       icon: terminalGlyph,
       label: t.process ?? `terminal ${t.name}`,
       detail: t.process ? `terminal ${t.name}` : '',
-      also: t.alsoIn,
       title: lines(`terminal ${t.name}`, t.process, when.label),
       age: (
         <span className={when.className}>
@@ -833,26 +904,38 @@ export class WorkspacePanel
         {
           label: 'Shut down terminal',
           icon: closeIcon,
-          execute: () => void this._shutDownTerminal(t)
+          execute: () => void this._shutDownTerminal(t, section)
         }
       ]
     });
   }
 
   private _kernelRow(
-    /** null for a row of the KERNELS section: a kernel in no workspace */
+    /** null for a kernel in no workspace */
     section: ISection | null,
     k: IKernelRow,
-    now: number
+    now: number,
+    /** a row of the KERNELS section: the path, the state, the memory and the CPU in place of the file name and the age */
+    listed = false
   ): React.ReactElement {
+    const figures = this._data?.resources[k.id];
     return row({
       key: `kernel:${k.id}`,
       icon: kernelIcon,
       label: k.label,
-      detail: k.detail,
-      also: k.alsoIn,
+      detail: listed
+        ? k.path.slice(0, k.path.lastIndexOf('/') + 1) + k.detail
+        : k.detail,
+      path: listed,
       title: k.title,
-      age: (
+      age: listed ? (
+        <span className="jp-WorkspaceManager-age">
+          <span className={k.dotClass} />
+          <span>{k.state}</span>
+          <span>{formatMemory(figures?.memory)}</span>
+          <span>{formatCpu(figures?.cpu)}</span>
+        </span>
+      ) : (
         <span className={age(k.lastActivity, now).className}>
           <span className={k.dotClass} />
           {age(k.lastActivity, now).label}
@@ -872,10 +955,7 @@ export class WorkspacePanel
         {
           label: 'Shut down kernel',
           icon: closeIcon,
-          execute: () =>
-            void this._act(() =>
-              this._app.serviceManager.kernels.shutdown(k.id)
-            )
+          execute: () => void this._shutDownKernel(k, section)
         }
       ]
     });
@@ -951,35 +1031,35 @@ export class WorkspacePanel
       await this._act(async () => manager?.shutdownAll());
       return;
     }
-    const n = this._model()?.unowned[kind].length ?? 0;
+    const n = this._model()?.[kind].length ?? 0;
     const word = kind === 'terminals' ? 'terminal' : 'kernel';
     if (
       !(await confirm(
         'Shut down all?',
-        `Shut down ${n} ${word}${n === 1 ? '' : 's'} in no workspace.`,
+        `Shut down ${n} ${word}${n === 1 ? '' : 's'}.`,
         'Shut down all'
       ))
     ) {
       return;
     }
     await this._act(async () => {
-      // what is in no workspace now: another window may have moved a row while the dialog was open
+      // what runs now: a terminal or kernel may have ended while the dialog was open
       const { failed, ...data } = await load(this._settings);
       if (failed.length) {
         throw new Error(
           `Nothing was shut down. Reload failed: ${failed.join(', ')}`
         );
       }
-      const unowned = this._model({ ...EMPTY, ...data })!.unowned;
+      const model = this._model({ ...EMPTY, ...data })!;
       if (kind === 'terminals') {
         await Promise.all(
-          unowned.terminals.map(x =>
+          model.terminals.map(x =>
             this._app.serviceManager.terminals.shutdown(x.name)
           )
         );
       } else {
         await Promise.all(
-          unowned.kernels.map(x =>
+          model.kernels.map(x =>
             this._app.serviceManager.kernels.shutdown(x.id)
           )
         );
@@ -989,6 +1069,8 @@ export class WorkspacePanel
 
   private _openMenu(section: ISection, anchor: HTMLElement): void {
     const id = section.id;
+    const shown = this._shown();
+    const i = shown.findIndex(s => s.id === id);
     const menu: Menu = workspaceMenu(section.colour, section.current, {
       open: () => void this._openWorkspace(section),
       openInNewTab: () => void this._openWorkspace(section, true),
@@ -996,6 +1078,9 @@ export class WorkspacePanel
       describe: () => void this._describe(section),
       colour: colour => void this._store(id, { colour }),
       hide: () => void this._store(id, { hidden: true }),
+      moveUp: i > 0 ? () => void this._move(id, i - 1) : undefined,
+      moveDown:
+        i < shown.length - 1 ? () => void this._move(id, i + 1) : undefined,
       delete: () => void this._delete(section)
     });
     const rect = anchor.getBoundingClientRect();
@@ -1140,18 +1225,42 @@ export class WorkspacePanel
     }
   }
 
-  private async _shutDownTerminal(t: ITerminalRow): Promise<void> {
+  private async _shutDownTerminal(
+    t: ITerminalRow,
+    section: ISection | null
+  ): Promise<void> {
+    // a TERMINALS row carries every holder, a card row the others only
+    const others = t.alsoIn.filter(id => id !== section?.id);
     if (
-      t.alsoIn.length &&
+      others.length &&
       !(await confirm(
         `Shut down terminal ${t.name}?`,
-        `Workspace ${t.alsoIn.join(', ')} also holds this terminal.`,
+        `Workspace ${others.join(', ')} also holds this terminal.`,
         'Shut down'
       ))
     ) {
       return;
     }
     await this._act(() => this._app.serviceManager.terminals.shutdown(t.name));
+  }
+
+  private async _shutDownKernel(
+    k: IKernelRow,
+    section: ISection | null
+  ): Promise<void> {
+    // a KERNELS row carries every holder, a card row the others only
+    const others = k.alsoIn.filter(id => id !== section?.id);
+    if (
+      others.length &&
+      !(await confirm(
+        `Shut down kernel ${k.label}?`,
+        `Workspace ${others.join(', ')} also holds this kernel.`,
+        'Shut down'
+      ))
+    ) {
+      return;
+    }
+    await this._act(() => this._app.serviceManager.kernels.shutdown(k.id));
   }
 
   /** Store a record change; the card shows it at once. */
@@ -1166,6 +1275,78 @@ export class WorkspacePanel
       }
       this._render();
     });
+  }
+
+  /** The cards the panel shows, in order. */
+  private _shown(all = this._model()?.sections ?? []): ISection[] {
+    return filterSections(all, this._query, this._showHidden).cards.map(
+      c => c.section
+    );
+  }
+
+  /** A card dragged over the list: the line goes above or below the card under the pointer and stays over a gap. */
+  private _dragOver(e: React.DragEvent): void {
+    // a file or a text dragged in is no card
+    if (!this._dragged) {
+      return;
+    }
+    e.preventDefault();
+    const card = (e.target as Element).closest<HTMLElement>('[data-workspace]');
+    if (!card) {
+      return;
+    }
+    const rect = card.getBoundingClientRect();
+    const line = {
+      id: card.dataset.workspace!,
+      after: e.clientY > rect.top + rect.height / 2
+    };
+    if (line.id !== this._dropLine?.id || line.after !== this._dropLine.after) {
+      this._dropLine = line;
+      this._render();
+    }
+  }
+
+  /** The drop: the dragged card moves to the line. */
+  private _drop(e: React.DragEvent): void {
+    const id = this._dragged;
+    const line = this._dropLine;
+    this._dragged = this._dropLine = null;
+    if (!id || !line) {
+      return;
+    }
+    e.preventDefault();
+    const shown = this._shown();
+    const to =
+      shown.filter(s => s.id !== id).findIndex(s => s.id === line.id) +
+      Number(line.after);
+    if (line.id !== id && to !== shown.findIndex(s => s.id === id)) {
+      void this._move(id, to);
+    } else {
+      this._render();
+    }
+  }
+
+  /** Move a card to index `to` of the cards shown, counted without it; the panel shows the new order at once. */
+  private async _move(id: string, to: number): Promise<void> {
+    const all = this._model()?.sections ?? [];
+    const writes = Object.entries(moved(all, this._shown(all), id, to));
+    if (this._data) {
+      const records = { ...this._data.records };
+      for (const [w, position] of writes) {
+        records[w] = { ...records[w], position };
+      }
+      this._data.records = records;
+    }
+    // a load that started before the move must not bring the old positions back
+    this._changes += 1;
+    this._render();
+    await this._act(() =>
+      Promise.all(
+        writes.map(([w, position]) =>
+          patchMeta(this._settings, w, { position })
+        )
+      )
+    );
   }
 
   /** Run a user action, report its failure, then reload with a load that starts after it. */
@@ -1203,6 +1384,11 @@ export class WorkspacePanel
   private _colours: { [id: string]: Colour } = {};
   /** the colour given last, as the server keeps it for every window */
   private _last: Colour | null = null;
+  /** positions this page gave to workspaces whose record has none */
+  private _positions: { [id: string]: number } = {};
+  /** the workspace whose card is dragged, and the line where it lands */
+  private _dragged: string | null = null;
+  private _dropLine: { id: string; after: boolean } | null = null;
 
   /** the open section of the accordion: one at a time, WORKSPACES first */
   private _section: string | null = 'workspaces';
@@ -1315,8 +1501,9 @@ function row(props: {
   detail: string;
   /** the detail is a folder: it shortens before the label does */
   folder?: boolean;
+  /** the detail is a path: cut at its start, so its file name shows whole */
+  path?: boolean;
   title: string;
-  also?: string[];
   age?: React.ReactElement;
   /** a child row of an item of another extension's section: indented */
   child?: boolean;
@@ -1326,6 +1513,7 @@ function row(props: {
   menu?: { label: string; icon: LabIcon; execute: () => void }[];
 }): React.ReactElement {
   const { icon, menu, shutdown } = props;
+  const file = props.detail.lastIndexOf('/') + 1;
   return (
     <div
       key={props.key}
@@ -1361,21 +1549,23 @@ function row(props: {
         icon
       )}
       <span className="jp-WorkspaceManager-rowLabel">{props.label}</span>
-      {props.detail && (
-        <span
-          className={`jp-WorkspaceManager-rowDetail${props.folder ? ' jp-WorkspaceManager-rowFolder' : ''}`}
-        >
-          {props.detail}
-        </span>
-      )}
-      {props.also?.length ? (
-        <span className="jp-WorkspaceManager-rowDetail jp-WorkspaceManager-rowAlso">
-          also in{' '}
-          <span className="jp-WorkspaceManager-rowAlsoName">
-            {props.also.join(', ')}
+      {props.detail &&
+        (props.path ? (
+          <span className="jp-WorkspaceManager-rowDetail jp-WorkspaceManager-rowPath">
+            {file > 0 && (
+              <span className="jp-WorkspaceManager-rowPathFolder">
+                {props.detail.slice(0, file)}
+              </span>
+            )}
+            <span>{props.detail.slice(file)}</span>
           </span>
-        </span>
-      ) : null}
+        ) : (
+          <span
+            className={`jp-WorkspaceManager-rowDetail${props.folder ? ' jp-WorkspaceManager-rowFolder' : ''}`}
+          >
+            {props.detail}
+          </span>
+        ))}
       {props.age}
       {shutdown && iconButton(shutdown.icon, shutdown.label, shutdown.execute)}
     </div>

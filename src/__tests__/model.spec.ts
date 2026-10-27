@@ -4,6 +4,8 @@ import { filterSections } from '../model/filter';
 import {
   buildModel,
   buildSections,
+  formatCpu,
+  formatMemory,
   IModelInput,
   ISection,
   kernelDot,
@@ -64,26 +66,59 @@ const byId = (sections: ISection[], id: string) =>
   sections.find(s => s.id === id)!;
 
 describe('model', () => {
-  it('ACC-ACCORD-13-ORDER: this window first, the others newest first; what is in no workspace comes apart', () => {
+  it('ACC-ACCORD-190-FIXED-ORDER: the stored positions order the cards; this window and last_modified take no part; the terminals come apart', () => {
     const model = buildModel(
       input({
         current: 'default',
         workspaces: [
           ws('older', '2026-10-20T10:00:00.000000+00:00'),
-          ws('default', '2026-10-01T10:00:00.000000+00:00'),
-          ws('newest', '2026-10-23T10:00:00.000000+00:00'),
+          ws('default', '2026-10-24T10:00:00.000000+00:00'),
           ws('middle', '2026-10-21T10:00:00.000000+00:00')
         ],
+        records: {
+          older: { position: 0 },
+          middle: { position: 1.5 },
+          default: { position: 2 }
+        },
         terminals: [{ name: '9' }]
       })
     );
     expect(model.sections.map(s => s.id)).toEqual([
-      'default',
-      'newest',
+      'older',
       'middle',
-      'older'
+      'default'
     ]);
-    expect(model.unowned.terminals.map(t => t.name)).toEqual(['9']);
+    expect(model.terminals.map(t => t.name)).toEqual(['9']);
+  });
+
+  it('ACC-ACCORD-198-NEW-LAST: a workspace without a position sorts after those with one, oldest first by created, by id without created', () => {
+    const created = (id: string, time?: string) => ({
+      metadata: { id, created: time },
+      data: {}
+    });
+    const order = (workspaces: any[]) =>
+      buildSections(
+        input({
+          current: 'zz-unsaved',
+          workspaces,
+          records: { b: { position: 7 }, a: { position: 3 } }
+        })
+      ).map(s => s.id);
+    expect(
+      order([
+        created('new', '2026-10-25T10:00:00.000000+00:00'),
+        created('b', '2026-10-01T10:00:00.000000+00:00'),
+        created('old', '2026-10-02T10:00:00.000000+00:00'),
+        created('a', '2026-10-26T10:00:00.000000+00:00')
+      ])
+    ).toEqual(['a', 'b', 'old', 'new', 'zz-unsaved']);
+    // this window's workspace before its first save has no created time either
+    expect(order([created('y'), created('x'), created('b')])).toEqual([
+      'b',
+      'x',
+      'y',
+      'zz-unsaved'
+    ]);
   });
 
   it('ACC-LISTS-34-ASSIGN-TERMINAL: a terminal goes to the workspace whose layout holds terminal:<name>', () => {
@@ -117,8 +152,13 @@ describe('model', () => {
     ]);
     expect(byId(sections, 'b').terminals.map(t => t.name)).toEqual(['2']);
     expect(byId(sections, 'cur').terminals).toEqual([]);
-    expect(model.unowned.terminals.map(t => t.name)).toEqual(['3']);
-    expect(model.unowned.terminals[0].process).toBeNull();
+    // ACC-LISTS-194-ALL-TERMINALS: TERMINALS lists all three, each with its workspace
+    expect(model.terminals.map(t => [t.name, t.alsoIn])).toEqual([
+      ['1', ['a']],
+      ['2', ['b']],
+      ['3', []]
+    ]);
+    expect(model.terminals[2].process).toBeNull();
   });
 
   it('ACC-LISTS-35-ASSIGN-KERNEL: a kernel goes to the workspace whose notebook has a session on it', () => {
@@ -148,18 +188,23 @@ describe('model', () => {
         title: 'python3\nwork/x.ipynb\nidle',
         path: 'work/x.ipynb',
         detail: 'x.ipynb',
+        state: 'idle',
         lastActivity: '2026-10-24T11:00:00.000000Z',
         dotClass: 'jp-WorkspaceManager-dot jp-mod-idle',
         alsoIn: []
       }
     ]);
     expect(byId(sections, 'b').kernels.map(k => k.id)).toEqual(['k2']);
-    // a kernel without a session belongs to no workspace
-    expect(model.unowned.kernels.map(k => k.id)).toEqual(['k3']);
-    expect(model.unowned.kernels[0].path).toBe('');
+    // ACC-LISTS-195-ALL-KERNELS: KERNELS lists all three; one without a session belongs to no workspace
+    expect(model.kernels.map(k => [k.id, k.alsoIn])).toEqual([
+      ['k1', ['a']],
+      ['k2', ['b']],
+      ['k3', []]
+    ]);
+    expect(model.kernels[2].path).toBe('');
   });
 
-  it('ACC-LISTS-37-TWO-WORKSPACES: a terminal and a kernel in two workspaces show in both, marked with the other', () => {
+  it('ACC-LISTS-37-TWO-WORKSPACES: a terminal and a kernel in two workspaces show in both, each with the other as a holder', () => {
     const k1 = kernel('k1');
     const keys = ['terminal:5', 'notebook:shared.ipynb'];
     const model = buildModel(
@@ -186,7 +231,12 @@ describe('model', () => {
         ['k1', [other]]
       ]);
     }
-    expect(model.unowned).toEqual({ terminals: [], kernels: [] });
+    expect(model.terminals.map(t => [t.name, t.alsoIn])).toEqual([
+      ['5', ['a', 'b']]
+    ]);
+    expect(model.kernels.map(k => [k.id, k.alsoIn])).toEqual([
+      ['k1', ['a', 'b']]
+    ]);
   });
 
   it('ACC-LISTS-81-ONCE: a document, a terminal and a notebook each in one group only', () => {
@@ -245,14 +295,17 @@ describe('model', () => {
     const a = byId(model.sections, 'a');
     expect(a.kernels.map(k => [k.id, k.detail])).toEqual([['k1', 'Console 1']]);
     expect(a.tabs.map(t => t.label)).toEqual(['Console 1']);
-    expect(model.unowned.kernels.map(k => k.id)).toEqual(['k2']);
+    expect(model.kernels.map(k => [k.id, k.alsoIn])).toEqual([
+      ['k1', ['a']],
+      ['k2', []]
+    ]);
   });
 
   it('ACC-KERNEL-49-STATE: idle and busy kernels take their dot classes', () => {
     const idle = kernel('k1', 'idle');
     const busy = kernel('k2', 'busy');
     const model = buildModel(input({ kernels: [idle, busy] }));
-    expect(model.unowned.kernels.map(k => k.dotClass)).toEqual([
+    expect(model.kernels.map(k => k.dotClass)).toEqual([
       'jp-WorkspaceManager-dot jp-mod-idle',
       'jp-WorkspaceManager-dot jp-mod-busy'
     ]);
@@ -274,12 +327,12 @@ describe('model', () => {
     const [row] = byId(model.sections, 'a').kernels;
     expect(row.label).toBe('Python 3 (ipykernel)');
     expect(row.title).toBe('Python 3 (ipykernel)\nwork/x.ipynb\nidle');
-    const [unknown] = model.unowned.kernels;
+    const unknown = model.kernels[1];
     expect(unknown.label).toBe('xpython');
     expect(unknown.title).toBe('xpython\nidle');
     // before JupyterLab has loaded the kernelspecs
     const early = buildModel(input({ kernels: [k1] }));
-    expect(early.unowned.kernels[0].label).toBe('python3');
+    expect(early.kernels[0].label).toBe('python3');
   });
 
   it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one tab row', () => {
@@ -309,22 +362,33 @@ describe('model', () => {
       expect(kernelDot(state)).toBe('jp-WorkspaceManager-dot jp-mod-unknown');
     }
     const model = buildModel(input({ kernels: [kernel('k', 'dead')] }));
-    expect(model.unowned.kernels[0].dotClass).toBe(
+    expect(model.kernels[0].dotClass).toBe(
       'jp-WorkspaceManager-dot jp-mod-unknown'
     );
   });
 
-  it('ACC-HIDDEN-55-CONTENT: the terminal of a hidden workspace is in no visible group', () => {
+  it('ACC-LISTS-194-ALL-TERMINALS, ACC-LISTS-195-ALL-KERNELS: the terminal and kernel of a hidden workspace are listed; its card keeps them', () => {
+    const k1 = kernel('k1');
     const model = buildModel(
       input({
-        workspaces: [ws('h', '2026-10-23T10:00:00Z', ['terminal:1'])],
+        workspaces: [
+          ws('h', '2026-10-23T10:00:00Z', ['terminal:1', 'notebook:h.ipynb'])
+        ],
         records: { h: { hidden: true } },
-        terminals: [{ name: '1' }]
+        terminals: [{ name: '1' }],
+        sessions: [session('h.ipynb', k1)],
+        kernels: [k1]
       })
     );
     const sections = model.sections;
     expect(byId(sections, 'h').hidden).toBe(true);
-    expect(model.unowned).toEqual({ terminals: [], kernels: [] });
+    expect(model.terminals.map(t => [t.name, t.alsoIn])).toEqual([
+      ['1', ['h']]
+    ]);
+    expect(model.kernels.map(k => [k.id, k.alsoIn])).toEqual([['k1', ['h']]]);
+    // the counts of its card do not change
+    expect(byId(sections, 'h').terminals.map(t => t.name)).toEqual(['1']);
+    expect(byId(sections, 'h').kernels.map(k => k.id)).toEqual(['k1']);
 
     const { cards } = filterSections(sections, '', false);
     expect(cards.map(c => c.section.id)).toEqual(['default']);
@@ -354,7 +418,10 @@ describe('model', () => {
     expect(current.terminals.map(t => [t.name, t.title])).toEqual([
       ['2', 'vim notes.md']
     ]);
-    expect(model.unowned.terminals.map(t => t.name)).toEqual(['1']);
+    expect(model.terminals.map(t => [t.name, t.alsoIn])).toEqual([
+      ['1', []],
+      ['2', ['default']]
+    ]);
   });
 
   it("gives this window's workspace a card before its first save", () => {
@@ -394,5 +461,21 @@ describe('model', () => {
       { key: 'terminal:2', path: undefined, name: undefined }
     ]);
     expect(tabsOf({})).toEqual([]);
+  });
+
+  it('ACC-KERNEL-196-KERNEL-DETAILS: memory reads MB under 1 GB and GB from there, CPU a whole percent of one core, each a dash when unread', () => {
+    expect(formatMemory(0)).toBe('0 MB');
+    expect(formatMemory(150 * 2 ** 20)).toBe('150 MB');
+    expect(formatMemory(1023.4 * 2 ** 20)).toBe('1023 MB');
+    expect(formatMemory(2 ** 30)).toBe('1.0 GB');
+    expect(formatMemory(2.54 * 2 ** 30)).toBe('2.5 GB');
+    expect(formatCpu(0)).toBe('0%');
+    expect(formatCpu(12.6)).toBe('13%');
+    // percent of one core: a kernel on two cores reads above 100
+    expect(formatCpu(187.2)).toBe('187%');
+    for (const unread of [null, undefined]) {
+      expect(formatMemory(unread)).toBe('-');
+      expect(formatCpu(unread)).toBe('-');
+    }
   });
 });

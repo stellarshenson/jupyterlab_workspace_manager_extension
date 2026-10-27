@@ -241,6 +241,19 @@ export async function onlyWorkspaces(
   });
 }
 
+/** Answer GET `url` with only the entries `keep` accepts: the items of other tests are not this test's. */
+export const only = (page: Page, url: RegExp, keep: (x: any) => boolean) =>
+  page.route(url, async route => {
+    if (route.request().method() !== 'GET') {
+      return route.fallback();
+    }
+    const response = await route.fetch();
+    const json = response.ok()
+      ? (await response.json()).filter(keep)
+      : undefined;
+    await route.fulfill({ response, json });
+  });
+
 /**
  * A saved layout holding these tab keys in the main area. A `terminal:<name>`
  * key gets the data the terminal tracker saves; any other key is a document

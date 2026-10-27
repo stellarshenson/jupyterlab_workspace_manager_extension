@@ -33,8 +33,13 @@ const MENU = [
   'Set description...',
   'Colour',
   'Hide workspace',
+  'Move up',
+  'Move down',
   'Delete workspace'
 ];
+
+/** The index of Delete workspace among the items. */
+const BIN = MENU.indexOf('Delete workspace');
 
 const dialog = (page: Page) => page.locator('.jp-Dialog');
 
@@ -75,7 +80,7 @@ async function openColours(page: Page, id: string): Promise<void> {
   await expect(items(page, '.jp-WorkspaceManager-colourMenu')).toHaveCount(6);
 }
 
-test('ACC-ACCORD-29-MENU: the ... button opens the workspace menu with its seven items in order', async ({
+test('ACC-ACCORD-29-MENU: the ... button opens the workspace menu with its nine items in order', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'menu');
@@ -144,15 +149,15 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icon
       const channels = await Promise.all(colours.map(c => rgb(page, c)));
       red.push(channels.some(c => JSON.stringify(c) === error));
     }
-    expect(red).toEqual([false, false, false, false, false, false, true]);
+    expect(red).toEqual(MENU.map(label => label === 'Delete workspace'));
     const bin = await items(page)
-      .nth(6)
+      .nth(BIN)
       .locator('.lm-Menu-itemIcon .jp-icon3[fill]')
       .first()
       .evaluate(p => getComputedStyle(p).fill);
     expect(JSON.stringify(await rgb(page, bin))).toBe(error);
     const label = await items(page)
-      .nth(6)
+      .nth(BIN)
       .locator('.lm-Menu-itemLabel')
       .evaluate(l => getComputedStyle(l).color);
     expect(await rgb(page, label)).toEqual(

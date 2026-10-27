@@ -50,8 +50,14 @@ interface IServer {
   terminals: any[];
   kernels: any[];
   sessions: any[];
+  /** the extension's `kernels` route: memory and CPU per kernel id */
+  resources?: any;
   /** answer 404 on every route of the server extension */
   absent?: boolean;
+  /** answer 500 on the extension's `kernels` route */
+  resourcesFailing?: boolean;
+  /** answer 500 on the extension's `meta` route, the records request */
+  recordsFailing?: boolean;
   /** answer 500 on /api/kernels; `once` answers 500 to the next request only */
   failing?: boolean | 'once';
 }
@@ -78,10 +84,17 @@ function fakeServer(server: IServer) {
         return reply(404, { message: 'Not Found' });
       }
       if (path.endsWith('/meta')) {
-        return reply(200, server.records);
+        return server.recordsFailing
+          ? reply(500, { message: 'Unhandled error' })
+          : reply(200, server.records);
       }
       if (path.endsWith('/terminals')) {
         return reply(200, server.terminals);
+      }
+      if (path.endsWith('/kernels')) {
+        return server.resourcesFailing
+          ? reply(500, { message: 'Unhandled error' })
+          : reply(200, server.resources ?? {});
       }
       if (method === 'PATCH') {
         const id = decodeURIComponent(path.split('/').pop()!);
@@ -284,6 +297,9 @@ const $ = (panel: Widget, selector: string) =>
 const $$ = (panel: Widget, selector: string) =>
   Array.from(panel.node.querySelectorAll<HTMLElement>(selector));
 const card = (panel: Widget, key: string) => $(panel, `[data-key="${key}"]`)!;
+/** The workspace cards, top to bottom. */
+const order = (panel: Widget) =>
+  $$(panel, '[data-workspace]').map(c => c.dataset.workspace);
 const header = (panel: Widget, key: string) =>
   card(panel, key).querySelector<HTMLElement>(
     '.jp-WorkspaceManager-cardHeader'
@@ -341,6 +357,7 @@ describe('panel', () => {
     expect($$(panel, '[data-section]').map(s => s.dataset.section)).toEqual([
       'workspaces',
       'kernels',
+      'terminals',
       'servers'
     ]);
     const text = panel.node.textContent!;
@@ -396,8 +413,11 @@ describe('panel', () => {
     managers.add(manager('Language servers', ['pylsp (python)']));
     const { panel } = await mount(server, { managers });
 
+    // ACC-PANEL-193-SECTIONS-SHOWN: KERNELS and TERMINALS stay, listing auto-6's
     expect($$(panel, '[data-section]').map(s => s.dataset.section)).toEqual([
       'workspaces',
+      'kernels',
+      'terminals',
       'servers'
     ]);
     const body = openSection(panel, 'servers');
@@ -452,9 +472,10 @@ describe('panel', () => {
     });
     const { panel, app } = await mount(server);
 
+    // terminal 9, in no workspace: terminal 1 above it is auto-6's
     const terminals = openSection(panel, 'terminals');
     terminals
-      .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
+      .querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')[1]
       .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
     chooseMenuItem(0); // Shut down terminal
     await settle();
@@ -498,9 +519,9 @@ describe('panel', () => {
     expect(closed[1]).toHaveBeenCalledTimes(1);
   });
 
-  it('DEF-PANEL-11-SHUTDOWN-STALE: Shut down all shuts down what is in no workspace when the user confirms', async () => {
+  it('DEF-PANEL-11-SHUTDOWN-STALE: Shut down all shuts down the terminals running when the user confirms', async () => {
     const server = standard();
-    // two terminals in no workspace
+    // terminal 1 of auto-6 and two terminals in no workspace
     server.terminals.push(
       { name: '9', last_activity: iso(0), process: 'htop' },
       { name: '8', last_activity: iso(0), process: 'fish' }
@@ -510,17 +531,93 @@ describe('panel', () => {
     const all = shutDownAll(panel, 'terminals');
     all.click();
     await waitForDialog();
-    expect(dialogText()).toContain('Shut down 2 terminals in no workspace.');
-    // while the dialog is open, another window opens terminal 9 in auto-6
-    server.workspaces[1] = workspace('auto-6', 0, [
-      'terminal:1',
-      'terminal:9',
-      'editor:docs/README.md'
-    ]);
+    expect(dialogText()).toContain('Shut down 3 terminals.');
+    // while the dialog is open, terminal 9 ends
+    server.terminals = server.terminals.filter(t => t.name !== '9');
     await acceptDialog();
     await settle();
-    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['8']]);
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([
+      ['1'],
+      ['8']
+    ]);
     expect(app.serviceManager.kernels.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('ACC-PANEL-193-SECTIONS-SHOWN: with no kernel, terminal or language server the four sections show in order, each says it is empty, and Shut down all is disabled', async () => {
+    const server = standard();
+    server.terminals = [];
+    server.kernels = [];
+    // no language server manager is registered
+    const { panel } = await mount(server);
+    expect($$(panel, '[data-section]').map(s => s.dataset.section)).toEqual([
+      'workspaces',
+      'kernels',
+      'terminals',
+      'servers'
+    ]);
+    for (const [key, text] of [
+      ['kernels', 'No kernels'],
+      ['terminals', 'No terminals'],
+      ['servers', 'No language servers']
+    ]) {
+      expect(sectionCount(panel, key)).toBe('(0)');
+      expect(shutDownAll(panel, key).disabled).toBe(true);
+      expect(openSection(panel, key).textContent).toBe(text);
+    }
+  });
+
+  it('ACC-LISTS-194-ALL-TERMINALS, ACC-LISTS-195-ALL-KERNELS: TERMINALS and KERNELS list what a workspace holds too; such a row acts as in its card; the card counts stay', async () => {
+    const server = standard();
+    // terminal 2 open in this window; the kernel's notebook is in auto-6
+    server.terminals.push({ name: '2', last_activity: iso(0), process: 'vim' });
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:1',
+      'notebook:a.ipynb'
+    ]);
+    const tab = new Widget();
+    tab.id = 'terminal-2';
+    (tab as any).content = {
+      hasClass: (name: string) => name === 'jp-Terminal',
+      session: { name: '2' }
+    };
+    const { panel, app } = await mount(server, { live: [tab] });
+    const execute = jest.spyOn(app.commands, 'execute');
+
+    const terminals = Array.from(
+      openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    expect(terminals.map(r => r.title.split('\n')[0])).toEqual([
+      'terminal 1',
+      'terminal 2'
+    ]);
+    // terminal 2 is this window's: the row activates its tab, as in the card
+    terminals[1].click();
+    expect(app.shell.activateById).toHaveBeenCalledWith('terminal-2');
+    expect(execute).not.toHaveBeenCalled();
+
+    const kernels = Array.from(
+      openSection(panel, 'kernels').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    expect(kernels.map(r => r.title.split('\n')[0])).toEqual([PYTHON]);
+
+    openSection(panel, 'workspaces');
+    const counts = (key: string) =>
+      Array.from(
+        header(panel, key).querySelectorAll('.jp-WorkspaceManager-count')
+      ).map(c => c.textContent);
+    expect(counts('w:auto-6')).toEqual(['1', '1', '1']);
+    expect(counts('w:default')).toEqual(['0', '1', '0']);
   });
 
   it('ACC-PANEL-7-REFRESH-BUSY: the refresh button turns and waits for the requests, at least 500 ms', async () => {
@@ -702,7 +799,7 @@ describe('panel', () => {
     server.failing = false;
     await panel.refresh();
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
-    expect(section(panel, 'kernels')).toBeNull();
+    expect(sectionCount(panel, 'kernels')).toBe('(0)');
     expect(sectionBody(panel, 'terminals').textContent).toContain('htop');
   });
 
@@ -758,6 +855,8 @@ describe('panel', () => {
     expect(log).toContain('GET /lab/api/workspaces/W');
     expect(log.filter(l => l.startsWith('PUT'))).toEqual([]);
     expect($(panel, '[data-key="w:W"]')).toBeNull();
+    // close the error: a dialog left open holds back every later one
+    await dismissDialog();
   });
 
   it('ACC-ACCORD-71-COUNT-ICONS: the header counts carry tabIcon, the terminal glyph and kernelIcon', async () => {
@@ -867,6 +966,362 @@ describe('panel', () => {
         .querySelector('.jp-WorkspaceManager-rowIcon svg')!
         .getAttribute('data-icon')
     ).toBe('ui-components:kernel');
+  });
+
+  it('ACC-KERNEL-196-KERNEL-DETAILS: a KERNELS row shows the display name, the session path, the state, the memory and the CPU, refreshed by the poll; figures the server cannot read show a dash; a card kernel row keeps its file name and age', async () => {
+    const server = standard();
+    server.kernels.push({
+      ...server.kernels[0],
+      id: 'k2',
+      execution_state: 'busy'
+    });
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'work/a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, ['notebook:work/a.ipynb']);
+    server.resources = {
+      k1: { memory: 150 * 2 ** 20, cpu: 12.6 },
+      k2: { memory: null, cpu: null }
+    };
+    const { panel } = await mount(server);
+
+    const shown = () =>
+      Array.from(
+        openSection(panel, 'kernels').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      ).map(r => [
+        r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent,
+        r.querySelector('.jp-WorkspaceManager-rowDetail')?.textContent ?? '',
+        ...Array.from(
+          r.querySelectorAll(
+            '.jp-WorkspaceManager-age > span:not(.jp-WorkspaceManager-dot)'
+          )
+        ).map(x => x.textContent)
+      ]);
+    expect(shown()).toEqual([
+      [PYTHON, 'work/a.ipynb', 'idle', '150 MB', '13%'],
+      [PYTHON, '', 'busy', '-', '-']
+    ]);
+
+    server.resources.k1 = { memory: 3 * 2 ** 30, cpu: 0.2 };
+    await panel.refresh();
+    expect(shown()[0]).toEqual([
+      PYTHON,
+      'work/a.ipynb',
+      'idle',
+      '3.0 GB',
+      '0%'
+    ]);
+
+    openSection(panel, 'workspaces');
+    triangle(panel, 'w:auto-6').click();
+    const cardRow = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title.startsWith(PYTHON))!;
+    expect(cardRow.textContent).toBe(`${PYTHON}a.ipynb5m`);
+  });
+
+  it('ACC-LISTS-37-TWO-WORKSPACES, ACC-KERNEL-196-KERNEL-DETAILS: no terminal or kernel row, in a section or a card, shows an also in mark, and no hover text names another workspace', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:1',
+      'notebook:a.ipynb'
+    ]);
+    server.workspaces.push(
+      workspace('auto-7', 30, ['terminal:1', 'notebook:a.ipynb'])
+    );
+    const { panel } = await mount(server);
+
+    const kernel = openSection(panel, 'kernels').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!;
+    expect(kernel.title).toBe(`${PYTHON}\na.ipynb\nidle`);
+    const terminal = openSection(panel, 'terminals').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!;
+    openSection(panel, 'workspaces');
+    triangle(panel, 'w:auto-6').click();
+    const rows = [
+      kernel,
+      terminal,
+      ...Array.from(
+        card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+    ];
+    expect(rows.map(r => r.title.split('\n')[0])).toEqual([
+      PYTHON,
+      'terminal 1',
+      'a.ipynb',
+      'terminal 1',
+      PYTHON
+    ]);
+    for (const r of rows) {
+      expect(r.textContent).not.toContain('also in');
+      expect(r.title).not.toMatch(/also in|auto-7/);
+    }
+  });
+
+  it('ACC-KERNEL-196-KERNEL-DETAILS: a console KERNELS row shows the console name, not the generated session path', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'Console 1',
+      path: 'dir/console-1-0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0',
+      type: 'console',
+      kernel: server.kernels[0]
+    });
+    const { panel } = await mount(server);
+    const text = openSection(panel, 'kernels').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!.textContent!;
+    expect(text).toContain('Console 1');
+    expect(text).not.toContain('console-1-');
+  });
+
+  it('ACC-KERNEL-196-KERNEL-DETAILS: a failed read of memory and CPU after a good one shows dashes, and Shut down all in KERNELS and TERMINALS still shuts down', async () => {
+    const server = standard();
+    server.resources = { k1: { memory: 150 * 2 ** 20, cpu: 12.6 } };
+    const { panel, app } = await mount(server);
+    const figures = () =>
+      Array.from(
+        openSection(panel, 'kernels').querySelectorAll(
+          '.jp-WorkspaceManager-age > span:not(.jp-WorkspaceManager-dot)'
+        )
+      ).map(x => x.textContent);
+    expect(figures()).toEqual(['idle', '150 MB', '13%']);
+
+    server.resourcesFailing = true;
+    await panel.refresh();
+    expect(figures()).toEqual(['idle', '-', '-']);
+    expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
+
+    for (const key of ['kernels', 'terminals']) {
+      openSection(panel, key);
+      shutDownAll(panel, key).click();
+      await waitForDialog();
+      await acceptDialog();
+      await settle();
+    }
+    expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k1']]);
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
+    expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
+  });
+
+  it('ACC-KERNEL-199-SHUTDOWN-SHARED: Shut down kernel on a kernel another workspace holds asks first and names that workspace, Cancel keeps it; a kernel no other workspace holds stops at once', async () => {
+    const server = standard();
+    server.kernels.push({ ...server.kernels[0], id: 'k2' });
+    server.sessions.push(
+      {
+        id: 's1',
+        name: 'a.ipynb',
+        path: 'a.ipynb',
+        type: 'notebook',
+        kernel: server.kernels[0]
+      },
+      {
+        id: 's2',
+        name: 'b.ipynb',
+        path: 'b.ipynb',
+        type: 'notebook',
+        kernel: server.kernels[1]
+      }
+    );
+    // k1 of a.ipynb in auto-6 and auto-7; k2 of b.ipynb in auto-6 alone
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'notebook:a.ipynb',
+      'notebook:b.ipynb'
+    ]);
+    server.workspaces.push(workspace('auto-7', 30, ['notebook:a.ipynb']));
+    const { panel, app } = await mount(server);
+    openSection(panel, 'workspaces');
+    triangle(panel, 'w:auto-6').click();
+    const shutDown = (path: string, root = card(panel, 'w:auto-6')) => {
+      Array.from(root.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row'))
+        .find(r => r.title === `${PYTHON}\n${path}\nidle`)!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      chooseMenuItem(0); // Shut down kernel
+    };
+
+    shutDown('a.ipynb');
+    await waitForDialog();
+    expect(dialogText()).toContain(`Shut down kernel ${PYTHON}?`);
+    expect(dialogText()).toContain('Workspace auto-7 also holds this kernel.');
+    await dismissDialog();
+    await settle();
+    expect(app.serviceManager.kernels.shutdown).not.toHaveBeenCalled();
+
+    shutDown('a.ipynb');
+    await acceptDialog();
+    await settle();
+    expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k1']]);
+
+    shutDown('b.ipynb');
+    await settle();
+    expect(dialogText()).toBeUndefined();
+    expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([
+      ['k1'],
+      ['k2']
+    ]);
+
+    // the same kernel from the KERNELS section: auto-6 alone holds it
+    shutDown('b.ipynb', openSection(panel, 'kernels'));
+    await settle();
+    expect(dialogText()).toBeUndefined();
+    expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([
+      ['k1'],
+      ['k2'],
+      ['k2']
+    ]);
+  });
+
+  it('ACC-TERM-112-SHUTDOWN-SHARED: Shut down terminal from the TERMINALS section on a terminal one workspace holds stops at once', async () => {
+    const { panel, app } = await mount(standard());
+    // terminal 1, held by auto-6 alone
+    openSection(panel, 'terminals')
+      .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    chooseMenuItem(0); // Shut down terminal
+    await settle();
+    expect(dialogText()).toBeUndefined();
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
+  });
+
+  it('ACC-ACCORD-191-DRAG-ORDER: Move up in the card menu moves the card at once with one stored position, the same in a second window; Move down is disabled on the last card', async () => {
+    const server = standard();
+    server.records['auto-6'].position = 0;
+    server.records.default = { position: 1 };
+    const { panel, log } = await mount(server);
+    expect(order(panel)).toEqual(['auto-6', 'default']);
+
+    card(panel, 'w:default')
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
+      .click();
+    const item = (label: string) =>
+      Array.from(
+        document.querySelectorAll('.jp-WorkspaceManager-menu .lm-Menu-item')
+      ).find(li => li.textContent === label)!;
+    expect(item('Move up').classList).not.toContain('lm-mod-disabled');
+    expect(item('Move down').classList).toContain('lm-mod-disabled');
+    log.length = 0;
+    // enabled in this window's menu: Close all tabs, Set description..., Colour, Move up
+    chooseMenuItem(3);
+    expect(order(panel)).toEqual(['default', 'auto-6']);
+    await settle();
+    expect(log.filter(l => l.startsWith('PATCH'))).toEqual([
+      `PATCH /${NS}/meta/default`
+    ]);
+    expect(server.records.default.position).toBe(-1);
+    expect(server.records['auto-6'].position).toBe(0);
+    expect(order(panel)).toEqual(['default', 'auto-6']);
+
+    const { panel: second } = await mount(server);
+    expect(order(second)).toEqual(['default', 'auto-6']);
+  });
+
+  it('ACC-ACCORD-191-DRAG-ORDER: with the filter on, Move up on the second visible card makes it the first visible card', async () => {
+    const server = standard();
+    server.workspaces.push(workspace('notes', 2));
+    server.records['auto-6'].position = 0;
+    server.records.notes = { position: 1 };
+    server.records.default = { position: 2, purpose: 'Firmware build' };
+    const { panel } = await mount(server);
+    expect(order(panel)).toEqual(['auto-6', 'notes', 'default']);
+
+    $(panel, 'button[aria-label="Filter"]')!.click();
+    const input = $(panel, '.jp-WorkspaceManager-filterInput')!;
+    // React reads a typed value through the input event
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )!.set!.call(input, 'firmware');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(order(panel)).toEqual(['auto-6', 'default']);
+
+    card(panel, 'w:default')
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
+      .click();
+    chooseMenuItem(3); // Move up
+    expect(order(panel)).toEqual(['default', 'auto-6']);
+  });
+
+  it('ACC-ACCORD-191-DRAG-ORDER: a reload that started before a move does not put the card back', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    server.records['auto-6'].position = 0;
+    server.records.default = { position: 1 };
+    const { panel, reloads, hold, release } = await mount(server);
+
+    // a poll reaches the server before the move; the move's write waits
+    hold(['PATCH']);
+    jest.advanceTimersByTime(10000);
+    expect(reloads()).toBe(2);
+    card(panel, 'w:default')
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
+      .click();
+    chooseMenuItem(3); // Move up
+    await settle();
+    expect(order(panel)).toEqual(['default', 'auto-6']);
+
+    release();
+    await settle();
+    expect(order(panel)).toEqual(['default', 'auto-6']);
+  });
+
+  it('DEF-PANEL-19-RECORDS-FAIL: a first load whose records request fails writes no position; a later good load gives a position only to a workspace without one', async () => {
+    const server = standard();
+    server.workspaces.push(workspace('notes', 2));
+    // the dragged order: the reverse of the order given by creation
+    server.records.default = { position: 0 };
+    server.records['auto-6'].position = 1;
+    server.recordsFailing = true;
+    const { panel, log } = await mount(server);
+    expect(server.records.default.position).toBe(0);
+    expect(server.records['auto-6'].position).toBe(1);
+    expect(server.records.notes?.position).toBeUndefined();
+
+    server.recordsFailing = false;
+    log.length = 0;
+    await panel.refresh();
+    expect(log.filter(l => l.startsWith('PATCH'))).toEqual([
+      `PATCH /${NS}/meta/notes`
+    ]);
+    expect(server.records.notes.position).toBe(2);
+    expect(server.records.default.position).toBe(0);
+    expect(server.records['auto-6'].position).toBe(1);
+    expect(order(panel)).toEqual(['default', 'auto-6', 'notes']);
+  });
+
+  it('ACC-ACCORD-198-NEW-LAST: a workspace deleted and created again under its name goes last', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    const { panel } = await mount(server);
+    expect(order(panel)).toEqual(['auto-6', 'default']);
+
+    // the CLI deletes auto-6, the server drops its record, and the CLI creates it again
+    const auto6 = server.workspaces.pop();
+    delete server.records['auto-6'];
+    jest.advanceTimersByTime(10000);
+    await settle();
+    server.workspaces.push(auto6);
+    jest.advanceTimersByTime(10000);
+    await settle();
+    expect(order(panel)).toEqual(['default', 'auto-6']);
   });
 
   it('ACC-ACCORD-31-DELETE: the menu stays open on the arming click; a double-click does not delete, a later click does', () => {

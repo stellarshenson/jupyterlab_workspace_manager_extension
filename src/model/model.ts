@@ -11,6 +11,8 @@ export interface IRecord {
   purpose?: string;
   colour?: Colour;
   hidden?: boolean;
+  /** the place of its card: the cards sort by it, lowest first */
+  position?: number;
 }
 
 /** A terminal as the extension's `terminals` endpoint, or `/api/terminals`, gives it. */
@@ -44,7 +46,7 @@ export interface ITerminalRow {
   lastActivity?: string;
   /** the tab title, when this window shows the terminal */
   title?: string;
-  /** the other workspaces that hold it */
+  /** the other workspaces that hold it; in the TERMINALS section, every one */
   alsoIn: string[];
 }
 
@@ -60,6 +62,8 @@ export interface IKernelRow {
   path: string;
   /** the notebook's file name or the console's name */
   detail: string;
+  /** the execution state: idle, busy, starting and so on */
+  state?: string;
   lastActivity?: string;
   dotClass: string;
   alsoIn: string[];
@@ -73,6 +77,8 @@ export interface ISection {
   hidden: boolean;
   purpose: string;
   colour: Colour | null;
+  position?: number;
+  created?: string;
   lastModified?: string;
   tabs: ITabRow[];
   terminals: ITerminalRow[];
@@ -94,11 +100,13 @@ export interface IModelInput {
   liveTabs: ITab[];
 }
 
-/** The panel: one section per workspace, and what belongs to no workspace. */
+/** The panel: one section per workspace, and every running terminal and kernel. */
 export interface IModel {
   sections: ISection[];
-  /** the terminals and kernels in no workspace: the TERMINALS and KERNELS sections */
-  unowned: { terminals: ITerminalRow[]; kernels: IKernelRow[] };
+  /** the TERMINALS section, a workspace's terminal included */
+  terminals: ITerminalRow[];
+  /** the KERNELS section, a workspace's kernel included */
+  kernels: IKernelRow[];
 }
 
 /** The details of a row's tooltip, one per line; a missing detail leaves its line out. */
@@ -109,6 +117,20 @@ export const lines = (...details: (string | null | undefined)[]): string =>
 export function kernelDot(state: string | undefined): string {
   const dot = state === 'idle' || state === 'busy' ? state : 'unknown';
   return `jp-WorkspaceManager-dot jp-mod-${dot}`;
+}
+
+/** Memory in MB under 1 GB, in GB from there; a dash when the server cannot read it. */
+export function formatMemory(bytes: number | null | undefined): string {
+  if (typeof bytes !== 'number') {
+    return '-';
+  }
+  const mb = bytes / 2 ** 20;
+  return mb < 1024 ? `${Math.round(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/** CPU in percent of one core, whole; a dash when the server cannot read it. */
+export function formatCpu(percent: number | null | undefined): string {
+  return typeof percent === 'number' ? `${Math.round(percent)}%` : '-';
 }
 
 /** The tabs a saved workspace holds, in the main area and the down area. */
@@ -124,9 +146,10 @@ export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
 }
 
 /**
- * One section per workspace, hidden ones included and flagged: this window's
- * workspace first, the others by `last_modified` newest first. The terminals
- * and kernels no workspace holds are returned beside them.
+ * One section per workspace, hidden ones included and flagged: by stored
+ * position, then the workspaces without one oldest first by `created`, by id
+ * when `created` is missing. Every running terminal and kernel is returned
+ * beside them, with the workspaces that hold it.
  */
 export function buildModel(input: IModelInput): IModel {
   const { records, current } = input;
@@ -220,6 +243,7 @@ export function buildModel(input: IModelInput): IModel {
         : session.type === 'console'
           ? session.name
           : basename(session.path),
+      state: k.execution_state,
       lastActivity: k.last_activity,
       dotClass: kernelDot(k.execution_state),
       alsoIn: holders.filter(h => h !== id)
@@ -242,6 +266,8 @@ export function buildModel(input: IModelInput): IModel {
       hidden: id !== current && !!record.hidden,
       purpose: record.purpose ?? '',
       colour: record.colour ?? null,
+      position: record.position,
+      created: ws.metadata.created,
       lastModified: ws.metadata.last_modified,
       tabs: docs,
       terminals: input.terminals
@@ -251,29 +277,32 @@ export function buildModel(input: IModelInput): IModel {
     };
   });
 
-  const time = (s: ISection) => Date.parse(s.lastModified ?? '') || 0;
+  // Infinity - Infinity is NaN, which falls through to the next key
+  const position = (s: ISection) => s.position ?? Infinity;
+  const created = (s: ISection) => Date.parse(s.created ?? '') || Infinity;
   sections.sort(
-    (a, b) => Number(b.current) - Number(a.current) || time(b) - time(a)
+    (a, b) =>
+      position(a) - position(b) ||
+      created(a) - created(b) ||
+      a.id.localeCompare(b.id)
   );
 
-  const unowned = {
-    terminals: input.terminals
-      .filter(t => !termHolders.has(t.name))
-      .map(t => terminalRow(t, [])),
-    kernels: Array.from(kernelById.values())
-      .filter(k => !kernelHolders.has(k.id))
-      .map(k =>
-        kernelRow(
-          k,
-          input.sessions.find(s => s.kernel?.id === k.id),
-          []
-        )
+  return {
+    sections,
+    terminals: input.terminals.map(t =>
+      terminalRow(t, termHolders.get(t.name) ?? [])
+    ),
+    kernels: Array.from(kernelById.values()).map(k =>
+      kernelRow(
+        k,
+        input.sessions.find(s => s.kernel?.id === k.id),
+        kernelHolders.get(k.id) ?? []
       )
+    )
   };
-  return { sections, unowned };
 }
 
-/** The workspace sections of the panel; `buildModel` adds what belongs to no workspace. */
+/** The workspace sections of the panel; `buildModel` adds the terminals and kernels. */
 export function buildSections(input: IModelInput): ISection[] {
   return buildModel(input).sections;
 }

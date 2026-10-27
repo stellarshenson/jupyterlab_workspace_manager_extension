@@ -202,10 +202,8 @@ test("ACC-HIDDEN-87-NOT-CURRENT: this window's workspace keeps its card and cann
     await expect(card(second, current)).toHaveCount(0);
 
     await refresh(page);
-    const first = page.locator(`${PANEL} .jp-WorkspaceManager-card`).first();
-    await expect(first).toHaveAttribute('data-workspace', current);
-    await expect(first).toBeVisible();
-    await expect(first).not.toHaveClass(/jp-mod-hiddenWorkspace/);
+    await expect(card(page, current)).toBeVisible();
+    await expect(card(page, current)).not.toHaveClass(/jp-mod-hiddenWorkspace/);
     await expect(countLine(page)).toHaveCount(0);
   } finally {
     await second.close();

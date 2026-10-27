@@ -19,6 +19,7 @@ import {
   layout,
   menuItem,
   menuButton,
+  only,
   onlyWorkspaces,
   openPanel,
   openSection,
@@ -57,19 +58,6 @@ const openCards = (page: Page) =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`);
 
 const dialog = (page: Page) => page.locator('.jp-Dialog');
-
-/** Answer GET `url` with only the entries `keep` accepts: the items of other tests are not this test's. */
-const only = (page: Page, url: RegExp, keep: (x: any) => boolean) =>
-  page.route(url, async route => {
-    if (route.request().method() !== 'GET') {
-      return route.fallback();
-    }
-    const response = await route.fetch();
-    const json = response.ok()
-      ? (await response.json()).filter(keep)
-      : undefined;
-    await route.fulfill({ response, json });
-  });
 
 /** The colour of a card's strip, its `::before`, as the page draws it. */
 const stripColour = (c: Locator) =>
@@ -121,6 +109,110 @@ test('ACC-ACCORD-10-PER-WORKSPACE: one section per workspace the server lists', 
     expect(names.sort()).toEqual(ids(current, 'a', 'b', 'c').sort());
   } finally {
     await deleteWorkspaces(page, ids(current, 'a', 'b', 'c'));
+  }
+});
+
+/** The ids of the cards, in the order shown. */
+const order = (page: Page) =>
+  workspaceCards(page).evaluateAll(cards =>
+    cards.map(c => c.getAttribute('data-workspace'))
+  );
+
+/** The ids sorted by the positions the server stores for them. */
+async function stored(page: Page, ids: string[]): Promise<string[]> {
+  const response = await page.request.get(
+    '/jupyterlab-workspace-manager-extension/meta'
+  );
+  const records = await response.json();
+  return [...ids].sort((x, y) => records[x].position - records[y].position);
+}
+
+/**
+ * Save the workspaces `placed`, their positions in that order, then open this
+ * window in `current`, one of them; the panel sees only these. Each position
+ * is stored before its workspace exists, so no window gives it another.
+ */
+async function setUpPlaced(
+  page: IJupyterLabPageFixture,
+  current: string,
+  placed: string[]
+): Promise<void> {
+  for (const [position, id] of placed.entries()) {
+    await patchMeta(page, id, { position });
+    await putWorkspace(page, id);
+  }
+  await onlyWorkspaces(page, id => id.startsWith(current));
+  await gotoWorkspace(page, current);
+  await openPanel(page);
+  await refresh(page);
+}
+
+test("ACC-ACCORD-190-FIXED-ORDER: a save and a switch of this window to the last card's workspace move no card; this window's card keeps its place", async ({
+  page
+}) => {
+  const current = fresh('fixed');
+  const [a, b] = [`${current}-a`, `${current}-b`];
+  const placed = [a, current, b];
+  await setUpPlaced(page, current, placed);
+  try {
+    await expect.poll(() => order(page)).toEqual(placed);
+    // a save gives a the newest last_modified
+    await putWorkspace(page, a, layout(['editor:notes.md']));
+    await refresh(page);
+    expect(await order(page)).toEqual(placed);
+
+    await card(page, b).locator('.jp-WorkspaceManager-name').click();
+    await expect(page).toHaveURL(new RegExp(`/lab/workspaces/${b}(\\?.*)?$`));
+    await expect(page.locator(PANEL_TAB)).toBeVisible({ timeout: 60000 });
+    await openPanel(page);
+    await refresh(page);
+    await expect(card(page, b)).toHaveClass(/jp-mod-current/);
+    expect(await order(page)).toEqual(placed);
+  } finally {
+    await deleteWorkspaces(page, placed);
+  }
+});
+
+test('ACC-ACCORD-191-DRAG-ORDER: the third card dragged above the first stays there after a reload and in another window; Move up and Move down of the card menu move it by one', async ({
+  page
+}) => {
+  const current = fresh('drag');
+  const [a, b] = [`${current}-a`, `${current}-b`];
+  const placed = [current, a, b];
+  await setUpPlaced(page, current, placed);
+  let second: Page | undefined;
+  try {
+    await expect.poll(() => order(page)).toEqual(placed);
+    // dropped on the top edge of the first card: the line goes above it
+    await cardHeader(page, b).dragTo(cardHeader(page, current), {
+      sourcePosition: { x: 50, y: 10 },
+      targetPosition: { x: 50, y: 2 }
+    });
+    const dragged = [b, current, a];
+    await expect.poll(() => order(page)).toEqual(dragged);
+    await expect.poll(() => stored(page, placed), UNDER_LOAD).toEqual(dragged);
+
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    expect(await order(page)).toEqual(dragged);
+    second = await secondWindow(page, a);
+    await onlyWorkspaces(second, id => id.startsWith(current));
+    await openPanel(second);
+    await refresh(second);
+    expect(await order(second)).toEqual(dragged);
+
+    await fromMenu(page, current, 'Move up');
+    await expect.poll(() => order(page)).toEqual([current, b, a]);
+    await expect
+      .poll(() => stored(page, placed), UNDER_LOAD)
+      .toEqual([current, b, a]);
+    await fromMenu(page, current, 'Move down');
+    await expect.poll(() => order(page)).toEqual(dragged);
+    await expect.poll(() => stored(page, placed), UNDER_LOAD).toEqual(dragged);
+  } finally {
+    await second?.close();
+    await deleteWorkspaces(page, placed);
   }
 });
 
@@ -347,10 +439,10 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
   }
 });
 
-test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions for the kernels, terminals and language servers in no workspace; one section is open at a time, a click closes and reopens a header, and an empty section is not shown', async ({
+test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions for the kernels, terminals and language servers; one section is open at a time, and a click closes and reopens a header', async ({
   page
 }) => {
-  // the terminals, kernels and language servers of other tests are in no workspace too
+  // the terminals, kernels and language servers of other tests are listed too
   let terminal = '';
   let kernelId = '';
   await only(
@@ -362,7 +454,7 @@ test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions 
   await only(page, /\/api\/sessions(\?.*)?$/, () => false);
   const current = await setUp(page, 'heads', { a: {}, b: {} });
   try {
-    // nothing belongs to no workspace: WORKSPACES alone, with its count and body
+    // nothing runs: WORKSPACES with its count and body, the three others at (0)
     await expect(sectionHeader(page, 'workspaces')).toContainText('WORKSPACES');
     await expect(sectionCount(page, 'workspaces')).toHaveText('(3)');
     await expect(sectionBody(page, 'workspaces')).toBeVisible();
@@ -370,23 +462,15 @@ test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions 
       sectionBody(page, 'workspaces').locator('.jp-WorkspaceManager-card')
     ).toHaveCount(3);
     for (const name of ['kernels', 'terminals', 'servers']) {
-      await expect(
-        page.locator(`${PANEL} [data-section="${name}"]`)
-      ).toHaveCount(0);
+      await expect(sectionCount(page, name)).toHaveText('(0)');
     }
 
-    // a terminal in no workspace: TERMINALS (1), the other two sections absent
+    // a terminal: TERMINALS (1)
     terminal = await startTerminal(page);
     await refresh(page);
     await expect(sectionCount(page, 'terminals')).toHaveText('(1)');
-    await expect(page.locator(`${PANEL} [data-section="kernels"]`)).toHaveCount(
-      0
-    );
-    await expect(page.locator(`${PANEL} [data-section="servers"]`)).toHaveCount(
-      0
-    );
 
-    // a kernel in no workspace
+    // a kernel
     const response = await page.request.post('/api/kernels', {
       data: { name: 'python3' }
     });
@@ -747,7 +831,7 @@ test.describe('kernels and sessions of the server', () => {
       await openSection(page, 'kernels');
       await refresh(page);
       await expect(
-        rowOf(sectionBody(page, 'kernels'), 'tips.ipynb')
+        rowOf(sectionBody(page, 'kernels'), notebook)
       ).toHaveAttribute(
         'title',
         `${await displayName(page, session.kernel.name)}\n${notebook}\nidle`
@@ -1280,9 +1364,9 @@ test('ACC-ACCORD-98-HOVER-ACTIONS: the open and close-all icons of a closed card
 
     await page.mouse.move(0, 0);
     await expect(icons.nth(0)).toBeHidden();
-    // Tab from the header before it until this one has the focus
-    await cardHeader(page, current).focus();
-    for (let i = 0; i < 6; i++) {
+    // Tab from the WORKSPACES header, above every card, until this one has the focus
+    await sectionHeader(page, 'workspaces').focus();
+    for (let i = 0; i < 12; i++) {
       await page.keyboard.press('Tab');
       if (
         await cardHeader(page, other).evaluate(
@@ -1358,9 +1442,10 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header the icons hide wh
     await expect(icons.nth(0)).toBeHidden();
     await expect(icons.nth(1)).toBeHidden();
 
-    // keyboard focus shows them, and Tab moves from the header through both icons
-    await cardHeader(page, current).focus();
-    for (let i = 0; i < 6; i++) {
+    // keyboard focus shows them, and Tab moves from the header through both icons;
+    // Tab from the WORKSPACES header, above every card
+    await sectionHeader(page, 'workspaces').focus();
+    for (let i = 0; i < 12; i++) {
       await page.keyboard.press('Tab');
       if (await header.evaluate(n => n === document.activeElement)) {
         break;

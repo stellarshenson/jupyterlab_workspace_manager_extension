@@ -3,7 +3,9 @@ import {
   editIcon,
   launchIcon,
   type LabIcon,
-  MenuSvg
+  MenuSvg,
+  moveDownIcon,
+  moveUpIcon
 } from '@jupyterlab/ui-components';
 import { CommandRegistry } from '@lumino/commands';
 import type { Message } from '@lumino/messaging';
@@ -127,6 +129,10 @@ export interface IWorkspaceActions {
   describe(): void;
   colour(colour: Colour): void;
   hide(): void;
+  /** absent for the first card */
+  moveUp?(): void;
+  /** absent for the last card */
+  moveDown?(): void;
   delete(): void;
 }
 
@@ -181,6 +187,21 @@ export function workspaceMenu(
   }
   menu.addItem({ type: 'submenu', submenu: colours });
   add('hide', 'Hide workspace', eyeOffIcon, actions.hide, () => !current);
+  menu.addItem({ type: 'separator' });
+  add(
+    'move-up',
+    'Move up',
+    moveUpIcon,
+    () => actions.moveUp?.(),
+    () => !!actions.moveUp
+  );
+  add(
+    'move-down',
+    'Move down',
+    moveDownIcon,
+    () => actions.moveDown?.(),
+    () => !!actions.moveDown
+  );
   menu.addItem({ type: 'separator' });
   commands.addCommand(DELETE, {
     label: () => (arm.armed ? 'Confirm delete' : 'Delete workspace'),

@@ -20,12 +20,15 @@ import {
   layout,
   newTerminalTab,
   NEXT_POLL,
+  only,
   openDocument,
   openSection,
   PANEL,
   panelWidth,
+  patchMeta,
   putNotebook,
   putWorkspace,
+  refresh,
   rowOf,
   saved,
   secondWindow,
@@ -60,19 +63,6 @@ const serverConnections = (page: Page): Promise<number> =>
       '@jupyterlab/lsp-extension:plugin'
     );
     return connections.size;
-  });
-
-/** Answer GET `url` with only the entries `keep` accepts: the items of other tests are not this test's. */
-const only = (page: Page, url: RegExp, keep: (x: any) => boolean) =>
-  page.route(url, async route => {
-    if (route.request().method() !== 'GET') {
-      return route.fallback();
-    }
-    const response = await route.fetch();
-    const json = response.ok()
-      ? (await response.json()).filter(keep)
-      : undefined;
-    await route.fulfill({ response, json });
   });
 
 test.describe('terminals, kernels and sessions of the server', () => {
@@ -192,7 +182,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
     });
     expect(response.ok()).toBe(true);
     const kernel: string = (await response.json()).id;
-    // the terminals, kernels and sessions other tests run at the same time are in no workspace too
+    // the terminals, kernels and sessions other tests run at the same time are listed too
     await only(
       page,
       /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
@@ -217,7 +207,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
         'Shut down all?'
       );
       await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
-        'Shut down 1 terminal in no workspace.'
+        'Shut down 1 terminal.'
       );
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
       await expect(dialog(page)).toHaveCount(0);
@@ -231,7 +221,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
         .getByRole('button', { name: 'Shut down all', exact: true })
         .click();
       await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
-        'Shut down 1 kernel in no workspace.'
+        'Shut down 1 kernel.'
       );
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
       await expect(dialog(page)).toHaveCount(0);
@@ -253,14 +243,51 @@ test.describe('terminals, kernels and sessions of the server', () => {
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
       await expect(dialog(page)).toHaveCount(0);
       await expect.poll(() => serverConnections(page), UNDER_LOAD).toBe(0);
-      await expect(
-        page.locator(`${PANEL} [data-section="servers"]`)
-      ).toHaveCount(0);
+      // the section stays, empty (ACC-PANEL-193)
+      await expect(sectionCount(page, 'servers')).toHaveText('(0)');
     } finally {
       await languageServer(page, false);
       await page.request.delete(`/api/terminals/${terminal}`);
       await page.request.delete(`/api/kernels/${kernel}`);
       await deleteWorkspaces(page, [current]);
+    }
+  });
+
+  test('ACC-LISTS-194-ALL-TERMINALS: TERMINALS lists a terminal open in a tab of this window, one in the layout of another workspace, one in a hidden workspace and one in no layout', async ({
+    page
+  }) => {
+    const mine = [
+      await startTerminal(page),
+      await startTerminal(page),
+      await startTerminal(page)
+    ];
+    const [other, hidden] = mine;
+    await only(
+      page,
+      /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+      t => mine.includes(t.name)
+    );
+    const current = fresh('allterms');
+    const [a, h] = [`${current}-a`, `${current}-hidden`];
+    await putWorkspace(page, a, layout([`terminal:${other}`]));
+    await putWorkspace(page, h, layout([`terminal:${hidden}`]));
+    await patchMeta(page, h, { hidden: true });
+    try {
+      await enterWorkspace(page, current);
+      mine.push(await newTerminalTab(page));
+      await refresh(page);
+      await expect(sectionCount(page, 'terminals')).toHaveText('(4)');
+      await openSection(page, 'terminals');
+      for (const name of mine) {
+        await expect(
+          rowOf(sectionBody(page, 'terminals'), `terminal ${name}`)
+        ).toBeVisible();
+      }
+    } finally {
+      await Promise.all(
+        mine.map(t => page.request.delete(`/api/terminals/${t}`))
+      );
+      await deleteWorkspaces(page, [current, a, h]);
     }
   });
 });
@@ -284,7 +311,7 @@ test("ACC-LISTS-36-LIVE: this window's card follows its tabs without a refresh",
   }
 });
 
-test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both cards, marked with the other one, and counted in both', async ({
+test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both cards and of TERMINALS, with no also in mark, and counted in both', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -294,22 +321,21 @@ test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both
   await putWorkspace(page, b, layout([`terminal:${terminal}`]));
   try {
     await enterWorkspace(page, current);
-    for (const [id, also] of [
-      [a, b],
-      [b, a]
-    ]) {
+    for (const id of [a, b]) {
       await expect(countOf(card(page, id), 'Terminals')).toHaveText('1');
       await triangle(page, id).click();
       const row = rowOf(card(page, id), `terminal ${terminal}`);
       await expect(row).toBeVisible();
-      await expect(
-        row.locator('.jp-WorkspaceManager-rowDetail', { hasText: 'also in' })
-      ).toHaveText(`also in ${also}`);
+      await expect(row).not.toContainText('also in');
     }
-    // held by two workspaces, it is not in the TERMINALS section of no workspace
-    await expect(
-      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`)
-    ).toHaveCount(0);
+    // the TERMINALS section lists it too (ACC-LISTS-194)
+    await openSection(page, 'terminals');
+    const listed = rowOf(
+      sectionBody(page, 'terminals'),
+      `terminal ${terminal}`
+    );
+    await expect(listed).toBeVisible();
+    await expect(listed).not.toContainText('also in');
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, a, b]);
@@ -320,14 +346,14 @@ test.describe('a kernel of the server in a narrow row', () => {
   // Galata lists only the kernels and sessions its page started; this test starts one by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-LISTS-154-TAB-SHRINK: at the 250 px sidebar a tab row shortens its folder before its file name; a terminal row shortens its also in mark to the words also in and an ellipsis, then its label and detail together, and keeps its process name and age whole in the row; a kernel row with a display name longer than the row shows the first characters of its notebook name', async ({
+  test('ACC-LISTS-154-TAB-SHRINK: at the 250 px sidebar a tab row shortens its folder before its file name; a terminal row of two workspaces shows no also in mark, shortens its label and detail together, and keeps its process name and age whole in the row; a kernel row with a display name longer than the row shows the first characters of its notebook name', async ({
     page,
     tmpPath
   }) => {
     const folder = `${tmpPath}/a/folder/deep/enough/to/fill/the/row/of/the/card`;
     // longer than half the room of a tab row, so a folder that shortens with it would cut it
     const file = 'notes-of-the-week.md';
-    // a long terminal name, so the detail cannot be whole beside the words also in
+    // a long terminal name, so the detail cannot be whole in the row
     const response = await page.request.post('/api/terminals', {
       data: { name: `${fresh('wm').replace('-', '')}withalongname` }
     });
@@ -336,8 +362,7 @@ test.describe('a kernel of the server in a narrow row', () => {
     const session = await startSession(page, notebook);
     const current = fresh('s');
     const a = `${current}-a`;
-    // as long as model-training-experiments: 26 characters
-    const b = `${current}-b`.padEnd(26, 'x');
+    const b = `${current}-b`;
     await putWorkspace(
       page,
       a,
@@ -375,67 +400,19 @@ test.describe('a kernel of the server in a narrow row', () => {
         'bash',
         NEXT_POLL
       );
-      await expect(
-        shared.locator('.jp-WorkspaceManager-rowDetail', { hasText: 'also in' })
-      ).toHaveText(`also in ${b}`);
+      await expect(shared).not.toContainText('also in');
       expect(await cut(shared, '.jp-WorkspaceManager-rowLabel')).toEqual([]);
       // the whole label takes the width of its text (bash: its first four characters), the detail the rest
       const label = await shows(shared, '.jp-WorkspaceManager-rowLabel');
       expect(label.width).toBeLessThan(label.start + 1);
-      // the mark gave way first: the label is whole, the detail cut
+      // the label is whole, the detail cut
       expect(await cut(shared, '.jp-WorkspaceManager-rowDetail')).toEqual([
         `terminal ${terminal}`
       ]);
-      const x = await shared.evaluate(row => {
-        const words = document.createRange();
-        words.selectNodeContents(
-          row.querySelector('.jp-WorkspaceManager-rowAlso')!.firstChild!
-        );
-        const name = row.querySelector('.jp-WorkspaceManager-rowAlsoName')!;
-        const age = row.querySelector('.jp-WorkspaceManager-age')!;
-        const [r, w, n, g] = [row, words, name, age].map(e =>
-          e.getBoundingClientRect()
-        );
-        // Chrome keeps a line's first character (the ::before when it has one) before the
-        // ellipsis, so a visible ellipsis needs the width of that character and the ellipsis
-        const before = getComputedStyle(name, '::before').content;
-        const line = [
-          ...((before === 'none' ? '' : JSON.parse(before)) + name.textContent)
-        ];
-        const width = (text: string) => {
-          const probe = document.createElement('span');
-          probe.style.cssText = `position: absolute; white-space: pre; font: ${getComputedStyle(name).font}`;
-          probe.textContent = text;
-          document.body.append(probe);
-          const px = probe.getBoundingClientRect().width;
-          probe.remove();
-          return px;
-        };
-        return {
-          words: words.toString().trim(),
-          wordsIn: w.width > 0 && w.left >= r.left && w.right <= g.left,
-          name: n.width,
-          nameIn: n.left >= w.right && n.right <= g.left,
-          nameCut: name.scrollWidth > name.clientWidth,
-          ellipsis: getComputedStyle(name).textOverflow,
-          needed: width(`${line[0]}…`),
-          oneMore: width(`${line[0]}${line[1]}…`),
-          ageIn: g.left >= r.left && g.right <= r.right,
-          ageWhole: age.scrollWidth <= age.clientWidth
-        };
+      expect(await shows(shared, '.jp-WorkspaceManager-age')).toMatchObject({
+        inside: true,
+        whole: true
       });
-      expect(x).toMatchObject({
-        words: 'also in',
-        wordsIn: true,
-        nameIn: true,
-        nameCut: true,
-        ellipsis: 'ellipsis',
-        ageIn: true,
-        ageWhole: true
-      });
-      // the mark gave way first, down to the words also in and an ellipsis: no character of the name shows
-      expect(x.name).toBeGreaterThanOrEqual(x.needed);
-      expect(x.name).toBeLessThan(x.oneMore);
 
       const kernel = group(card(page, a), 'KERNELS').locator(ROW);
       await expect(kernel.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
@@ -768,7 +745,7 @@ test('ACC-LISTS-135-NOWS-COUNTS: the TERMINALS and KERNELS section headers count
   page
 }) => {
   const terminals = [await startTerminal(page), await startTerminal(page)];
-  // the terminals and kernels other tests run at the same time are in no workspace too
+  // the terminals and kernels other tests run at the same time are listed too
   await only(
     page,
     /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
@@ -780,10 +757,8 @@ test('ACC-LISTS-135-NOWS-COUNTS: the TERMINALS and KERNELS section headers count
   try {
     await enterWorkspace(page, current);
     await expect(sectionCount(page, 'terminals')).toHaveText('(2)');
-    // no kernel belongs to no workspace: the section is not shown
-    await expect(page.locator(`${PANEL} [data-section="kernels"]`)).toHaveCount(
-      0
-    );
+    // no kernel runs: the section shows (0)
+    await expect(sectionCount(page, 'kernels')).toHaveText('(0)');
     // the header counts rows; the bare counts beside the icons of a card are not there
     await expect(
       sectionHeader(page, 'terminals').locator('.jp-WorkspaceManager-count')

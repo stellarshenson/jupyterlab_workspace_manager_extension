@@ -10,11 +10,16 @@ import type { IModelInput, IRecord, ITerminal } from './model/model';
 import type { Colour } from './model/palette';
 import { requestAPI } from './request';
 
+/** Per running kernel id, as the extension's `kernels` route gives it; null when the server cannot read the process. */
+export interface IResources {
+  [id: string]: { memory: number | null; cpu: number | null };
+}
+
 /** What one reload reads from the server; `last` is the colour the rotation gave last. */
 export type ILoaded = Pick<
   IModelInput,
   'workspaces' | 'records' | 'terminals' | 'kernels' | 'sessions'
-> & { last: Colour | null };
+> & { last: Colour | null; resources: IResources };
 
 /** The key of the last given colour in the records the meta route returns. */
 const LAST_COLOUR = '/last-colour';
@@ -33,9 +38,10 @@ const ifAbsent =
   };
 
 /**
- * Workspaces, records, terminals with process names, kernels and sessions.
- * A list whose request failed is absent and named in `failed`, with its reason,
- * and the other lists still count.
+ * Workspaces, records, terminals with process names, kernels with their memory
+ * and CPU, and sessions. A list whose request failed is absent and named in
+ * `failed`, with its reason, and the other lists still count; memory and CPU
+ * that failed to read are empty and never count as failed.
  */
 export async function load(
   settings: ServerConnection.ISettings
@@ -46,7 +52,7 @@ export async function load(
       failed.push(`${name} (${reason?.message ?? reason})`);
       return undefined;
     });
-  const [list, meta, terminals, kernels, sessions] = await Promise.all([
+  const [list, meta, terminals, kernels, usage, sessions] = await Promise.all([
     get(
       'workspaces',
       new WorkspaceManager({ serverSettings: settings }).list()
@@ -79,6 +85,8 @@ export async function load(
         throw reason;
       })
     ),
+    // display only: any failed read shows dashes and blocks no list or action
+    requestAPI<IResources>('kernels', settings).catch((): IResources => ({})),
     get('sessions', SessionAPI.listRunning(settings))
   ]);
   const { [LAST_COLOUR]: last, ...records } = meta ?? {};
@@ -88,6 +96,7 @@ export async function load(
     ...(meta && { records, last: last ?? null }),
     ...(terminals && { terminals }),
     ...(kernels && { kernels }),
+    resources: usage,
     ...(sessions && { sessions })
   };
 }

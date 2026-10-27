@@ -410,3 +410,99 @@ test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the bu
     expect([b.label, b.size]).toEqual([b.label, [24, 24]]);
   }
 });
+
+/** The four sections in the order of the panel, with their labels. */
+const SECTIONS = [
+  ['workspaces', 'WORKSPACES'],
+  ['kernels', 'KERNELS'],
+  ['terminals', 'TERMINALS'],
+  ['servers', 'LANGUAGE SERVERS']
+];
+
+/** The computed style that makes a header a JupyterLab section title, not a card. */
+const LOOK = [
+  'backgroundColor',
+  'borderBottomWidth',
+  'borderBottomStyle',
+  'borderBottomColor',
+  'boxShadow',
+  'textTransform',
+  'borderRadius',
+  'marginLeft',
+  'marginRight'
+];
+
+test('ACC-PANEL-192-SECTION-TITLES: each section header is a flat title across the section list, drawn as JupyterLab draws an accordion title: caret, uppercase label, (N), no rounded corners, no side margin', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  // a title of JupyterLab's accordion panel, drawn in the panel by JupyterLab's stylesheet
+  const title = await page.locator(PANEL).evaluate((panel, look) => {
+    const accordion = document.createElement('div');
+    accordion.className = 'lm-AccordionPanel';
+    const h3 = document.createElement('h3');
+    h3.className = 'lm-AccordionPanel-title jp-AccordionPanel-title';
+    accordion.appendChild(h3);
+    panel.appendChild(accordion);
+    const s: any = getComputedStyle(h3);
+    const drawn = look.map(p => s[p]);
+    accordion.remove();
+    return drawn;
+  }, LOOK);
+  expect(title.slice(LOOK.indexOf('textTransform'))).toEqual([
+    'uppercase',
+    '0px',
+    '0px',
+    '0px'
+  ]);
+  const list = await page
+    .locator(`${PANEL} .jp-WorkspaceManager-list`)
+    .evaluate(n => [n.getBoundingClientRect().left, n.clientWidth]);
+  for (const [name, label] of SECTIONS) {
+    const header = sectionHeader(page, name);
+    await expect(
+      header.locator('button.jp-WorkspaceManager-caret svg')
+    ).toHaveAttribute('data-icon', /^ui-components:caret-(right|down)$/);
+    await expect(
+      header.locator('.jp-WorkspaceManager-sectionLabel')
+    ).toHaveText(label);
+    await expect(sectionCount(page, name)).toHaveText(/^\(\d+\)$/);
+    const drawn = await header.evaluate((n, look) => {
+      const s: any = getComputedStyle(n);
+      const box = n.getBoundingClientRect();
+      return { look: look.map(p => s[p]), box: [box.left, box.width] };
+    }, LOOK);
+    expect(drawn, name).toEqual({ look: title, box: list });
+  }
+});
+
+test('ACC-PANEL-193-SECTIONS-SHOWN: with no kernel, terminal or language server the four sections show in order; each empty one says so and its Shut down all is disabled', async ({
+  page
+}) => {
+  // Galata lists only the kernels and sessions this page starts; the terminals of other tests are not this test's
+  await page.route(
+    /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+    route => route.fulfill({ json: [] })
+  );
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  await expect(
+    page.locator(`${PANEL} .jp-WorkspaceManager-sectionLabel`)
+  ).toHaveText(SECTIONS.map(([, label]) => label));
+  for (const [name, label] of SECTIONS.slice(1)) {
+    await expect(sectionCount(page, name)).toHaveText('(0)');
+    await expect(
+      sectionHeader(page, name).getByRole('button', {
+        name: 'Shut down all',
+        exact: true
+      })
+    ).toBeDisabled();
+    await openSection(page, name);
+    await expect(sectionBody(page, name)).toHaveText(
+      `No ${label.toLowerCase()}`
+    );
+  }
+});

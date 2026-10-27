@@ -1,11 +1,14 @@
 import json
+import math
 import os
+from contextlib import suppress
 from pathlib import Path
 from time import time
 
 from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
 from jupyterlab_server.workspaces_handler import WORKSPACE_EXTENSION, slugify
+import psutil
 import tornado
 
 NAMESPACE = "jupyterlab-workspace-manager-extension"
@@ -27,7 +30,12 @@ RECORD_FIELDS = {
     "purpose": lambda value: isinstance(value, str) and len(value) <= PURPOSE_MAX,
     "colour": lambda value: value in COLOURS,
     "hidden": lambda value: isinstance(value, bool),
+    # json.loads takes NaN and Infinity, which no browser parses back
+    "position": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value),
 }
+# Kernel id -> {pid: psutil.Process} for the kernel and its children; cpu_percent() measures since
+# the previous call on the same object
+PROCESSES = {}
 
 
 def process_name(pty):
@@ -48,6 +56,40 @@ class TerminalsHandler(APIHandler):
         for model in models:
             model["process"] = process_name(manager.terminals[model["name"]])
         self.finish(json.dumps(models))
+
+
+def resources(kernel_id, kernel):
+    """Resident memory in bytes of a kernel's process and its children, and their CPU percent of one core."""
+    # a local kernel's Popen; a remote provisioner has none
+    pid = getattr(getattr(kernel.provisioner, "process", None), "pid", None)
+    try:
+        if pid is None:  # psutil.Process(None) is this server
+            raise psutil.NoSuchProcess(pid)
+        known = PROCESSES.get(kernel_id, {})
+        process = known.get(pid) or psutil.Process(pid)  # keyed by pid, so a restarted kernel gets a new object
+        memory, cpu = process.memory_info().rss, process.cpu_percent()
+        tree = {pid: process}
+        for child in process.children(recursive=True):
+            child = tree[child.pid] = known.get(child.pid, child)
+            with suppress(psutil.Error):  # a child may end while it is read
+                memory += child.memory_info().rss
+                cpu += child.cpu_percent()
+        PROCESSES[kernel_id] = tree
+        return {"memory": memory, "cpu": cpu}
+    except psutil.Error:
+        PROCESSES.pop(kernel_id, None)
+        return {"memory": None, "cpu": None}
+
+
+class KernelsHandler(APIHandler):
+    @tornado.web.authenticated
+    def get(self):
+        """Per running kernel id, its memory in bytes and CPU percent; null for both when its process is unreadable."""
+        manager = self.kernel_manager
+        ids = set(manager.list_kernel_ids())
+        for gone in PROCESSES.keys() - ids:
+            del PROCESSES[gone]
+        self.finish(json.dumps({kernel: resources(kernel, manager.get_kernel(kernel)) for kernel in ids}))
 
 
 def records_path(serverapp):
@@ -131,7 +173,7 @@ class MetaRecordHandler(APIHandler):
             raise tornado.web.HTTPError(
                 400,
                 f"fields: purpose (at most {PURPOSE_MAX} characters), colour ({', '.join(COLOURS)}),"
-                " hidden (true or false), given (true with a colour)",
+                " hidden (true or false), position (a finite number), given (true with a colour)",
             )
         path = records_path(self.serverapp)
         records = load_records(path, self.log)
@@ -194,6 +236,7 @@ def setup_route_handlers(web_app):
 
     handlers = [
         (route("terminals"), TerminalsHandler),
+        (route("kernels"), KernelsHandler),
         (route("meta"), MetaHandler),
         (route("meta", "([^/]+)"), MetaRecordHandler),
         (route("presence"), PresenceHandler),

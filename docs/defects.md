@@ -91,6 +91,50 @@ the sidebar panel, its header and its loads
   - log: 2026-10-25T00:41:10Z @kj edited text "In the language-servers-only state, In no workspace shows Shut down all, whose confirmation names 0 terminals and 0 kernels and which then shuts nothing down; ACC-LISTS-110 requires the item and ACC-LISTS-160 makes the state reachable, so a fix needs a criterion amendment" -> "In the language-servers-only state, In no workspace offers Shut down all, whose confirmation names 0 terminals and 0 kernels and which shuts nothing down; In no workspace also holds the lab's language servers, which can be shut down, so the item must count and shut them too"; reason: the Star Colonel, 2026-10-25: language servers can be shut down
   - log: 2026-10-25T01:29:05Z @kj closed; reason: fix run wf_4cf05fcc-fc4 of 2026-10-25
   - log: 2026-10-25T01:29:15Z @kj edited test-tags "MANUAL" -> "FUNCTIONAL, UNIT"; evidence "content.spec.ts:172 and Jest DEF-PANEL-11 passed in make test and both final runs: the confirmation names 1 terminal, 1 kernel and 1 language server, and the language server's connection ends" -> "content.spec.ts:172 and the Jest DEF-PANEL-11-SHUTDOWN-STALE test passed in make test and both final runs: the confirmation names 1 terminal, 1 kernel and 1 language server, and the language server's connection ends"; reason: final fix evidence, 2026-10-25
+- [x] `DEF-PANEL-15-ORDER-JUMPS` **Workspace cards reorder on a switch** - MAJOR; switching this window to another workspace moves that workspace's card to the top and orders the rest by last save; expected: one fixed order; `src/model/model.ts`
+  - evidence: Jest model.spec.ts and Galata sections.spec.ts:150 ACC-ACCORD-190-FIXED-ORDER passed; make test exit 0: Jest 69 of 69, pytest 99 passed (tmp/workflows/sections/logs/make-test-suite.log); Galata 118 of 118 passed (tmp/workflows/sections/logs/galata-suite-1.log)
+  - related: ACC-ACCORD-190-FIXED-ORDER
+  - repro: panel with three workspaces; click the header of the last card; after the switch its card is first
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-26T15:57:10Z @kj `sections.sort` in `buildModel` of `src/model/model.ts` puts this window's workspace first and the others by `last_modified` newest first, as ACC-ACCORD-13-ORDER required
+  - log: 2026-10-26T15:57:10Z @kj added
+  - log: 2026-10-26T17:59:12Z @kj fixed: `sections.sort` in `buildModel` of `src/model/model.ts` sorts by stored position, then `metadata.created`, then id; this window's workspace and `last_modified` take no part
+  - log: 2026-10-26T17:59:12Z @kj closed
+- [x] `DEF-PANEL-16-HEADER-BOXES` **Section headers drawn as boxes** - MEDIUM; the KERNELS, TERMINALS and LANGUAGE SERVERS headers are rounded grey boxes inset from the panel edges, like the workspace cards; expected: flat full-width section titles; `style/base.css`
+  - evidence: Galata panel.spec.ts:435 ACC-PANEL-192-SECTION-TITLES passed; make test exit 0: Jest 69 of 69, pytest 99 passed (tmp/workflows/sections/logs/make-test-suite.log); Galata 118 of 118 passed (tmp/workflows/sections/logs/galata-suite-1.log)
+  - related: ACC-PANEL-192-SECTION-TITLES
+  - repro: a terminal outside any workspace; open the panel; the TERMINALS header is a rounded box with an 8px margin each side
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-26T15:57:11Z @kj `.jp-WorkspaceManager-sectionHeader` in `style/base.css` sets `margin: 0 8px`, `border-radius: 3px` and `background: var(--jp-layout-color2)`; the WORKSPACES header uses the same rule
+  - log: 2026-10-26T15:57:11Z @kj added
+  - log: 2026-10-26T17:59:12Z @kj fixed: `.jp-WorkspaceManager-sectionHeader` in `style/base.css` drops `margin: 0 8px`, `border-radius: 3px` and the `--jp-layout-color2` fill and takes the values of the JupyterLab accordion title
+  - log: 2026-10-26T17:59:12Z @kj closed
+- [x] `DEF-PANEL-17-SECTIONS-MISSING` **Empty sections are missing** - MAJOR; the KERNELS and LANGUAGE SERVERS sections are not shown whenever they have no rows; expected: all four sections always shown; `src/panel/panel.tsx`
+  - evidence: Jest panel.spec.ts and Galata panel.spec.ts:481 ACC-PANEL-193-SECTIONS-SHOWN passed; make test exit 0: Jest 69 of 69, pytest 99 passed (tmp/workflows/sections/logs/make-test-suite.log); Galata 118 of 118 passed (tmp/workflows/sections/logs/galata-suite-1.log)
+  - related: ACC-PANEL-193-SECTIONS-SHOWN
+  - repro: lab with no kernel and no language server running; open the panel; no KERNELS and no LANGUAGE SERVERS header
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-26T15:57:11Z @kj `_render` in `src/panel/panel.tsx` draws KERNELS, TERMINALS and LANGUAGE SERVERS only under `unowned.kernels.length > 0`, `unowned.terminals.length > 0` and `servers.length > 0`, as ACC-PANEL-182-SECTION-HEADS required
+  - log: 2026-10-26T15:57:11Z @kj added
+  - log: 2026-10-26T17:59:12Z @kj fixed: `_render` in `src/panel/panel.tsx` always draws KERNELS, TERMINALS and LANGUAGE SERVERS; an empty one reads No kernels, No terminals or No language servers and its Shut down all is disabled
+  - log: 2026-10-26T17:59:12Z @kj closed
+- [x] `DEF-PANEL-18-UNOWNED-ONLY` **TERMINALS and KERNELS skip workspace items** - MAJOR; a terminal or kernel that a workspace holds is not listed in TERMINALS or KERNELS; only those in no workspace are; expected: every running terminal and kernel; `src/model/model.ts`
+  - evidence: Jest model.spec.ts and panel.spec.ts ACC-LISTS-194-ALL-TERMINALS, ACC-LISTS-195-ALL-KERNELS, Galata content.spec.ts:256 and kernels.spec.ts:272 passed; make test exit 0: Jest 69 of 69, pytest 99 passed (tmp/workflows/sections/logs/make-test-suite.log); Galata 118 of 118 passed (tmp/workflows/sections/logs/galata-suite-1.log)
+  - related: ACC-LISTS-194-ALL-TERMINALS, ACC-LISTS-195-ALL-KERNELS
+  - repro: open a terminal and a notebook in this window's workspace; TERMINALS and KERNELS do not list them
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-26T15:57:11Z @kj `unowned` in `buildModel` of `src/model/model.ts` keeps only terminals absent from `termHolders` and kernels absent from `kernelHolders`; `_render` in `src/panel/panel.tsx` fills TERMINALS and KERNELS from `unowned`
+  - log: 2026-10-26T15:57:11Z @kj added
+  - log: 2026-10-26T17:59:13Z @kj fixed: `buildModel` in `src/model/model.ts` returns every terminal and kernel, each with `alsoIn` naming the workspaces that hold it; `_render` fills TERMINALS and KERNELS from them
+  - log: 2026-10-26T17:59:13Z @kj closed
+- [x] `DEF-PANEL-19-RECORDS-FAIL` **Failed records read overwrites the card order** - MAJOR; when the records request (GET meta) fails on a page's first load, the panel writes new positions over the stored ones, so the dragged card order is lost in every window; expected: stored positions stay; `src/panel/panel.tsx`
+  - evidence: Jest panel.spec.ts DEF-PANEL-19-RECORDS-FAIL passed and failed on the code without the guard (tmp/workflows/sections/logs/make-test-r1b-guard-red.log); make test exit 0: Jest 71 of 71, pytest 100 passed (tmp/workflows/sections/logs/make-test-r1b-guard.log)
+  - repro: stored positions default 0, auto-6 1; the meta route answers 500 on the first load of a page; PATCH meta/auto-6 and meta/default write positions 0 and 1
+  - test-tags: UNIT
+  - root-cause: 2026-10-26T19:18:47Z @kj `_reload` in `src/panel/panel.tsx` calls `_givePositions()` after every load; with the records request failed, `_data.records` is the empty records of `EMPTY`, so `_givePositions` counts every workspace as without a position and PATCHes a new one for each
+  - log: 2026-10-26T19:18:47Z @kj added
+  - log: 2026-10-26T19:20:23Z @kj fixed: `_reload` in `src/panel/panel.tsx` calls `_givePositions()` only when the load returned the records (`if (data.records)`); a failed records request gives no position
+  - log: 2026-10-26T19:20:23Z @kj closed
 
 ## Functional tests `GALATA`
 

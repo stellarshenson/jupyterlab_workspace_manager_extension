@@ -153,24 +153,26 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 0 8px;
+  padding: 0 0 8px;
 }
 
-/* The top of a section: its label, its count and, below WORKSPACES, Shut down all */
-.jp-WorkspaceManager-section {
-  margin: 4px 0;
-}
-
+/*
+ * The top of a section: its label, its count and, below WORKSPACES, Shut down all;
+ * flat and full width, as .jp-AccordionPanel-title and .jp-SidePanel-header draw a sidebar section,
+ * in font size 1, not their 0: only the group labels are under size 1 (ACC-PANEL-74)
+ */
 .jp-WorkspaceManager-sectionHeader {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  min-height: 24px;
-  margin: 0 8px;
-  padding: 4px 6px 4px 8px;
-  border-radius: 3px;
-  background: var(--jp-layout-color2);
+  min-height: 25px;
+  padding: 2px 6px 2px 2px;
+  border-bottom: var(--jp-border-width) solid var(--jp-toolbar-border-color);
+  background: var(--jp-layout-color1);
+  box-shadow: var(--jp-toolbar-box-shadow);
+  letter-spacing: 1px;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
@@ -297,6 +299,15 @@
   outline: 2px solid var(--jp-brand-color2);
   outline-offset: 0;
   background: color-mix(in srgb, var(--wm-active) 40%, var(--jp-layout-color1));
+}
+
+/* While a card is dragged: the line above or below the card where it lands */
+.jp-WorkspaceManager-card.jp-mod-dropBefore {
+  box-shadow: 0 -3px 0 var(--jp-brand-color1);
+}
+
+.jp-WorkspaceManager-card.jp-mod-dropAfter {
+  box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
 .jp-WorkspaceManager-cardHeader {
@@ -456,9 +467,8 @@
 }
 
 /*
- * The label, the detail and an also in name share the room the icon and the age leave (basis 0, each
- * at most its text): the label and the detail share it equally (grow 1000 each), so they shorten
- * together; the name takes a share of 1, so it shortens first
+ * The label and the detail share the room the icon and the age leave (basis 0, each at most its
+ * text) equally (grow 1000 each), so they shorten together
  */
 .jp-WorkspaceManager-rowLabel {
   flex: 1000 1 0;
@@ -485,23 +495,41 @@
   flex: 1 1 0;
 }
 
-/* the words also in and the name are items of the row: the words stay whole, the name shortens */
-.jp-WorkspaceManager-rowDetail.jp-WorkspaceManager-rowAlso {
+/*
+ * A path of the KERNELS section: its folder and its file name are items of the row, each cut at its
+ * start. The folder gives way first, then the label down to its first characters, and the file name
+ * last
+ */
+.jp-WorkspaceManager-rowDetail.jp-WorkspaceManager-rowPath {
   display: contents;
 }
 
-/* at its narrowest the name shows only the ellipsis, 1em wide */
-.jp-WorkspaceManager-rowAlsoName {
-  flex: 1 1 0;
-  max-width: max-content;
-  min-width: 1em;
+.jp-WorkspaceManager-rowPath > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  direction: rtl;
 }
 
-/* the browser keeps a line's first character before the ellipsis: a zero-width one leaves the ellipsis room */
-.jp-WorkspaceManager-rowAlsoName::before {
-  content: '\2060';
+/* left-to-right marks keep a leading or trailing / or . in its place in the right-to-left box */
+.jp-WorkspaceManager-rowPath > span::before,
+.jp-WorkspaceManager-rowPath > span::after {
+  content: '\200E';
+}
+
+/* the folder takes back the row's gap before the file name and keeps the room of its ellipsis */
+.jp-WorkspaceManager-rowPath > .jp-WorkspaceManager-rowPathFolder {
+  flex: 1000 1 0;
+  max-width: max-content;
+  min-width: 1em;
+  margin-right: -6px;
+}
+
+/* the label keeps its whole text until the folder is cut, then its first characters */
+.jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-rowPath) {
+  /* shrink shares are proportional, so each step is a factor of 1e5, which keeps a lower item's share under Chromium's 1/64 px layout unit */
+  flex: 0 100000 auto;
+  min-width: 35px;
 }
 
 .jp-WorkspaceManager-row:hover .jp-WorkspaceManager-rowDetail {
