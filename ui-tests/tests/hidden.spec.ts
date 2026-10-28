@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test';
 
 import {
   card,
+  cardHeader,
   deleteWorkspaces,
   fresh,
   fromMenu,
@@ -87,6 +88,9 @@ test("ACC-HIDDEN-52-SHOW-HIDDEN, ACC-HIDDEN-53-UNHIDE: the header eye shows hidd
     await expect(eye(page)).toHaveAttribute('aria-pressed', 'true');
     await expect(card(page, hidden)).toBeVisible();
     await expect(card(page, hidden)).toHaveClass(/jp-mod-hiddenWorkspace/);
+    await expect(cardHeader(page, hidden)).toHaveAccessibleName(
+      `${hidden} hidden`
+    );
     await expect(
       card(page, hidden).locator('.jp-WorkspaceManager-hiddenWord')
     ).toHaveText('hidden');
@@ -108,6 +112,61 @@ test("ACC-HIDDEN-52-SHOW-HIDDEN, ACC-HIDDEN-53-UNHIDE: the header eye shows hidd
     await refresh(page);
     await expect(card(page, hidden)).toBeVisible();
     await expect(card(page, hidden)).not.toHaveClass(/jp-mod-hiddenWorkspace/);
+  } finally {
+    await deleteWorkspaces(page, all);
+  }
+});
+
+test("ACC-HIDDEN-213-EYE-TOGGLE: the eye of a shown card hides it as Hide workspace does; the eye of a hidden card, pressed, shows it again; this window's eye is disabled", async ({
+  page
+}) => {
+  const all = await setUp(page, 'eyetoggle', 1);
+  const [current, other] = all;
+  /** The eye: the third button after the age. */
+  const cardEye = (id: string) =>
+    card(page, id).locator('.jp-WorkspaceManager-cardActions button').nth(2);
+  const hiddenOnServer = async () =>
+    (
+      await (
+        await page.request.get('/jupyterlab-workspace-manager-extension/meta')
+      ).json()
+    )[other]?.hidden === true;
+  try {
+    await expect(cardEye(current)).toHaveAttribute(
+      'aria-label',
+      'Hide workspace'
+    );
+    await expect(cardEye(current)).toBeDisabled();
+    await expect(cardEye(other)).toHaveAttribute(
+      'aria-label',
+      'Hide workspace'
+    );
+    await expect(cardEye(other)).toHaveAttribute('aria-pressed', 'false');
+    await expect(cardEye(other).locator('svg')).toHaveAttribute(
+      'data-icon',
+      'jupyterlab_workspace_manager_extension:eye-off'
+    );
+    await cardEye(other).click();
+    await expect(card(page, other)).toHaveCount(0, HEAVY_LOAD);
+    await expect(countLine(page)).toHaveText('1 hidden workspace', HEAVY_LOAD);
+    expect(await hiddenOnServer()).toBe(true);
+
+    await eye(page).click();
+    await expect(card(page, other)).toHaveClass(/jp-mod-hiddenWorkspace/);
+    await expect(cardEye(other)).toHaveAttribute(
+      'aria-label',
+      'Show workspace again'
+    );
+    await expect(cardEye(other)).toHaveAttribute('aria-pressed', 'true');
+    await expect(cardEye(other).locator('svg')).toHaveAttribute(
+      'data-icon',
+      'jupyterlab_workspace_manager_extension:eye'
+    );
+    await cardEye(other).click();
+    await expect(card(page, other)).not.toHaveClass(/jp-mod-hiddenWorkspace/);
+    await expect(cardEye(other)).toHaveAttribute('aria-pressed', 'false');
+    await expect(countLine(page)).toHaveCount(0, HEAVY_LOAD);
+    expect(await hiddenOnServer()).toBe(false);
   } finally {
     await deleteWorkspaces(page, all);
   }

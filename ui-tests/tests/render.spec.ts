@@ -1,5 +1,6 @@
 import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
 import type { Locator, Page } from '@playwright/test';
+import * as fs from 'fs';
 import * as path from 'path';
 
 import {
@@ -23,8 +24,10 @@ import {
   listed,
   menuButton,
   menuItem,
+  newTerminalTab,
   only,
   onlyWorkspaces,
+  openCard,
   openDocument,
   openPanel,
   openSection,
@@ -35,14 +38,20 @@ import {
   putNotebook,
   putWorkspace,
   refresh,
+  rgba,
   rowOf,
   sectionBody,
   sectionCount,
   sectionHeader,
+  secondWindow,
+  sendToTerminal,
   serverList,
+  sidebarTo,
   startSession,
   startTerminal,
+  stripColour,
   terminalNames,
+  TOKENS,
   triangle,
   UNDER_LOAD
 } from './helpers';
@@ -52,6 +61,20 @@ import {
  * one test per 'check' item, or per unasserted part of one, that no other spec
  * asserts. Each title starts with the checklist id and the criterion id. The
  * scenario test saves screenshots as evidence; no test asserts on a screenshot alone.
+ * Items of the checklist asserted by a criterion's own test elsewhere: HDR-01
+ * (panel.spec.ts ACC-PANEL-201), HDR-02 (panel.spec.ts ACC-PANEL-147, ACC-PANEL-169),
+ * SEC-01 (panel.spec.ts ACC-PANEL-193), SEC-02 (panel.spec.ts ACC-PANEL-192), SEC-03
+ * (sections.spec.ts ACC-PANEL-182), SEC-09 (panel.spec.ts ACC-PANEL-90), the sizes of
+ * LEG-02 (legibility.spec.ts ACC-PANEL-74), HDR-03 (keyboard.spec.ts ACC-PANEL-138), WS-08
+ * (sections.spec.ts ACC-ACCORD-15, ACC-ACCORD-128), WS-11 (sections.spec.ts ACC-ACCORD-69),
+ * WS-14 (sections.spec.ts ACC-ACCORD-129), the places and disabled states of WS-19 and the
+ * card buttons of HID-01 (sections.spec.ts ACC-ACCORD-98), MENU-04 (menu.spec.ts
+ * ACC-ACCORD-150, ACC-ACCORD-102, ACC-ACCORD-30), MENU-02 and MENU-05 (menu.spec.ts
+ * ACC-ACCORD-148, ACC-ACCORD-155), MENU-08 (content.spec.ts ACC-LISTS-212), HID-02
+ * (hidden.spec.ts ACC-HIDDEN-213), LEG-01 and the colour 2 note of HID-01
+ * (legibility.spec.ts ACC-PANEL-202), the empty states of LEG-02 (legibility.spec.ts
+ * ACC-PANEL-75), KERN-02 (kernels.spec.ts ACC-KERNEL-196), the purpose of MENU-06
+ * (menu.spec.ts ACC-ACCORD-99).
  */
 
 test.use({ autoGoto: false, mockState: false });
@@ -81,23 +104,6 @@ const HEADER_BUTTONS = [
   'Refresh'
 ];
 
-/** Any CSS colour as the page draws it on nothing: 0-255 channels and 0-255 alpha. */
-function rgba(page: Page, css: string): Promise<number[]> {
-  return page.locator(PANEL).evaluate((panel, css) => {
-    const probe = document.createElement('div');
-    probe.style.color = css;
-    panel.appendChild(probe);
-    const resolved = getComputedStyle(probe).color;
-    probe.remove();
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 1;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = resolved;
-    ctx.fillRect(0, 0, 1, 1);
-    return Array.from(ctx.getImageData(0, 0, 1, 1).data);
-  }, css);
-}
-
 /** A computed style property of an element. */
 const style = (l: Locator, property: string): Promise<string> =>
   l.evaluate((n, p) => (getComputedStyle(n) as any)[p] as string, property);
@@ -118,20 +124,6 @@ const order = (page: Page): Promise<string[]> =>
     .evaluateAll(nodes =>
       nodes.map(n => (n as HTMLElement).dataset.workspace!)
     );
-
-/** Drag the left sidebar to `width` px. */
-async function sidebarTo(page: Page, width: number): Promise<void> {
-  const handle = page
-    .locator('#jp-main-split-panel > .lm-SplitPanel-handle')
-    .first();
-  const at = (await handle.boundingBox())!;
-  const [x, y] = [at.x + at.width / 2, at.y + at.height / 2];
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + width - (await panelWidth(page)), y, { steps: 5 });
-  await page.mouse.up();
-  await expect.poll(() => panelWidth(page)).toBe(width);
-}
 
 /** The pixels of a PNG screenshot, decoded in the page. */
 function pixels(
@@ -373,6 +365,10 @@ const VIEWS: [string, (page: Page, s: Scenario) => Promise<void>][] = [
     async page => {
       await openSection(page, 'kernels');
       await expect(sectionBody(page, 'kernels')).toBeVisible();
+      // the panel's one selected row, with its detail lines
+      const row = sectionBody(page, 'kernels').locator(ROW).first();
+      await row.focus();
+      await expect(row).toHaveClass(/jp-mod-selected/);
     }
   ],
   [
@@ -388,7 +384,7 @@ test.describe('the seeded scenario', () => {
   // the scenario starts kernels by REST; Galata would list only its page's own
   test.use({ kernels: null, sessions: null });
 
-  test('SCENARIO, WS-21 ACC-LISTS-81-ONCE, ROW-01 ACC-LISTS-154-TAB-SHRINK: the panel at 300 px and wide, in Light and Galaxa Steel dark; each tab listed once; rows at least 24 px with a 16 px icon, label in colour 0, detail in colour 1, age inside the row', async ({
+  test("SCENARIO, WS-21 ACC-LISTS-81-ONCE, ROW-01 ACC-LISTS-154-TAB-SHRINK, ACC-PANEL-202-TEXT-COLOURS: the panel at 300 px and wide, in Light and Galaxa Steel dark, a KERNELS row selected; each tab listed once; rows at least 24 px with a 16 px icon, name in colour 1 and time in colour 2 (brand colour 1 under a minute), the selected row's detail in colour 2, age inside the row", async ({
     page,
     tmpPath
   }) => {
@@ -441,9 +437,10 @@ test.describe('the seeded scenario', () => {
       ).not.toContainEqual(expect.stringMatching(/terminal/i));
 
       // ROW-01 in this window's card and in the TERMINALS section, at 300 px
-      const [colour0, colour1] = [
-        await rgba(page, 'var(--jp-ui-font-color0)'),
-        await rgba(page, 'var(--jp-ui-font-color1)')
+      const [colour1, colour2, brand1] = [
+        await rgba(page, 'var(--jp-ui-font-color1)'),
+        await rgba(page, 'var(--jp-ui-font-color2)'),
+        await rgba(page, 'var(--jp-brand-color1)')
       ];
       const anatomy = async () =>
         page.locator(PANEL).evaluate(panel =>
@@ -458,16 +455,17 @@ test.describe('the seeded scenario', () => {
                 .querySelector('.jp-WorkspaceManager-age')
                 ?.getBoundingClientRect();
               const label = r.querySelector('.jp-WorkspaceManager-rowLabel');
-              const detail = r.querySelector(
-                '.jp-WorkspaceManager-rowDetail:not(.jp-WorkspaceManager-rowPath)'
-              );
+              const detail = r.querySelector('.jp-WorkspaceManager-rowDetail');
+              const time = r.querySelector('.jp-WorkspaceManager-age');
               return {
                 text: r.textContent ?? '',
+                recent: r.classList.contains('jp-mod-recentlyActive'),
                 tall: box.height >= 24,
                 icon: icon
                   ? [Math.round(icon.width), Math.round(icon.height)]
                   : null,
                 label: label ? getComputedStyle(label).color : '',
+                time: time ? getComputedStyle(time).color : null,
                 detail: detail ? getComputedStyle(detail).color : null,
                 ageInside: !age || age.right <= box.right + 0.5
               };
@@ -476,7 +474,9 @@ test.describe('the seeded scenario', () => {
       const checked: string[] = [];
       for (const show of [
         async () => undefined,
-        () => openSection(page, 'terminals')
+        () => openSection(page, 'terminals'),
+        // a selected row and its detail
+        () => sectionBody(page, 'kernels').locator(ROW).first().focus()
       ]) {
         await show();
         await page.mouse.move(0, 0);
@@ -486,11 +486,16 @@ test.describe('the seeded scenario', () => {
           expect.soft(r.icon, `${r.text} icon`).toEqual([16, 16]);
           expect
             .soft(await rgba(page, r.label), `${r.text} label colour`)
-            .toEqual(colour0);
+            .toEqual(r.recent ? brand1 : colour1);
+          if (r.time !== null) {
+            expect
+              .soft(await rgba(page, r.time), `${r.text} time colour`)
+              .toEqual(r.recent ? brand1 : colour2);
+          }
           if (r.detail !== null) {
             expect
               .soft(await rgba(page, r.detail), `${r.text} detail colour`)
-              .toEqual(colour1);
+              .toEqual(colour2);
           }
           expect.soft(r.ageInside, `${r.text} age inside`).toBe(true);
         }
@@ -523,7 +528,7 @@ test.describe('the seeded scenario', () => {
       });
       await openSection(page, 'kernels');
       await fromRowMenu(
-        rowOf(sectionBody(page, 'kernels'), notebook),
+        rowOf(sectionBody(page, 'kernels'), 'shared.ipynb'),
         'Shut down kernel'
       );
       expect(
@@ -578,9 +583,9 @@ test.describe('the seeded scenario', () => {
         0
       );
       await openSection(page, 'kernels');
-      await expect(rowOf(sectionBody(page, 'kernels'), notebook)).toHaveCount(
-        1
-      );
+      await expect(
+        rowOf(sectionBody(page, 'kernels'), 'absent.ipynb')
+      ).toHaveCount(1);
       await expect(
         page.locator(`${PANEL} .jp-WorkspaceManager-error`)
       ).toHaveCount(0);
@@ -682,7 +687,7 @@ test('HDR-05 ACC-PANEL-7-REFRESH-BUSY: a click on Refresh disables it and turns 
   }
 });
 
-test('HDR-06 (skill design-language, no criterion): the four header buttons keep their place and stay shown in every view', async ({
+test('HDR-06 ACC-PANEL-214-HEADER-PLACE: the four header buttons keep their place and stay shown in every view', async ({
   page
 }) => {
   const current = fresh('places');
@@ -696,9 +701,9 @@ test('HDR-06 (skill design-language, no criterion): the four header buttons keep
     await page
       .locator(`${PANEL} .jp-WorkspaceManager-filterInput`)
       .fill('zzzz');
-    await expect(page.locator(`${PANEL} .jp-WorkspaceManager-note`)).toHaveText(
-      'Nothing matches'
-    );
+    await expect(
+      sectionBody(page, 'workspaces').locator('.jp-WorkspaceManager-empty')
+    ).toHaveText('Nothing matches');
     views['filter matching nothing'] = await headerPlaces(page);
     await headerButton(page, 'Filter').click();
     views['filter field hidden again'] = await headerPlaces(page);
@@ -735,7 +740,7 @@ test('HDR-06 (skill design-language, no criterion): the four header buttons keep
   }
 });
 
-test('HDR-07 (skill design-language, no criterion): the title WORKBENCH starts on the x of the section labels', async ({
+test('HDR-07 ACC-PANEL-201-HEADER-BAND: the title WORKBENCH starts on the x of the section labels, 18 px from the panel edge', async ({
   page
 }) => {
   const current = fresh('column');
@@ -754,23 +759,46 @@ test('HDR-07 (skill design-language, no criterion): the title WORKBENCH starts o
       Math.abs(x.title - x.label),
       `title at ${x.title} px, section label at ${x.label} px from the panel edge`
     ).toBeLessThanOrEqual(1);
+    expect(Math.round(x.title)).toBe(18);
+    expect(Math.round(x.label)).toBe(18);
   } finally {
     await deleteWorkspaces(page, [current]);
   }
 });
 
-test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloads every 10 s without the turning icon and keeps the open card and an open menu; hidden, it sends no reload; shown again, it reloads at once', async ({
+test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloads every 10 s without the turning icon and keeps the WORKSPACES scroll, a closed KERNELS, the selected TERMINALS row, the open card and an open menu; hidden, it sends no reload; shown again, it reloads at once', async ({
   page
 }) => {
   test.setTimeout(150000);
   const current = fresh('pollhidden');
+  const terminal = await startTerminal(page);
   let ids: string[] = [];
   try {
-    ids = await setUp(page, current, { a: {} });
+    ids = await setUp(
+      page,
+      current,
+      Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`${i}`, {}]))
+    );
+    await sectionHeader(page, 'kernels').click();
+    await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    const selected = rowOf(
+      sectionBody(page, 'terminals'),
+      `terminal ${terminal}`
+    );
+    await selected.focus();
+    await expect(selected).toHaveClass(/jp-mod-selected/);
     await triangle(page, ids[1]).click();
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
     await menuButton(page, ids[1]).click();
     await expect(page.locator('.jp-WorkspaceManager-menu')).toBeVisible();
+    // scrolled after the click, which scrolls the button into view
+    const list = sectionBody(page, 'workspaces');
+    await list.evaluate(n => (n.scrollTop = 80));
+    const scrolled = await list.evaluate(n => n.scrollTop);
+    expect(scrolled).toBeGreaterThan(0);
     // the turning icon, if a poll ever shows it
     await page.locator(PANEL).evaluate(panel => {
       const button = panel.querySelector('button[aria-label="Refresh"]')!;
@@ -800,6 +828,14 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
     );
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
     await expect(page.locator('.jp-WorkspaceManager-menu')).toBeVisible();
+    expect(await list.evaluate(n => n.scrollTop)).toBe(scrolled);
+    await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    await expect(sectionBody(page, 'kernels')).toHaveCount(0);
+    await expect(selected).toHaveClass(/jp-mod-selected/);
+    await expect(page.locator(`${PANEL} .jp-mod-selected`)).toHaveCount(1);
     await page.keyboard.press('Escape');
 
     await page.locator('.jp-SideBar [data-id="filebrowser"]').click();
@@ -812,36 +848,54 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
     await page.locator(PANEL_TAB).click();
     await shown;
   } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, ids);
   }
 });
 
-test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: an enabled Shut down all is filled with layout colour 2 and its text is colour 0', async ({
+test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled Shut down all is a surface button: layout colour 1, a border colour 1 border, text colour 1, 20 px tall in a band as tall as the WORKSPACES band; a disabled one keeps that look at opacity 0.4', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
   const current = fresh('fill');
   try {
     await enterWorkspace(page, current);
-    const button = sectionHeader(page, 'terminals').getByRole('button', {
-      name: 'Shut down all',
-      exact: true
-    });
-    await expect(button).toBeEnabled();
+    const button = (name: string) =>
+      sectionHeader(page, name).getByRole('button', {
+        name: 'Shut down all',
+        exact: true
+      });
+    await expect(button('terminals')).toBeEnabled();
     await page.mouse.move(0, 0);
-    expect(await rgba(page, await style(button, 'backgroundColor'))).toEqual(
-      await rgba(page, 'var(--jp-layout-color2)')
+    const look = async (b: Locator) => [
+      await rgba(page, await style(b, 'backgroundColor')),
+      await rgba(page, await style(b, 'borderTopColor')),
+      await style(b, 'borderTopWidth'),
+      await rgba(page, await style(b, 'color'))
+    ];
+    const surface = [
+      await rgba(page, 'var(--jp-layout-color1)'),
+      await rgba(page, 'var(--jp-border-color1)'),
+      '1px',
+      await rgba(page, 'var(--jp-ui-font-color1)')
+    ];
+    expect(await look(button('terminals'))).toEqual(surface);
+    // the design system's small button size; the band keeps the height of a band without a button
+    expect((await button('terminals').boundingBox())!.height).toBe(20);
+    expect((await sectionHeader(page, 'terminals').boundingBox())!.height).toBe(
+      (await sectionHeader(page, 'workspaces').boundingBox())!.height
     );
-    expect(await rgba(page, await style(button, 'color'))).toEqual(
-      await rgba(page, 'var(--jp-ui-font-color0)')
-    );
+    // no language server runs in this page
+    await expect(button('servers')).toBeDisabled();
+    expect(await look(button('servers'))).toEqual(surface);
+    expect(await style(button('servers'), 'opacity')).toBe('0.4');
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current]);
   }
 });
 
-test('SEC-06 (skill design-system, no criterion): a section header is one button; its caret is an aria-hidden span 14 px wide and the label starts 18 px from the header edge', async ({
+test('SEC-06 (skill design-system, no criterion): a section header is one button; its caret is an aria-hidden span 14 px wide and the label starts 16 px from the header edge, 18 px from the panel edge', async ({
   page
 }) => {
   const current = fresh('caret');
@@ -868,7 +922,8 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
         caretTag: 'span',
         caretHidden: 'true',
         caretWidth: 14,
-        labelInset: 18
+        // the band sits 2 px inside the panel edge for its focus rim (DQ-19)
+        labelInset: 16
       });
     }
   } finally {
@@ -876,7 +931,7 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
   }
 });
 
-test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-93-FOCUS: Tab reaches a section header; Enter opens it, Space closes it; a 1 px brand colour 1 outline on keyboard focus only', async ({
+test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-93-FOCUS: Tab reaches a section header; Enter closes the open section, Space opens it; a 1 px brand colour 1 outline on keyboard focus only', async ({
   page
 }) => {
   const current = fresh('seckeys');
@@ -892,21 +947,81 @@ test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-93-FOCUS: Tab reaches a sect
       await page.keyboard.press('Tab');
     }
     await expect(kernels).toBeFocused();
+    await expect(kernels).toHaveAccessibleName(/^KERNELS \(\d+\)$/);
     expect([
       await style(kernels, 'outlineStyle'),
       await style(kernels, 'outlineWidth'),
       await rgba(page, await style(kernels, 'outlineColor'))
     ]).toEqual(['solid', '1px', brand1]);
-    await page.keyboard.press('Enter');
     await expect(kernels).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press('Space');
+    await page.keyboard.press('Enter');
     await expect(kernels).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Space');
+    await expect(kernels).toHaveAttribute('aria-expanded', 'true');
     // a click on a header that does not have the focus yet: a focused one keeps its keyboard state
     await page.locator('#jp-main-dock-panel').click();
     await kernels.click();
     await expect(kernels).toBeFocused();
-    await expect(kernels).toHaveAttribute('aria-expanded', 'true');
+    await expect(kernels).toHaveAttribute('aria-expanded', 'false');
     expect(await style(kernels, 'outlineStyle')).toBe('none');
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('SEC-08 ACC-PANEL-208-SECTION-STORE, ACC-PANEL-182-SECTION-HEADS: the open state is kept in localStorage; a localStorage that throws, or an unreadable value, opens every section, and a click still closes one', async ({
+  page
+}) => {
+  const current = fresh('store');
+  const expanded = () =>
+    Promise.all(
+      ['workspaces', 'kernels', 'terminals', 'servers'].map(name =>
+        sectionHeader(page, name).getAttribute('aria-expanded')
+      )
+    );
+  try {
+    await enterWorkspace(page, current);
+    const before = await page.evaluate(() => ({ ...localStorage }));
+    await sectionHeader(page, 'kernels').click();
+    await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    const after = await page.evaluate(() => ({ ...localStorage }));
+    const changed = Object.keys(after).filter(k => after[k] !== before[k]);
+    expect(changed).toHaveLength(1);
+    const key = changed[0];
+
+    // an unreadable value
+    await page.evaluate(key => localStorage.setItem(key, '{'), key);
+    await page.reload();
+    await openPanel(page);
+    await expect(card(page, current)).toBeVisible(UNDER_LOAD);
+    expect(await expanded()).toEqual(['true', 'true', 'true', 'true']);
+
+    // a localStorage that throws on this key; JupyterLab keeps its own keys there too
+    await page.addInitScript(key => {
+      const [get, set] = [Storage.prototype.getItem, Storage.prototype.setItem];
+      Storage.prototype.getItem = function (k: string) {
+        if (k === key) {
+          throw new Error('denied');
+        }
+        return get.call(this, k);
+      };
+      Storage.prototype.setItem = function (k: string, v: string) {
+        if (k === key) {
+          throw new Error('denied');
+        }
+        return set.call(this, k, v);
+      };
+    }, key);
+    await page.reload();
+    await openPanel(page);
+    await expect(card(page, current)).toBeVisible(UNDER_LOAD);
+    expect(await expanded()).toEqual(['true', 'true', 'true', 'true']);
+    await sectionHeader(page, 'kernels').click();
+    expect(await expanded()).toEqual(['true', 'false', 'true', 'true']);
+    await expect(sectionBody(page, 'kernels')).toHaveCount(0);
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -972,64 +1087,52 @@ test('WS-09 ACC-ACCORD-187-BLUE-FIRST: with no colour given before, the first wo
   }
 });
 
-/** The active shades of jupyterlab_colourful_tab_extension (src/dynamicStyle.ts DEFAULT_PALETTE). */
-const ACTIVE: { [theme: string]: { [colour: string]: string } } = {
-  [LIGHT]: {
-    rose: '#e39fb1',
-    peach: '#d2ab82',
-    lemon: '#bab56d',
-    mint: '#87c086',
-    sky: '#77bae0',
-    lavender: '#bfa9da'
-  },
-  [DARK]: {
-    rose: '#3a2328',
-    peach: '#3a3126',
-    lemon: '#3a3825',
-    mint: '#253b2a',
-    sky: '#1d2a38',
-    lavender: '#30253a'
-  }
-};
-
-test('WS-10 ACC-ACCORD-188-STRIP-SATURATION: each strip colour has HSL saturation of 48 percent or more in Galaxa Steel dark and JupyterLab Light; the active shades are those of the colourful tab extension', async ({
+test('WS-10 ACC-ACCORD-86-OWN-PALETTE, ACC-ACCORD-15-STRIP: in JupyterLab Light and Galaxa Steel dark the strip of a card of each of the six colours is the theme token of that colour', async ({
   page
 }) => {
-  const current = fresh('saturation');
+  const current = fresh('tokens');
+  let ids: string[] = [];
   try {
-    await enterWorkspace(page, current);
+    ids = await setUp(page, current, {
+      a: {},
+      b: {},
+      c: {},
+      d: {},
+      e: {},
+      f: {}
+    });
+    const colours = await Promise.all(
+      ids.map(
+        async id =>
+          (await card(page, id).getAttribute('class'))!.match(
+            /jp-mod-(rose|peach|lemon|mint|sky|lavender)\b/
+          )![1]
+      )
+    );
+    expect(new Set(colours)).toEqual(new Set(COLOURS));
     for (const theme of [LIGHT, DARK]) {
       await page.theme.setTheme(theme);
-      const values = await page.evaluate(colours => {
-        // data-jp-theme-light, which the dark palette keys on, is an attribute of the body
-        const s = getComputedStyle(document.body);
-        return colours.map(c => [
-          s.getPropertyValue(`--jp-workspace-manager-${c}`).trim(),
-          s.getPropertyValue(`--jp-workspace-manager-${c}-active`).trim()
-        ]);
-      }, COLOURS);
-      COLOURS.forEach((c, i) => {
-        const [r, g, b] = [1, 3, 5].map(
-          k => parseInt(values[i][0].slice(k, k + 2), 16) / 255
-        );
-        const [max, min] = [Math.max(r, g, b), Math.min(r, g, b)];
-        const l = (max + min) / 2;
-        const saturation =
-          max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+      const strips: number[][] = [];
+      for (const [i, id] of ids.entries()) {
+        const strip = await rgba(page, await stripColour(card(page, id)));
         expect
-          .soft(saturation, `${theme} ${c} ${values[i][0]}`)
-          .toBeGreaterThanOrEqual(0.48);
-        expect
-          .soft(values[i][1].toLowerCase(), `${theme} ${c}-active`)
-          .toBe(ACTIVE[theme][c]);
-      });
+          .soft(strip, `${theme} ${colours[i]}`)
+          .toEqual(
+            await rgba(page, `var(${TOKENS[COLOURS.indexOf(colours[i])]})`)
+          );
+        strips.push(strip);
+      }
+      // the tokens are defined: a missing one gives the probe and the strip the text colour
+      expect(strips, theme).not.toContainEqual(
+        await rgba(page, 'var(--jp-ui-font-color0)')
+      );
     }
   } finally {
-    await deleteWorkspaces(page, [current]);
+    await deleteWorkspaces(page, ids);
   }
 });
 
-test('WS-02 ACC-ACCORD-190-FIXED-ORDER, WS-12 ACC-ACCORD-69-CARD: a description or colour change moves no card; opening another card keeps its x and width', async ({
+test('WS-02 ACC-ACCORD-190-FIXED-ORDER, WS-12 ACC-ACCORD-69-CARD: a description or colour change moves no card; opening another card keeps its x and width and its border colour 1 border', async ({
   page
 }) => {
   const current = fresh('keep');
@@ -1041,6 +1144,7 @@ test('WS-02 ACC-ACCORD-190-FIXED-ORDER, WS-12 ACC-ACCORD-69-CARD: a description 
     await menuItem(page, 'Set description...').click();
     await dialog(page).locator('textarea').fill('A purpose set here');
     await dialog(page).locator('textarea').press('Enter');
+    await openCard(page, ids[0]);
     await expect(
       card(page, ids[0]).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('A purpose set here');
@@ -1063,12 +1167,44 @@ test('WS-02 ACC-ACCORD-190-FIXED-ORDER, WS-12 ACC-ACCORD-69-CARD: a description 
     await triangle(page, ids[2]).click();
     await expect(card(page, ids[2])).toHaveClass(/jp-mod-open/);
     expect(await box()).toEqual(closed);
+    const border = await rgba(
+      page,
+      await style(card(page, ids[2]), 'borderTopColor')
+    );
+    expect(border).toEqual(await rgba(page, 'var(--jp-border-color1)'));
+    expect(border).not.toEqual(
+      await rgba(page, await stripColour(card(page, ids[2])))
+    );
   } finally {
     await deleteWorkspaces(page, ids);
   }
 });
 
-test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-101-PURPOSE-TEXT, ACC-PANEL-181-PURPOSE-WRAP: the name in colour 0 ends in an ellipsis; the purpose is regular, size 1, colour 0, upright, never cut, markup shown as text; a card without a purpose shows no purpose text', async ({
+/**
+ * Route the workspace list to report each id of `ages` that many ms old: the server's file times
+ * cannot be set back. It answers before any route set up earlier, a list filter included.
+ */
+async function aged(page: Page, ages: Record<string, number>): Promise<void> {
+  await page.route(/\/lab\/api\/workspaces\/?(\?.*)?$/, async route => {
+    if (route.request().method() !== 'GET') {
+      return route.fallback();
+    }
+    const response = await route.fetch();
+    const json = await response.json();
+    for (const w of json.workspaces.values) {
+      if (w.metadata.id in ages) {
+        w.metadata.last_modified = new Date(
+          Date.now() - ages[w.metadata.id]
+        ).toISOString();
+      }
+    }
+    await route.fulfill({ response, json });
+  });
+}
+
+const HOUR = 3600 * 1000;
+
+test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-18-PURPOSE, ACC-ACCORD-101-PURPOSE-TEXT, ACC-PANEL-181-PURPOSE-WRAP: the name of a card 3 h old is colour 1 and ends in an ellipsis; a closed card shows no purpose; open, the purpose is regular, size 1, colour 1, upright, never cut, markup shown as text; a card without a purpose shows no purpose text', async ({
   page
 }) => {
   const alerts: string[] = [];
@@ -1084,11 +1220,18 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
       markup: { record: { purpose: markup } },
       plain: {}
     });
+    // after the list filter of setUp, so that this route answers first
+    await aged(page, { [ids[1]]: 3 * HOUR });
+    await refresh(page);
     const purpose = card(page, ids[1]).locator('.jp-WorkspaceManager-purpose');
+    // DQ-17: the purpose waits for the card to open
+    await expect(card(page, ids[1])).toBeVisible();
+    await expect(purpose).toHaveCount(0);
+    await openCard(page, ids[1]);
     await expect(purpose).toHaveText(markup);
     await expect(card(page, ids[1]).locator('img')).toHaveCount(0);
-    const [colour0, size1] = [
-      await rgba(page, 'var(--jp-ui-font-color0)'),
+    const [colour1, size1] = [
+      await rgba(page, 'var(--jp-ui-font-color1)'),
       await page.locator(PANEL).evaluate(panel => {
         const probe = document.createElement('span');
         probe.style.fontSize = 'var(--jp-ui-font-size1)';
@@ -1109,49 +1252,34 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
       size: size1,
       italic: 'normal',
       overflow: 'clip',
-      colour: colour0
+      colour: colour1
     });
+    const name = card(page, ids[1]).locator('.jp-WorkspaceManager-name');
+    await expect(
+      cardHeader(page, ids[1]).locator('.jp-WorkspaceManager-age')
+    ).toHaveText('3h ago');
+    expect(await rgba(page, await style(name, 'color'))).toEqual(colour1);
+    expect(await style(name, 'textOverflow')).toBe('ellipsis');
+    await openCard(page, ids[2]);
     await expect(
       card(page, ids[2]).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('');
-    const name = card(page, ids[1]).locator('.jp-WorkspaceManager-name');
-    expect(await rgba(page, await style(name, 'color'))).toEqual(colour0);
-    expect(await style(name, 'textOverflow')).toBe('ellipsis');
     expect(alerts).toEqual([]);
   } finally {
     await deleteWorkspaces(page, ids);
   }
 });
 
-test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the age reads now, semibold, colour 0, after an 8 px brand colour 2 dot; an older workspace reads its age in regular weight with no dot', async ({
+test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the name and the age read now in brand colour 1 with jp-mod-recentlyActive and no dot; at 3 h the age reads 3h ago in colour 2; over 7 days the name alone is at opacity 0.65 with jp-mod-stale', async ({
   page
 }) => {
-  const current = fresh('nowdot');
-  const [recent, old] = [`${current}-recent`, `${current}-old`];
-  // the server's file times cannot be set back: the list reports old's as two hours ago
-  await page.route(/\/lab\/api\/workspaces\/?(\?.*)?$/, async route => {
-    if (route.request().method() !== 'GET') {
-      return route.fallback();
-    }
-    const response = await route.fetch();
-    const values = (await response.json()).workspaces.values.filter((w: any) =>
-      w.metadata.id.startsWith(current)
-    );
-    for (const w of values) {
-      if (w.metadata.id === old) {
-        w.metadata.last_modified = new Date(
-          Date.now() - 2 * 3600 * 1000
-        ).toISOString();
-      }
-    }
-    await route.fulfill({
-      response,
-      json: {
-        workspaces: { ids: values.map((w: any) => w.metadata.id), values }
-      }
-    });
-  });
+  const current = fresh('recency');
+  const [recent, hours, old] = ['recent', 'hours', 'old'].map(
+    x => `${current}-${x}`
+  );
+  await aged(page, { [hours]: 3 * HOUR, [old]: 9 * 24 * HOUR });
   try {
+    await putWorkspace(page, hours);
     await putWorkspace(page, old);
     await gotoWorkspace(page, current);
     await openPanel(page);
@@ -1162,42 +1290,71 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the age reads 
       cardHeader(page, id).locator(
         '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
       );
-    await expect(age(recent)).toHaveText('now');
-    await expect(age(recent)).toHaveClass(/jp-mod-now/);
-    const dot = age(recent).locator('.jp-WorkspaceManager-dot');
-    await expect(dot).toHaveCount(1);
-    expect({
-      weight: await style(age(recent), 'fontWeight'),
-      colour: await rgba(page, await style(age(recent), 'color')),
-      dot: await dot.evaluate(n => {
-        const r = n.getBoundingClientRect();
-        return [r.width, r.height];
-      }),
-      fill: await rgba(page, await style(dot, 'backgroundColor'))
-    }).toEqual({
-      weight: '600',
-      colour: await rgba(page, 'var(--jp-ui-font-color0)'),
-      dot: [8, 8],
-      fill: await rgba(page, 'var(--jp-brand-color2)')
+    const name = (id: string) =>
+      cardHeader(page, id).locator('.jp-WorkspaceManager-name');
+    const [brand1, colour1, colour2] = [
+      await rgba(page, 'var(--jp-brand-color1)'),
+      await rgba(page, 'var(--jp-ui-font-color1)'),
+      await rgba(page, 'var(--jp-ui-font-color2)')
+    ];
+    const look = async (id: string) => ({
+      age: await age(id).textContent(),
+      header: (await cardHeader(page, id).getAttribute('class'))!
+        .split(' ')
+        .filter(c => c.startsWith('jp-mod-')),
+      name: await rgba(page, await style(name(id), 'color')),
+      time: await rgba(page, await style(age(id), 'color')),
+      nameOpacity: await style(name(id), 'opacity'),
+      timeOpacity: await style(age(id), 'opacity'),
+      dots: await cardHeader(page, id)
+        .locator('.jp-WorkspaceManager-dot')
+        .count()
     });
-    await expect(age(old)).toHaveText('2h');
-    await expect(age(old).locator('.jp-WorkspaceManager-dot')).toHaveCount(0);
-    expect(await style(age(old), 'fontWeight')).toBe('400');
+    await expect(age(recent)).toHaveText('now');
+    expect(await look(recent)).toEqual({
+      age: 'now',
+      header: ['jp-mod-recentlyActive'],
+      name: brand1,
+      time: brand1,
+      nameOpacity: '1',
+      timeOpacity: '1',
+      dots: 0
+    });
+    expect(await look(hours)).toEqual({
+      age: '3h ago',
+      header: [],
+      name: colour1,
+      time: colour2,
+      nameOpacity: '1',
+      timeOpacity: '1',
+      dots: 0
+    });
+    expect(await look(old)).toEqual({
+      age: '9d ago',
+      header: ['jp-mod-stale'],
+      name: colour1,
+      time: colour2,
+      nameOpacity: '0.65',
+      timeOpacity: '1',
+      dots: 0
+    });
   } finally {
-    await deleteWorkspaces(page, [current, recent, old]);
+    await deleteWorkspaces(page, [current, recent, hours, old]);
   }
 });
 
-test('WS-18 ACC-ACCORD-71-COUNT-ICONS: the three header counts each have their own glyph in colour 1 and a bare number in colour 0', async ({
+test('WS-18 ACC-ACCORD-71-COUNT-ICONS, ACC-ACCORD-22-COUNTS: a closed card shows no counts; open, the three header counts each have their own glyph in inverse layout colour 3 and a bare number in colour 2', async ({
   page
 }) => {
   const current = fresh('glyphs');
   try {
     await enterWorkspace(page, current);
     const header = cardHeader(page, current);
-    const [colour0, colour1] = [
-      await rgba(page, 'var(--jp-ui-font-color0)'),
-      await rgba(page, 'var(--jp-ui-font-color1)')
+    await expect(header.locator('.jp-WorkspaceManager-count')).toHaveCount(0);
+    await openCard(page, current);
+    const [glyph3, colour2] = [
+      await rgba(page, 'var(--jp-inverse-layout-color3)'),
+      await rgba(page, 'var(--jp-ui-font-color2)')
     ];
     const icons: string[] = [];
     for (const title of ['Tabs', 'Terminals', 'Kernels']) {
@@ -1208,11 +1365,11 @@ test('WS-18 ACC-ACCORD-71-COUNT-ICONS: the three header counts each have their o
       const svg = count.locator('svg');
       icons.push((await svg.getAttribute('data-icon')) ?? '');
       for (const c of await glyph(svg)) {
-        expect.soft(await rgba(page, c), `${title} glyph`).toEqual(colour1);
+        expect.soft(await rgba(page, c), `${title} glyph`).toEqual(glyph3);
       }
       expect
         .soft(await rgba(page, await style(count, 'color')), `${title} number`)
-        .toEqual(colour0);
+        .toEqual(colour2);
     }
     expect(new Set(icons).size).toBe(3);
   } finally {
@@ -1220,22 +1377,38 @@ test('WS-18 ACC-ACCORD-71-COUNT-ICONS: the three header counts each have their o
   }
 });
 
-test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: Open workspace is disabled on this window's card; on another card it switches this window to that workspace", async ({
+test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: every card shows Open workspace, Close all tabs, the eye and ... at rest; Open workspace and the eye are disabled on this window's card; Open workspace on another card switches this window to that workspace", async ({
   page
 }) => {
   const current = fresh('hoveropen');
   let ids: string[] = [];
   try {
     ids = await setUp(page, current, { a: {} });
-    await cardHeader(page, current).hover();
-    await expect(
-      cardHeader(page, current).getByRole('button', { name: 'Open workspace' })
-    ).toBeDisabled();
-    await cardHeader(page, ids[1]).hover();
+    await page.mouse.move(0, 0);
+    const labels = (id: string) =>
+      card(page, id)
+        .locator('.jp-WorkspaceManager-cardActions button')
+        .evaluateAll(nodes =>
+          nodes.map(
+            n =>
+              `${n.getAttribute('aria-label')}${(n as HTMLButtonElement).disabled ? ' disabled' : ''}${(n as HTMLElement).offsetParent === null ? ' not shown' : ''}`
+          )
+        );
+    expect(await labels(current)).toEqual([
+      'Open workspace disabled',
+      'Close all tabs',
+      'Hide workspace disabled',
+      'Workspace menu'
+    ]);
+    expect(await labels(ids[1])).toEqual([
+      'Open workspace',
+      'Close all tabs',
+      'Hide workspace',
+      'Workspace menu'
+    ]);
     const open = cardHeader(page, ids[1]).getByRole('button', {
       name: 'Open workspace'
     });
-    await expect(open).toBeEnabled();
     await open.click();
     await page.waitForURL(new RegExp(`/lab/workspaces/${ids[1]}(\\?.*)?$`));
   } finally {
@@ -1243,7 +1416,7 @@ test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: Open workspace is d
   }
 });
 
-test('WS-20 (design svg/b2-closed.svg, no criterion): every button in a card header is 24 x 24 px', async ({
+test('WS-20 ACC-PANEL-214-HEADER-PLACE: every button in a card header is 24 x 24 px with a 14 x 14 px glyph', async ({
   page
 }) => {
   const current = fresh('buttons');
@@ -1270,13 +1443,18 @@ test('WS-20 (design svg/b2-closed.svg, no criterion): every button in a card hea
             .filter(b => (b as HTMLElement).offsetParent !== null)
             .map(b => {
               const r = b.getBoundingClientRect();
-              return `${b.getAttribute('aria-label')}: ${Math.round(r.width)} x ${Math.round(r.height)}`;
+              const g = b.querySelector('svg')!.getBoundingClientRect();
+              return `${b.getAttribute('aria-label')}: ${Math.round(r.width)} x ${Math.round(r.height)}, glyph ${Math.round(g.width)} x ${Math.round(g.height)}`;
             })
         ),
       [ids[1], ids[2]]
     );
     expect(sizes.length).toBeGreaterThanOrEqual(6);
-    expect(sizes).toEqual(sizes.map(s => s.replace(/\d+ x \d+$/, '24 x 24')));
+    expect(sizes).toEqual(
+      sizes.map(s =>
+        s.replace(/\d+ x \d+, glyph \d+ x \d+$/, '24 x 24, glyph 14 x 14')
+      )
+    );
   } finally {
     await deleteWorkspaces(page, ids);
   }
@@ -1323,7 +1501,7 @@ test('ROW-04 ACC-LISTS-161-LANG-ACTIONS (skill design-system Lists & rows): the 
   }
 });
 
-test('ROW-07 (skill design-system, no criterion): the rows of an open card are one tab stop', async ({
+test('ROW-07, ROW-06 ACC-LISTS-210-ROW-SELECT (skill design-system Panel construction): the rows of an open card are one tab stop; the focused row is the one selected row and ArrowDown moves the focus, the selection and the tab stop', async ({
   page
 }) => {
   const current = fresh('roving');
@@ -1341,6 +1519,14 @@ test('ROW-07 (skill design-system, no criterion): the rows of an open card are o
       ns => ns.filter(n => (n as HTMLElement).tabIndex === 0).length
     );
     await rows.first().focus();
+    await expect(rows.first()).toHaveClass(/jp-mod-selected/);
+    await page.keyboard.press('ArrowDown');
+    await expect(rows.nth(1)).toBeFocused();
+    await expect(rows.nth(1)).toHaveClass(/jp-mod-selected/);
+    await expect(page.locator(`${PANEL} .jp-mod-selected`)).toHaveCount(1);
+    expect(
+      await rows.evaluateAll(ns => ns.map(n => (n as HTMLElement).tabIndex))
+    ).toEqual([-1, 0, -1]);
     await page.keyboard.press('Tab');
     const left = await card(page, ids[1]).evaluate(
       c =>
@@ -1354,7 +1540,304 @@ test('ROW-07 (skill design-system, no criterion): the rows of an open card are o
   }
 });
 
-test('TERM-02 ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD: at the prompt a terminal row shows the shell; with no readable process it shows terminal <n> alone', async ({
+test('ROW-06 ACC-PANEL-207-BUTTON-ARROWS: ArrowDown pressed on a language server row button moves the focus to the next row; Enter on the button shuts that server down and opens nothing', async ({
+  page
+}) => {
+  const current = fresh('buttonkeys');
+  const servers: [string, string][] = [
+    ['workspace-manager-a', 'fake-lsp-a'],
+    ['workspace-manager-b', 'fake-lsp-b']
+  ];
+  try {
+    await enterWorkspace(page, current);
+    await languageServer(page, true, servers);
+    await openSection(page, 'servers');
+    const rows = sectionBody(page, 'servers').locator(ROW);
+    await expect(rows).toHaveCount(2, UNDER_LOAD);
+    const first = rowOf(sectionBody(page, 'servers'), 'fake-lsp-a (python)');
+    // the button shows and takes focus from its row's keyboard focus
+    await first.focus();
+    await page.keyboard.press('Tab');
+    await expect(first.locator('button')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(rows.nth(1)).toBeFocused();
+
+    // Enter on the button shuts that server down; the row's own Enter opens nothing
+    const url = page.url();
+    await first.focus();
+    await page.keyboard.press('Tab');
+    await expect(first.locator('button')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(async () => {
+            const galata = (window as any).galata;
+            const manager = await galata.getPlugin(
+              '@jupyterlab/lsp-extension:plugin'
+            );
+            return manager.connections.has('workspace-manager-a');
+          }),
+        UNDER_LOAD
+      )
+      .toBe(false);
+    expect(page.url()).toBe(url);
+    await expect(rows).toHaveCount(1, UNDER_LOAD);
+  } finally {
+    await languageServer(page, false, servers);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test.describe('rows of terminals and kernels of the server', () => {
+  // the tests start a kernel by REST; Galata would list only its page's own
+  test.use({ kernels: null, sessions: null });
+
+  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row terminal <n> and its time, a kernel row with no session its id, its state and its time; a terminal 3 h idle has its name in colour 1 and 3h ago in colour 2; terminal names, kernel ids and paths are in the code font, workspace names, times and process names in the UI font', async ({
+    page
+  }) => {
+    const terminal = await startTerminal(page);
+    const started = await page.request.post('/api/kernels', {
+      data: { name: 'python3' }
+    });
+    expect(started.ok()).toBe(true);
+    const kernel = (await started.json()).id;
+    await only(page, /\/api\/kernels(\?.*)?$/, k => k.id === kernel);
+    await only(page, /\/api\/sessions(\?.*)?$/, () => false);
+    await page.route(TERMINALS, async route => {
+      if (route.request().method() !== 'GET') {
+        return route.fallback();
+      }
+      const response = await route.fetch();
+      const json = response.ok()
+        ? (await response.json()).map((t: any) =>
+            t.name === terminal
+              ? {
+                  ...t,
+                  last_activity: new Date(
+                    Date.now() - 3 * 3600 * 1000
+                  ).toISOString()
+                }
+              : t
+          )
+        : undefined;
+      await route.fulfill({ response, json });
+    });
+    const current = fresh('rowline');
+    let ids: string[] = [];
+    try {
+      ids = await setUp(page, current, {
+        a: {
+          data: layout(['editor:docs/deep/notes.md', `terminal:${terminal}`])
+        }
+      });
+      await triangle(page, ids[1]).click();
+      const c = card(page, ids[1]);
+      const tab = rowOf(c, 'notes.md');
+      const term = rowOf(c, `terminal ${terminal}`);
+      await openSection(page, 'kernels');
+      const kern = rowOf(sectionBody(page, 'kernels'), kernel);
+      await expect(tab).toHaveText('notes.md');
+      await expect(term).toHaveText(`terminal ${terminal}3h ago`, UNDER_LOAD);
+      await expect(kern).toHaveText(
+        /^[0-9a-f-]{36}(idle|starting|busy)(now|\d+m ago)$/
+      );
+      await expect(
+        page.locator(`${PANEL} .jp-WorkspaceManager-rowDetail`)
+      ).toHaveCount(0);
+      const [colour1, colour2] = [
+        await rgba(page, 'var(--jp-ui-font-color1)'),
+        await rgba(page, 'var(--jp-ui-font-color2)')
+      ];
+      expect(
+        await rgba(
+          page,
+          await style(term.locator('.jp-WorkspaceManager-rowLabel'), 'color')
+        )
+      ).toEqual(colour1);
+      expect(
+        await rgba(
+          page,
+          await style(term.locator('.jp-WorkspaceManager-age'), 'color')
+        )
+      ).toEqual(colour2);
+
+      // LEG-09: the code font on identifiers only
+      const code = await page.locator(PANEL).evaluate(panel => {
+        const probe = document.createElement('span');
+        probe.style.fontFamily = 'var(--jp-code-font-family)';
+        panel.appendChild(probe);
+        const family = getComputedStyle(probe).fontFamily;
+        probe.remove();
+        return family;
+      });
+      await tab.focus();
+      const font = (l: Locator) => style(l, 'fontFamily');
+      expect({
+        terminal: await font(term.locator('.jp-WorkspaceManager-rowLabel')),
+        kernel: await font(kern.locator('.jp-WorkspaceManager-rowLabel')),
+        path: await font(tab.locator('.jp-WorkspaceManager-rowDetail > span'))
+      }).toEqual({ terminal: code, kernel: code, path: code });
+      await expect(tab.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+        'docs/deep'
+      );
+      await term.focus();
+      await expect(term.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(
+        1,
+        UNDER_LOAD
+      );
+      for (const [what, l] of [
+        [
+          'workspace name',
+          cardHeader(page, ids[1]).locator('.jp-WorkspaceManager-name')
+        ],
+        ['time', term.locator('.jp-WorkspaceManager-age')],
+        ['process', term.locator('.jp-WorkspaceManager-rowDetail > span')],
+        ['file name', tab.locator('.jp-WorkspaceManager-rowLabel')]
+      ] as const) {
+        expect(await font(l), what).not.toBe(code);
+      }
+    } finally {
+      await page.request.delete(`/api/kernels/${kernel}`);
+      await page.request.delete(`/api/terminals/${terminal}`);
+      await deleteWorkspaces(page, ids);
+    }
+  });
+});
+
+test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS: a hovered row, in a card and in a section, is layout colour 2 and keeps its text colours; a click selects a row: the one selected row, layout colour 2, its process in its detail line; ArrowDown moves the selection; a refresh keeps it', async ({
+  page
+}) => {
+  const terminals = [await startTerminal(page), await startTerminal(page)];
+  const current = fresh('select');
+  let ids: string[] = [];
+  try {
+    ids = await setUp(page, current, {
+      a: { data: layout(['editor:docs/notes.md']) }
+    });
+    await sendToTerminal(page, terminals[0], 'sleep 60\n');
+    await refresh(page);
+    await triangle(page, ids[1]).click();
+    await openSection(page, 'terminals');
+    const tab = rowOf(card(page, ids[1]), 'notes.md');
+    const rows = terminals.map(t =>
+      rowOf(sectionBody(page, 'terminals'), `terminal ${t}`)
+    );
+    const layout2 = await rgba(page, 'var(--jp-layout-color2)');
+    const paint = async (row: Locator) => ({
+      background: await rgba(page, await style(row, 'backgroundColor')),
+      name: await rgba(
+        page,
+        await style(row.locator('.jp-WorkspaceManager-rowLabel'), 'color')
+      )
+    });
+
+    // ROW-09: hover in a card and in a section
+    for (const row of [tab, rows[0]]) {
+      await page.mouse.move(0, 0);
+      const rest = await paint(row);
+      expect(rest.background).not.toEqual(layout2);
+      await row.hover();
+      expect(await paint(row)).toEqual({
+        background: layout2,
+        name: rest.name
+      });
+    }
+    await page.mouse.move(0, 0);
+
+    // ROW-10: a click selects the TERMINALS row; its detail line shows the process
+    await rows[0].click();
+    await expect(rows[0]).toHaveClass(/jp-mod-selected/);
+    await expect(page.locator(`${PANEL} .jp-mod-selected`)).toHaveCount(1);
+    await expect(rows[0].locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+      'sleep',
+      UNDER_LOAD
+    );
+    await page.mouse.move(0, 0);
+    expect((await paint(rows[0])).background).toEqual(layout2);
+    // ArrowDown moves the focus and the selection to the next row
+    await rows[0].focus();
+    const next = await rows[0].evaluate(
+      r => (r.nextElementSibling as HTMLElement | null)?.title ?? ''
+    );
+    await page.keyboard.press('ArrowDown');
+    const selected = page.locator(`${PANEL} .jp-mod-selected`);
+    await expect(selected).toHaveCount(1);
+    await expect(selected).toHaveAttribute('title', next);
+    await expect(rows[0]).not.toHaveClass(/jp-mod-selected/);
+    // a refresh keeps it
+    await refresh(page);
+    await expect(selected).toHaveCount(1);
+    await expect(selected).toHaveAttribute('title', next);
+    // a tab row in a folder: its folder
+    await tab.focus();
+    await expect(tab.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+      'docs'
+    );
+    await expect(selected).toHaveCount(1);
+  } finally {
+    await Promise.all(
+      terminals.map(t => page.request.delete(`/api/terminals/${t}`))
+    );
+    await deleteWorkspaces(page, ids);
+  }
+});
+
+test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-TAB-MATCH, ACC-TERM-216-TAB-KEPT: a click or Enter on a row opens its item; a terminal row activates the one tab it opened, in a card and in TERMINALS; another workspace's row switches this window", async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  // a terminal in no workspace: its TERMINALS row opens a tab here, not a workspace
+  const terminal = await startTerminal(page);
+  const elsewhere = await startTerminal(page);
+  const current = fresh('rowclick');
+  const other = `${current}-other`;
+  await putWorkspace(page, other, layout([`terminal:${elsewhere}`]));
+  let second = '';
+  try {
+    await enterWorkspace(page, current);
+    await openSection(page, 'terminals');
+    const listed = () =>
+      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
+    // TERMINALS: a click opens the running terminal in a tab of this window
+    await listed().click();
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
+    // ACC-TERM-216: Enter on the row activates the tab it opened, no second tab
+    second = await newTerminalTab(page);
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(second);
+    await listed().focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
+    // another workspace's TERMINALS row opens its terminal here: this window stays
+    await rowOf(
+      sectionBody(page, 'terminals'),
+      `terminal ${elsewhere}`
+    ).click();
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(elsewhere);
+    await expect(page).toHaveURL(
+      new RegExp(`/lab/workspaces/${current}(\\?.*)?$`)
+    );
+    // this window's card: the terminal row activates the same tab
+    await openCard(page, current);
+    await rowOf(card(page, current), `terminal ${terminal}`).click();
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
+    // another workspace's card: its row switches this window to that workspace
+    await openCard(page, other);
+    await rowOf(card(page, other), `terminal ${elsewhere}`).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+    );
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await page.request.delete(`/api/terminals/${elsewhere}`);
+    if (second) {
+      await page.request.delete(`/api/terminals/${second}`);
+    }
+    await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD, ACC-ACCORD-130-NOW-DOT: a terminal row reads terminal <n> and now in brand colour 1; selected, its detail line shows the shell at the prompt and nothing with no readable process', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -1380,38 +1863,84 @@ test('TERM-02 ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD: at the prom
     expect(process).toMatch(/sh$/);
     await openSection(page, 'terminals');
     const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
-    await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-      process
-    );
+    await expect(row).toHaveText(`terminal ${terminal}now`);
+    await expect(row).toHaveClass(/jp-mod-recentlyActive/);
+    const brand1 = await rgba(page, 'var(--jp-brand-color1)');
+    for (const part of [
+      '.jp-WorkspaceManager-rowLabel',
+      '.jp-WorkspaceManager-age'
+    ]) {
+      expect(await rgba(page, await style(row.locator(part), 'color'))).toEqual(
+        brand1
+      );
+    }
+    await row.focus();
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
-      `terminal ${terminal}`
+      process
     );
     unread = true;
     await refresh(page);
+    await expect(row).toHaveClass(/jp-mod-selected/);
+    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
       `terminal ${terminal}`
     );
-    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current]);
   }
 });
 
-test('TERM-03 ACC-TERM-200-ROW-LEAVES, ACC-TERM-111-SHUTDOWN: a failed shutdown keeps the row; a new terminal of a shut-down name shows', async ({
+test('TERM-03 ACC-TERM-200-ROW-LEAVES, ACC-TERM-111-SHUTDOWN: a failed shutdown keeps the row; the route leaves out an ended pty and carries no fingerprint; a second window has no row at its next load; a new terminal of a shut-down name shows', async ({
   page
 }) => {
+  // a second window loads and the ended pty is held open until the test deletes the held file
+  test.setTimeout(120000);
   const terminal = await startTerminal(page);
+  const refused = await startTerminal(page);
   const current = fresh('termfail');
+  const route = '/jupyterlab-workspace-manager-extension/terminals';
+  // the shell of a terminal started by the route has the server's working directory,
+  // not the server root, so the held file is an absolute path on this machine
+  const held = `/tmp/wm-term03-${terminal}.held`;
   // the lab adds a cache-busting query to every request
-  const refuse = new RegExp(`/api/terminals/${terminal}(\\?.*)?$`);
+  const refuse = new RegExp(`/api/terminals/${refused}(\\?.*)?$`);
   let refusing = true;
+  const windows: Page[] = [];
   try {
     await enterWorkspace(page, current);
     await openSection(page, 'terminals');
-    const row = () =>
-      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
-    await expect(row()).toHaveCount(1);
+    // a job that ignores SIGHUP holds the pty open after the shell ends, as a real
+    // terminal can: terminado then keeps listing the shut-down name
+    await sendToTerminal(
+      page,
+      terminal,
+      `(trap '' HUP; touch "${held}"; while [ -e "${held}" ]; do sleep 0.1; done) &\r`
+    );
+    await expect.poll(() => fs.existsSync(held), UNDER_LOAD).toBe(true);
+    const row = (name: string) =>
+      rowOf(sectionBody(page, 'terminals'), `terminal ${name}`);
+    await expect(row(terminal)).toHaveCount(1);
+    await expect(row(refused)).toHaveCount(1);
+
+    // a second window lists the terminal too; it leaves at that window's next load
+    windows.push(await secondWindow(page, current));
+    const other = windows[0];
+    await openPanel(other);
+    await openSection(other, 'terminals');
+    const otherRow = rowOf(
+      sectionBody(other, 'terminals'),
+      `terminal ${terminal}`
+    );
+    await expect(otherRow).toHaveCount(1, UNDER_LOAD);
+
+    // the route's records carry name, last_activity and process, no fingerprint
+    const records = await serverList(page, route);
+    // another test's terminal may be live at this moment: ours are listed
+    expect(records.map((r: any) => r.name)).toEqual(
+      expect.arrayContaining([refused, terminal])
+    );
+    expect(records.some((r: any) => 'fingerprint' in r)).toBe(false);
 
     await page.route(refuse, route =>
       refusing && route.request().method() === 'DELETE'
@@ -1421,17 +1950,34 @@ test('TERM-03 ACC-TERM-200-ROW-LEAVES, ACC-TERM-111-SHUTDOWN: a failed shutdown 
           })
         : route.fallback()
     );
-    await fromRowMenu(row(), 'Shut down terminal');
-    await expect(dialog(page)).toHaveCount(1, UNDER_LOAD);
-    await dialog(page).locator('.jp-Dialog-button').last().click();
+    // the terminal is in no workspace, so the row shuts it down without a question;
+    // the refused DELETE shows its notice
+    await fromRowMenu(row(refused), 'Shut down terminal');
+    const notice = dialog(page).locator('.jp-Dialog-button', {
+      hasText: 'Close'
+    });
+    await expect(notice).toHaveCount(1, UNDER_LOAD);
+    await notice.click();
     await expect(dialog(page)).toHaveCount(0);
     await refresh(page);
-    await expect(row()).toHaveCount(1);
-    expect(await terminalNames(page)).toContain(terminal);
+    await expect(row(refused)).toHaveCount(1);
+    expect(await terminalNames(page)).toContain(refused);
     refusing = false;
 
-    await fromRowMenu(row(), 'Shut down terminal');
-    await expect(row()).toHaveCount(0, { timeout: 5000 });
+    await fromRowMenu(row(terminal), 'Shut down terminal');
+    await expect(row(terminal)).toHaveCount(0, { timeout: 5000 });
+    // the second window's next load leaves it out, while its pty still holds the name
+    await refresh(other);
+    await expect(otherRow).toHaveCount(0, { timeout: 5000 });
+    // the route leaves the ended pty out at its own next read
+    await expect
+      .poll(
+        async () => (await serverList(page, route)).map((r: any) => r.name),
+        UNDER_LOAD
+      )
+      .not.toContain(terminal);
+    // the held pty ends and the name frees: a new terminal of that name shows
+    fs.rmSync(held, { force: true });
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(terminal);
@@ -1440,9 +1986,14 @@ test('TERM-03 ACC-TERM-200-ROW-LEAVES, ACC-TERM-111-SHUTDOWN: a failed shutdown 
     });
     expect(again.ok()).toBe(true);
     await refresh(page);
-    await expect(row()).toHaveCount(1, UNDER_LOAD);
+    await expect(row(terminal)).toHaveCount(1, UNDER_LOAD);
   } finally {
+    fs.rmSync(held, { force: true });
+    for (const p of windows) {
+      await p.close();
+    }
     await page.request.delete(`/api/terminals/${terminal}`);
+    await page.request.delete(`/api/terminals/${refused}`);
     await deleteWorkspaces(page, [current]);
   }
 });
@@ -1496,7 +2047,145 @@ test('TERM-04 ACC-TERM-112-SHUTDOWN-SHARED: from a card the question names the t
   }
 });
 
-test("KERN-03 ACC-KERNEL-49-STATE, ACC-LISTS-109-CONSOLE: in this window's card a kernel row's dot is success colour 1 while idle and brand colour 2 while busy; a console's kernel row names the console", async ({
+test('DLG-01 ACC-PANEL-204-DIALOG-FOOTER, ACC-TERM-112-SHUTDOWN-SHARED, ACC-KERNEL-199-SHUTDOWN-SHARED, ACC-LISTS-110-SHUTDOWN-ALL: in the New workspace and Set description dialogs the affirmative action is the only filled button and Cancel the surface button; a destructive action is unfilled in the error colour at the far left; the pointer shows no rim, the keyboard one', async ({
+  page
+}) => {
+  const terminal = await startTerminal(page);
+  const current = fresh('footer');
+  /** The open dialog's buttons: text, background, border, text colour, rim, left edge and focus. */
+  const read = () =>
+    dialog(page)
+      .locator('.jp-Dialog-button')
+      .evaluateAll(nodes =>
+        nodes.map(n => {
+          const s = getComputedStyle(n);
+          return {
+            label: (n.textContent ?? '').trim(),
+            background: s.backgroundColor,
+            border: s.borderTopColor,
+            colour: s.color,
+            outline: [s.outlineStyle, s.outlineWidth, s.outlineColor],
+            offset: s.outlineOffset,
+            left: Math.round(n.getBoundingClientRect().left),
+            focused: n === document.activeElement
+          };
+        })
+      );
+  /** A declaration resolved inside the open dialog, where its buttons resolve theirs. */
+  const resolved = (css: string, property = 'backgroundColor') =>
+    dialog(page).evaluate(
+      (d, [css, property]) => {
+        const probe = document.createElement('span');
+        (probe.style as any)[property] = css;
+        d.appendChild(probe);
+        const value = (getComputedStyle(probe) as any)[property] as string;
+        probe.remove();
+        return value;
+      },
+      [css, property] as [string, string]
+    );
+  try {
+    await enterWorkspace(page, current);
+
+    // New workspace: Create is the only filled button, Cancel the surface button
+    await headerButton(page, 'New workspace').click();
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'New workspace'
+    );
+    const brand = await resolved('var(--jp-brand-color1)', 'color');
+    const surface = await resolved(
+      'color-mix(in srgb, var(--jp-ui-font-color0) 6%, var(--jp-layout-color1))'
+    );
+    const surfaceLook = async () => [
+      surface,
+      await resolved('var(--jp-border-color2)', 'color')
+    ];
+    const rim = ['solid', '1px', brand, '1px'];
+    let buttons = await read();
+    expect(buttons.map(b => b.label)).toEqual(['Cancel', 'Create']);
+    let [cancel, accept] = buttons;
+    expect([accept.background, accept.border]).toEqual([brand, brand]);
+    expect(accept.colour).toBe(
+      await resolved('var(--jp-ui-inverse-font-color0)', 'color')
+    );
+    expect([cancel.background, cancel.border]).toEqual(await surfaceLook());
+    expect(cancel.colour).toBe(
+      await resolved('var(--jp-ui-font-color0)', 'color')
+    );
+    // the keyboard gives a button the rim
+    for (let i = 0; i < 4 && !(await read()).some(b => b.focused); i++) {
+      await page.keyboard.press('Tab');
+    }
+    const keyed = (await read()).find(b => b.focused)!;
+    expect(keyed).toBeTruthy();
+    expect([
+      keyed.outline[0],
+      keyed.outline[1],
+      keyed.outline[2],
+      keyed.offset
+    ]).toEqual(rim);
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toHaveCount(0);
+
+    // Set description: Save filled, Cancel the surface button
+    await menuButton(page, current).click();
+    await menuItem(page, 'Set description...').click();
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      `Set description of ${current}`
+    );
+    buttons = await read();
+    expect(buttons.map(b => b.label)).toEqual(['Cancel', 'Save']);
+    [cancel, accept] = buttons;
+    expect(accept.background).toBe(brand);
+    expect([cancel.background, cancel.border]).toEqual(await surfaceLook());
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toHaveCount(0);
+
+    // Shut down all: unfilled in the error colour at the far left; the pointer shows no rim
+    await openSection(page, 'terminals');
+    await expect(
+      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`)
+    ).toHaveCount(1, UNDER_LOAD);
+    await sectionHeader(page, 'terminals')
+      .getByRole('button', { name: 'Shut down all', exact: true })
+      .click();
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'Shut down all?'
+    );
+    buttons = await read();
+    expect(buttons.map(b => b.label)).toEqual(['Shut down all', 'Cancel']);
+    const [danger, keep] = buttons;
+    const error = await resolved('var(--jp-error-color1)', 'color');
+    expect([danger.background, danger.border, danger.colour]).toEqual([
+      await resolved('transparent'),
+      error,
+      error
+    ]);
+    expect(danger.left).toBeLessThan(keep.left);
+    expect(keep.background).toBe(surface);
+    // the last button is the platform default: Cancel holds the focus, not the action
+    expect(keep.focused).toBe(true);
+    expect(keep.outline[0]).toBe('none');
+    // Tab: Cancel -> the dialog's first focusable, the first footer button
+    await page.keyboard.press('Tab');
+    const rimmed = (await read()).find(b => b.focused)!;
+    expect(rimmed.label).toBe('Shut down all');
+    expect([
+      rimmed.outline[0],
+      rimmed.outline[1],
+      rimmed.outline[2],
+      rimmed.offset
+    ]).toEqual(rim);
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await terminalNames(page)).toContain(terminal);
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test("KERN-03 ACC-KERNEL-49-STATE, ACC-LISTS-109-CONSOLE, ACC-KERNEL-156-DISPLAY-NAME: in this window's card a kernel row's dot is success colour 1 while idle and brand colour 2 while busy, its state word in the line, the title and the dot's aria-label; selected, its detail line starts with the display name; a console's kernel row is named by the console", async ({
   page,
   tmpPath
 }) => {
@@ -1524,8 +2213,16 @@ test("KERN-03 ACC-KERNEL-49-STATE, ACC-LISTS-109-CONSOLE: in this window's card 
     expect(await rgba(page, await style(dot, 'backgroundColor'))).toEqual(
       await rgba(page, 'var(--jp-success-color1)')
     );
+    // DQ-13: the word in the line, in the title and in the dot's aria-label
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveText('idle');
+    expect((await row.getAttribute('title'))!.split('\n')).toContain('idle');
+    await expect(dot).toHaveAttribute('aria-label', 'idle');
+    await row.focus();
     await expect(
-      kernels.locator('.jp-WorkspaceManager-rowDetail', {
+      row.locator('.jp-WorkspaceManager-rowDetail > span').first()
+    ).toHaveText((await row.getAttribute('title'))!.split('\n')[0]);
+    await expect(
+      kernels.locator('.jp-WorkspaceManager-rowLabel', {
         hasText: /^Console \d+$/
       })
     ).toHaveCount(1, UNDER_LOAD);
@@ -1546,6 +2243,8 @@ test("KERN-03 ACC-KERNEL-49-STATE, ACC-LISTS-109-CONSOLE: in this window's card 
     expect(await rgba(page, await style(dot, 'backgroundColor'))).toEqual(
       await rgba(page, 'var(--jp-brand-color2)')
     );
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveText('busy');
+    await expect(dot).toHaveAttribute('aria-label', 'busy');
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -1639,7 +2338,7 @@ test('MENU-06 ACC-PANEL-149-DESC-COUNT: the Set description counter reads <n>/10
   }
 });
 
-test('NEW-01 ACC-PANEL-142-NEW-NAME, ACC-PANEL-144-NEW-PURPOSE, ACC-PANEL-149-DESC-COUNT: a name other than letters, digits, - and _ keeps Create disabled under the rule; the description keeps 100 characters and no line break; the counter follows', async ({
+test('NEW-01 DLG-02 ACC-PANEL-142-NEW-NAME, ACC-PANEL-144-NEW-PURPOSE, ACC-PANEL-149-DESC-COUNT, ACC-PANEL-205-DIALOG-STATE: a name other than letters, digits, - and _ keeps Create disabled under a state line; the description keeps 100 characters and no line break; the counter follows', async ({
   page
 }) => {
   const current = fresh('newrules');
@@ -1649,16 +2348,55 @@ test('NEW-01 ACC-PANEL-142-NEW-NAME, ACC-PANEL-144-NEW-PURPOSE, ACC-PANEL-149-DE
     await headerButton(page, 'New workspace').click();
     const name = dialog(page).locator('input');
     await expect(name).toBeFocused();
-    await name.fill('a b');
-    await expect(dialog(page).locator('.jp-mod-accept')).toBeDisabled();
     const rule = dialog(page).locator('.jp-WorkspaceManager-rule');
+    // an empty name shows the rule as a colour 2 hint (NEW-01)
     await expect(rule).toHaveText(
       'The name may contain letters, numbers, hyphens (-), and underscores (_).'
     );
     await expect(rule).toBeVisible();
-    await expect(rule).not.toHaveClass(/jp-mod-error/);
+    expect(await rgba(page, await style(rule, 'color'))).toEqual(
+      await rgba(page, 'var(--jp-ui-font-color2)')
+    );
+
+    // a typed problem turns the rule into a state line (DLG-02): 6 px 12 px on layout colour 2,
+    // a 2 px error left border, colour 1 text, no dot
+    const stateLine = async (): Promise<unknown[]> => [
+      [
+        await style(rule, 'paddingTop'),
+        await style(rule, 'paddingLeft'),
+        await style(rule, 'borderLeftWidth'),
+        await style(rule, 'borderLeftStyle')
+      ],
+      await rgba(page, await style(rule, 'backgroundColor')),
+      await rgba(page, await style(rule, 'borderLeftColor')),
+      await rgba(page, await style(rule, 'color')),
+      await rule.evaluate(el => getComputedStyle(el, '::before').content)
+    ];
+    const stateLook = [
+      ['6px', '12px', '2px', 'solid'],
+      await rgba(page, 'var(--jp-layout-color2)'),
+      await rgba(page, 'var(--jp-error-color1)'),
+      await rgba(page, 'var(--jp-ui-font-color1)'),
+      'none'
+    ];
+    await name.fill('a b');
+    await expect(dialog(page).locator('.jp-mod-accept')).toBeDisabled();
+    await expect(rule).toHaveClass(/jp-mod-error/);
+    expect(await stateLine()).toEqual(stateLook);
+
+    // a name an existing workspace has is the same state line (NEW-01, ACC-PANEL-205)
+    await name.fill(current);
+    await expect(dialog(page).locator('.jp-mod-accept')).toBeDisabled();
+    await expect(rule).toHaveText(`A workspace named ${current} exists`);
+    await expect(rule).toHaveClass(/jp-mod-error/);
+    expect(await stateLine()).toEqual(stateLook);
+
     await name.fill('good_name-1');
     await expect(dialog(page).locator('.jp-mod-accept')).toBeEnabled();
+    await expect(rule).not.toHaveClass(/jp-mod-error/);
+    expect(await rgba(page, await style(rule, 'color'))).toEqual(
+      await rgba(page, 'var(--jp-ui-font-color2)')
+    );
     const area = dialog(page).locator('textarea');
     const counter = dialog(page).locator('.jp-WorkspaceManager-counter');
     await expect(counter).toHaveText('0/100');
@@ -1744,7 +2482,7 @@ test('FILT-02 ACC-FILTER-57-MATCH, ACC-FILTER-58-FIELDS, ACC-FILTER-116-HIDDEN-S
   }
 });
 
-test('LEG-04 (project CLAUDE.md, no criterion): the stylesheet of the panel holds no literal colour outside the palette rules', async ({
+test("LEG-04 ACC-PANEL-203-TOKENS-ONLY, ACC-ACCORD-86-OWN-PALETTE: no stylesheet rule of the panel holds a literal colour or a light or dark branch; the filter field's black is the one colour word", async ({
   page
 }) => {
   const current = fresh('literal');
@@ -1752,11 +2490,6 @@ test('LEG-04 (project CLAUDE.md, no criterion): the stylesheet of the panel hold
     await enterWorkspace(page, current);
     const found = await page.evaluate(() => {
       const literal = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i;
-      const palette = [
-        ':root',
-        "[data-jp-theme-light='false']",
-        '[data-jp-theme-light="false"]'
-      ];
       const rules: string[] = [];
       let ours = 0;
       const walk = (list: CSSRuleList) => {
@@ -1769,18 +2502,15 @@ test('LEG-04 (project CLAUDE.md, no criterion): the stylesheet of the panel hold
           const text = r.cssText;
           if (
             !/WorkspaceManager|workspace-manager/.test(r.selectorText ?? '') &&
-            !/--jp-workspace-manager-/.test(text)
+            !/--jp-workspace-manager-|--wm-/.test(text)
           ) {
             continue;
           }
           ours += 1;
           if (
-            palette.includes(r.selectorText) &&
-            /--jp-workspace-manager-/.test(text)
+            literal.test(text) ||
+            (r.selectorText ?? '').includes('data-jp-theme-light')
           ) {
-            continue;
-          }
-          if (literal.test(text)) {
             rules.push(text);
           }
         }
@@ -1801,7 +2531,7 @@ test('LEG-04 (project CLAUDE.md, no criterion): the stylesheet of the panel hold
   }
 });
 
-test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a row, a section header and a header button shows a whole 1 px solid brand colour 1 outline; a click shows none', async ({
+test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a row, a section header and a header button shows a whole 1 px solid brand colour 1 outline, 1 px outside and 1 px inside a card; a click shows none', async ({
   page
 }) => {
   const current = fresh('outline');
@@ -1813,16 +2543,17 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
     await triangle(page, ids[1]).click();
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
     const brand1 = await rgba(page, 'var(--jp-brand-color1)');
-    const targets: [string, Locator][] = [
-      ['card-header', cardHeader(page, current)],
-      ['triangle', triangle(page, current)],
-      ['row', card(page, ids[1]).locator(ROW).nth(1)],
-      ['section-header', sectionHeader(page, 'kernels')],
-      ['header-button', headerButton(page, 'Filter')]
+    // the rim sits 1 px outside; inside a card, which clips its content, 1 px inside (DQ-19)
+    const targets: [string, Locator, string][] = [
+      ['card-header', cardHeader(page, current), '-1px'],
+      ['triangle', triangle(page, current), '-1px'],
+      ['row', card(page, ids[1]).locator(ROW).nth(1), '-1px'],
+      ['section-header', sectionHeader(page, 'kernels'), '1px'],
+      ['header-button', headerButton(page, 'Filter'), '1px']
     ];
     const near = (a: number[], b: number[]) =>
       a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <= 24);
-    for (const [name, target] of targets) {
+    for (const [name, target, offset] of targets) {
       // a keyboard focus: focus it, step back and Tab forward again; in the
       // toolbar, whose buttons are one tab stop, ArrowRight from the button before
       if (name === 'header-button') {
@@ -1839,11 +2570,12 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
           [
             await style(target, 'outlineStyle'),
             await style(target, 'outlineWidth'),
-            await rgba(page, await style(target, 'outlineColor'))
+            await rgba(page, await style(target, 'outlineColor')),
+            await style(target, 'outlineOffset')
           ],
           name
         )
-        .toEqual(['solid', '1px', brand1]);
+        .toEqual(['solid', '1px', brand1, offset]);
       const box = (await target.boundingBox())!;
       await page.screenshot({
         path: shot(`focus-${name}`),
@@ -1857,7 +2589,15 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
       const px = await pixels(
         page,
         await page.screenshot({
-          clip: { x: box.x, y: box.y, width: box.width, height: box.height }
+          clip:
+            offset === '-1px'
+              ? { x: box.x, y: box.y, width: box.width, height: box.height }
+              : {
+                  x: box.x - 6,
+                  y: box.y - 6,
+                  width: box.width + 12,
+                  height: box.height + 12
+                }
         })
       );
       const at = (x: number, y: number) =>
@@ -1866,12 +2606,25 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
       // the outermost or the next device pixel: a box at a fractional position snaps either way
       const either = (a: [number, number], b: [number, number]) =>
         near(at(...a), brand1) || near(at(...b), brand1);
-      const sides = {
-        top: either([mx, 0], [mx, 1]),
-        right: either([px.width - 1, my], [px.width - 2, my]),
-        bottom: either([mx, px.height - 1], [mx, px.height - 2]),
-        left: either([0, my], [1, my])
-      };
+      // an inside rim at the box's edge, an outside rim 1 px beyond the 6 px margin
+      const pad = offset === '-1px' ? 0 : 6;
+      const sides =
+        offset === '-1px'
+          ? {
+              top: either([mx, 0], [mx, 1]),
+              right: either([px.width - 1, my], [px.width - 2, my]),
+              bottom: either([mx, px.height - 1], [mx, px.height - 2]),
+              left: either([0, my], [1, my])
+            }
+          : {
+              top: either([mx, pad - 2], [mx, pad - 1]),
+              right: either([px.width - pad + 1, my], [px.width - pad + 2, my]),
+              bottom: either(
+                [mx, px.height - pad + 1],
+                [mx, px.height - pad + 2]
+              ),
+              left: either([pad - 2, my], [pad - 1, my])
+            };
       expect
         .soft(sides, `${name}: the outline on each side`)
         .toEqual({ top: true, right: true, bottom: true, left: true });
@@ -1886,7 +2639,7 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
   }
 });
 
-test('LEG-06 ACC-PANEL-96-LOAD-ERROR: a failed reload shows one status line and keeps the rows; the next good reload removes it', async ({
+test('LEG-06 ACC-PANEL-96-LOAD-ERROR: a failed reload shows one banner in the error colour and keeps the rows; the next good reload removes it', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -1909,6 +2662,31 @@ test('LEG-06 ACC-PANEL-96-LOAD-ERROR: a failed reload shows one status line and 
     );
     await expect(error).toHaveCount(1);
     await expect(error).toContainText('terminals');
+    // a banner (DQ-15): the 15 percent wash inside the 35 percent border
+    const mixes = await page.evaluate(() => {
+      const probe = (style: string, read: string) => {
+        const node = document.createElement('div');
+        node.setAttribute('style', style);
+        document.body.appendChild(node);
+        const value = getComputedStyle(node)[read] as string;
+        node.remove();
+        return value;
+      };
+      return {
+        background: probe(
+          'background-color: color-mix(in srgb, var(--jp-error-color1) 15%, transparent)',
+          'backgroundColor'
+        ),
+        border: probe(
+          'border: 1px solid color-mix(in srgb, var(--jp-error-color1) 35%, transparent)',
+          'borderTopColor'
+        )
+      };
+    });
+    expect(await style(error, 'backgroundColor')).toBe(mixes.background);
+    expect(await style(error, 'borderTopColor')).toBe(mixes.border);
+    expect(await style(error, 'borderTopWidth')).toBe('1px');
+    expect(await style(error, 'borderTopStyle')).toBe('solid');
     await expect(row).toHaveCount(1);
     fail = false;
     await refresh(page);

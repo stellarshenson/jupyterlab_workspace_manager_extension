@@ -74,6 +74,7 @@ the sidebar panel, its header and its loads
   - log: 2026-10-24T16:05:32Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
   - log: 2026-10-24T16:05:49Z @kj amended text "after a mouse click in a card header, the open and close-all-tabs icons of that closed card stay shown when the pointer leaves; expected: they hide, and keyboard focus still shows them (ACC-ACCORD-98)" -> "after a mouse click in a card header, the open and close-all-tabs icons of that closed card stay shown when the pointer leaves; expected: they hide, and keyboard focus still shows them (ACC-ACCORD-98-HOVER-ACTIONS)"; reason: full criterion id in the text
   - log: 2026-10-24T23:10:13Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+  - log: 2026-10-28T13:21:40Z @kj DQ-12 (2026-10-28) shows Open workspace, Close all tabs, the eye and ... on every card at all times, so the expected hiding no longer applies; the test now asserts the buttons keep their place after a click and Tab reaches each enabled one (galata-rd2.log); reason: stage B batch 2 rewrote the test for the decision
 - [x] `DEF-PANEL-13-SEARCH-ICON` **Header button with an unclear icon** - MINOR; the panel header shows the Search Tabs and Running Sessions button with the glyph of the Launcher tab and no label, so a user cannot tell what it does
   - evidence: panel.spec.ts:313 passed in both full runs: the Launcher-glyph header button is gone; panel.spec.ts:347 passed with the header order and 24 px buttons.
   - related: ACC-PANEL-169-NO-SEARCH
@@ -199,6 +200,64 @@ the sidebar panel, its header and its loads
   - root-cause: 2026-10-27T21:58:47Z @kj the absolute `.jp-WorkspaceManager-card::before` strip paints over the -1px outline of the in-flow header and rows; `.jp-ThemedContainer button:focus-visible` (0,2,1) outranks `.jp-WorkspaceManager :focus-visible` (0,2,0)
   - log: 2026-10-27T21:58:47Z @kj added
   - log: 2026-10-27T21:58:47Z @kj closed: fixed: card header and rows start at the strip right edge; a button rule under .jp-ThemedContainer sets the 1px outline
+- [x] `DEF-PANEL-30-SECTIONS-OVERFLOW` **Open sections push LANGUAGE SERVERS out of the panel** - MAJOR; with every section open and full WORKSPACES, KERNELS and TERMINALS lists at 720 px, the sections keep their whole height, so the LANGUAGE SERVERS header sits below the panel and cannot be reached unless another section is closed; `style/base.css`
+  - evidence: Galata panel.spec.ts ACC-PANEL-193-SECTIONS-SHOWN 720 px full-list test failed on the batch 1 build (LANGUAGE SERVERS header and No language servers outside, tmp/workflows/sections/logs/galata-rd1-fix-red.log) and passed after the fix (galata-rd1-fix-new.log); full suite 158 of 158, --retries=0 (galata-rd1.log); make test exit 0 (make-test-rd1.log)
+  - repro: 1280 x 720 window, 30 workspaces, 10 kernels, 12 terminals, all sections open: LANGUAGE SERVERS header below .jp-WorkspaceManager-content
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-28T12:17:56Z @kj each .jp-WorkspaceManager-section is a flex item with the automatic min-height, so it keeps its body's full clamp height and never shrinks; min-height 0 alone shrinks every section by its size and cuts the empty LANGUAGE SERVERS list to 7 px of 27
+  - log: 2026-10-28T12:17:56Z @kj added; reason: the text names the panel size, the counts and the place the header goes
+  - log: 2026-10-28T12:18:43Z @kj closed: fixed: .jp-WorkspaceManager-list is a grid with rows minmax(0, max-content), so a section keeps its whole height while it fits and the longer lists share the rest equally; reason: the evidence names the red run, the green run and the suite
+- [x] `DEF-PANEL-31-SECTION-BUTTON` **Shut down all is smaller than the design system's small button** - MINOR; Shut down all on the KERNELS, TERMINALS and LANGUAGE SERVERS bands is 18 px tall, below the design system's small button size of 20 px (Buttons: default 24 px, small 20 px in dense rows); `style/base.css`
+  - evidence: Galata render.spec.ts SEC-05 failed on the 18 px build (Expected 20, Received 18; tmp/workflows/sections/logs/galata-rd1-fix2-red.log), its band assertion failed on a 20 px build without the negative margins (31 against 32; galata-rd1-fix2-red-band.log); full suite 158 of 158 passed, --retries=0 (galata-rd1.log); make test exit 0 (make-test-rd1.log)
+  - repro: one terminal running, panel open: the TERMINALS Shut down all measures 18 px tall (boundingBox height)
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-28T12:44:20Z @kj batch 1 set .jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-button to height 18px with -3 px vertical margins to stay inside the band's 6 px padding; the band is 31 px because the caret span is 19 px, so a 20 px button with -4 px margins fits the same band
+  - log: 2026-10-28T12:44:20Z @kj added; reason: the text names the size, the design system's sizes and the file
+  - log: 2026-10-28T12:44:24Z @kj closed: fixed: the section header Shut down all is 20 px tall with -4 px vertical margins, so the band keeps its 31 px; reason: the evidence names the red runs, the green run and the suite
+- [x] `DEF-PANEL-32-ROW-SWITCH` **A section row for another workspace switches the window** - MAJOR; a TERMINALS or KERNELS row of another workspace's item switched this window instead of opening the item here; only a card row switches; cause: both open handlers ignored the listed flag; fix: they take it into account; `src/panel/panel.tsx`
+  - evidence: Jest ACC-LISTS-194-ALL-TERMINALS' other-workspace kernel click and Galata ROW-05's other-workspace TERMINALS click pass: make test exit 0 (Jest 83 of 83, pytest 101, auth gate; make-test-r12.log), six changed-code specs 110 of 110, --retries=0 (galata-r12-rerun.log)
+  - related: ACC-LISTS-195-ALL-KERNELS
+  - related: ACC-LISTS-194-ALL-TERMINALS
+  - repro: in workspace A open TERMINALS, click the row of a terminal held only by workspace B: the page navigates to /lab/workspaces/B instead of opening the terminal's tab in A
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-28T19:38:10Z @kj the open handlers tested the owning section only, not the row's kind, so every other-workspace row switched
+  - log: 2026-10-28T19:38:10Z @kj added
+  - log: 2026-10-28T19:38:27Z @kj closed
+- [x] `DEF-PANEL-33-SHUTDOWN-DEFAULT` **The shutdown dialog focuses Shut down, so Enter confirms it** - MAJOR; the shutdown dialog focused Shut down all and Enter confirmed it; JupyterLab's default is the last footer button, Cancel; `confirm()` set `defaultButton: danger ? 0 : 1`, placing the destructive button under Enter; fix: omit defaultButton; `src/panel/dialogs.ts`
+  - evidence: make test exit 0 (Jest 83 of 83; make-test-r12.log); Galata DLG-01 asserts Cancel focused with no rim, then one Tab rims Shut down all; DLG-01 alone 1 of 1 (galata-r12-dlg01.log), six changed-code specs 110 of 110, --retries=0 (galata-r12-rerun.log)
+  - related: ACC-PANEL-204-DIALOG-FOOTER
+  - repro: open Shut down all for a section and press Enter: the terminals shut down; expected Cancel to hold the focus and Enter to leave them running
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-28T19:38:14Z @kj confirm() passed defaultButton: danger ? 0 : 1, which put the destructive button under Enter
+  - log: 2026-10-28T19:38:14Z @kj added
+  - log: 2026-10-28T19:38:27Z @kj closed
+- [x] `DEF-PANEL-34-HEADER-NAME` **Both panel headers announce a fused accessible name** - MEDIUM; the section and card headers are role=button containers with nested buttons, so the accessible name came from the whole subtree: the KERNELS header announced its label, count and Shut down all together; fix: an aria-label on each header; `src/panel/panel.tsx`
+  - evidence: make test exit 0 (Jest 83 of 83; make-test-r12.log); Galata SEC-07 asserts KERNELS (n), sections ACC-ACCORD-98-HOVER-ACTIONS and hidden ACC-HIDDEN-52-SHOW-HIDDEN the hidden card's '<name> hidden' name; six changed-code specs 110 of 110, --retries=0 (galata-r12-rerun.log)
+  - related: ACC-PANEL-182-SECTION-HEADS
+  - repro: read the KERNELS section header's accessible name with a screen reader or Playwright toHaveAccessibleName: it contains the nested buttons' labels instead of just KERNELS (n)
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-28T19:38:14Z @kj an element with role=button and nested native buttons takes its accessible name from its contents
+  - log: 2026-10-28T19:38:14Z @kj added
+  - log: 2026-10-28T19:38:27Z @kj closed
+  - log: 2026-10-28T19:38:36Z @kj edited evidence "make test exit 0 (Jest 83 of 83; make-test-r12.log); Galata SEC-07 asserts KERNELS (n), sections ACC-ACCORD-98 and hidden ACC-HIDDEN-52 the hidden card's '<name> hidden' name; six changed-code specs 110 of 110, --retries=0 (galata-r12-rerun.log)" -> "make test exit 0 (Jest 83 of 83; make-test-r12.log); Galata SEC-07 asserts KERNELS (n), sections ACC-ACCORD-98-HOVER-ACTIONS and hidden ACC-HIDDEN-52-SHOW-HIDDEN the hidden card's '<name> hidden' name; six changed-code specs 110 of 110, --retries=0 (galata-r12-rerun.log)"
+- [x] `DEF-PANEL-35-KERNEL-CONSOLE` **KERNELS row of another workspace's console kernel is a dead click** - MEDIUM; a KERNELS row of another workspace's console kernel does nothing; cause: a listed row fell through to a notebook-only `docmanager:open`, so a console session had no action; fix: a console session switches to its workspace; `src/panel/panel.tsx`
+  - evidence: Jest panel.spec.ts ACC-KERNEL-151-ROW-CLICK, ACC-LISTS-195-ALL-KERNELS passed, 84 of 84 in make-test-r13.log; the same case failed on the pre-fix tree with Number of calls: 0 (make-test-r13-red.log); Galata kernels, content, sections, hidden and render specs 103 of 103, --retries=0 (galata-r13.log)
+  - related: ACC-KERNEL-151-ROW-CLICK
+  - related: ACC-LISTS-195-ALL-KERNELS
+  - repro: in workspace A open KERNELS, click the row of a console kernel held only by workspace B: nothing happens
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-28T20:13:22Z @kj the listed-row guard required the holder current or a notebook session, so a console session in another workspace hit a notebook-only docmanager:open
+  - log: 2026-10-28T20:13:22Z @kj added
+  - log: 2026-10-28T20:13:31Z @kj closed: fixed: a console session falls to the row's workspace switch; Jest case added
+- [x] `DEF-PANEL-36-HIDDEN-HEADER` **An open hidden workspace card shows neither its purpose nor its counts** - MEDIUM; opening a hidden workspace card shows no purpose and no counts; cause: the second header line required `!section.hidden`; fix: it shows while the card is open, hidden or not; `src/panel/panel.tsx`
+  - evidence: Galata sections.spec.ts ACC-ACCORD-18-PURPOSE passed, 103 of 103, --retries=0 (galata-r13.log); on the pre-fix bundle the purpose locator was not found (galata-r13-red.log); make test exit 0, Jest 84 of 84, pytest 101, auth gate (make-test-r13.log)
+  - related: ACC-ACCORD-18-PURPOSE
+  - related: ACC-ACCORD-22-COUNTS
+  - repro: hide workspace A, press Show hidden workspaces, open A's card: no purpose and no counts
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-28T20:13:25Z @kj the header's second line was gated on the card being open and not hidden, though a hidden card is never current
+  - log: 2026-10-28T20:13:25Z @kj added
+  - log: 2026-10-28T20:13:31Z @kj closed: fixed: the second header line shows while the card is open, hidden or not; Galata case extended
 
 ## Functional tests `GALATA`
 

@@ -13,6 +13,7 @@ import {
   putWorkspace,
   refresh,
   rowOf,
+  sectionBody,
   sendToTerminal,
   startTerminal,
   triangle,
@@ -82,7 +83,7 @@ test('ACC-FILTER-56-TOGGLE: the filter button shows the field; pressed again it 
   }
 });
 
-test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching rows and cards show, the header reads (N of M); a workspace's name shows all its rows", async ({
+test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching cards and card rows show, the header reads (N of M), TERMINALS keeps every row; a workspace's name shows all its rows", async ({
   page,
   tmpPath
 }) => {
@@ -123,8 +124,12 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching rows and card
     await filter(page, 'claude');
     await expect(cards(page)).toHaveCount(1);
     await expect(card(page, held)).toHaveClass(/jp-mod-open/);
-    await expect(page.locator(`${PANEL} ${ROW}`)).toHaveCount(1);
+    await expect(sectionBody(page, 'workspaces').locator(ROW)).toHaveCount(1);
     await expect(rowOf(card(page, held), `terminal ${named}`)).toBeVisible();
+    // the filter narrows the cards; TERMINALS keeps the terminal that does not match
+    await expect(
+      rowOf(sectionBody(page, 'terminals'), `terminal ${plain}`)
+    ).toBeVisible();
     await expect(
       card(page, held).locator('.jp-WorkspaceManager-counts')
     ).toHaveText('(1 of 2)');
@@ -237,7 +242,11 @@ test('ACC-FILTER-139-UNMATCHED, ACC-FILTER-115-NO-MATCH: a line counts the works
 
     await field(page).fill('zzzz');
     await expect(cards(page)).toHaveCount(0);
-    await expect(notes(page)).toHaveText(['Nothing matches']);
+    // DQ-08: an empty state, and no note beside it
+    await expect(
+      sectionBody(page, 'workspaces').locator('.jp-WorkspaceManager-empty')
+    ).toHaveText(['Nothing matches']);
+    await expect(notes(page)).toHaveCount(0);
   } finally {
     await deleteWorkspaces(page, [current, ...others]);
   }

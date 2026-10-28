@@ -38,7 +38,7 @@ import {
   openIcon,
   terminalGlyph
 } from '../icons';
-import { age } from '../model/age';
+import { age, type IAge } from '../model/age';
 import { filterSections, type ICard } from '../model/filter';
 import {
   buildModel,
@@ -76,6 +76,22 @@ const EMPTY: ILoaded = {
   sessions: []
 };
 
+/** Where this browser keeps the panel sections the user closed. */
+const CLOSED_SECTIONS =
+  'jupyterlab_workspace_manager_extension:closed-sections';
+
+/** The sections closed in this browser; a missing or unreadable value, or no localStorage, means every section open. */
+function closedSections(): Set<string> {
+  try {
+    const closed = JSON.parse(
+      window.localStorage.getItem(CLOSED_SECTIONS) ?? '[]'
+    );
+    return new Set(Array.isArray(closed) ? closed : []);
+  } catch {
+    return new Set();
+  }
+}
+
 const keyOf = (section: ISection) => `w:${section.id}`;
 const dirname = (path = '') =>
   path.slice(0, Math.max(0, path.lastIndexOf('/')));
@@ -95,10 +111,10 @@ export namespace WorkspacePanel {
 /**
  * The workspace panel in the sidebar place of the Running panel: a toolbar
  * header (title and buttons; other extensions add theirs after them), the
- * filter field, then four accordion sections - WORKSPACES holding one card per
+ * filter field, then four sections - WORKSPACES holding one card per
  * workspace, KERNELS and TERMINALS with every running kernel and terminal, in a
  * workspace or not, and LANGUAGE SERVERS with the running language servers.
- * One section is open at a time. The cards are React, rendered
+ * Each section opens and closes on its own and scrolls on its own. The cards are React, rendered
  * synchronously, so a reload keeps the scroll position, the focus and every
  * open card or menu.
  */
@@ -297,17 +313,6 @@ export class WorkspacePanel
           if (changes !== this._changes) {
             return;
           }
-          // a new terminal may take a shut-down name; its fingerprint tells them apart
-          for (const [name, fingerprint] of this._shutDown) {
-            if (
-              data.terminals &&
-              !data.terminals.some(
-                t => t.name === name && t.fingerprint === fingerprint
-              )
-            ) {
-              this._shutDown.delete(name);
-            }
-          }
           this._data = { ...(this._data ?? EMPTY), ...data };
           this._last = data.last ?? this._last;
           this._error = failed.length
@@ -387,10 +392,6 @@ export class WorkspacePanel
     }
     const model = buildModel({
       ...data,
-      // the server lists a terminal shut down here until its pty closes
-      terminals: data.terminals.filter(
-        t => !t.fingerprint || this._shutDown.get(t.name) !== t.fingerprint
-      ),
       records,
       specs: this._app.serviceManager.kernelspecs.specs,
       current: this._current,
@@ -464,16 +465,22 @@ export class WorkspacePanel
   private _setQuery(query: string): void {
     this._query = query;
     this._closedInFilter.clear();
-    // the filter shows the workspace cards: its section opens as the query starts
-    if (query.trim()) {
-      this._section = 'workspaces';
-    }
     this._render();
   }
 
-  /** A section header: it opens and closes the open one; a second click closes it. */
+  /** A section header: it opens or closes its section only; the open state outlives the page. */
   private _toggleSection(key: string): void {
-    this._section = this._section === key ? null : key;
+    if (!this._closedSections.delete(key)) {
+      this._closedSections.add(key);
+    }
+    try {
+      window.localStorage.setItem(
+        CLOSED_SECTIONS,
+        JSON.stringify([...this._closedSections])
+      );
+    } catch {
+      // not stored: the state lasts as long as this page
+    }
     this._render();
   }
 
@@ -542,7 +549,7 @@ export class WorkspacePanel
                   <div className="jp-WorkspaceManager-empty">No workspaces</div>
                 )}
                 {filtering && !cards.length && (
-                  <div className="jp-WorkspaceManager-note">
+                  <div className="jp-WorkspaceManager-empty">
                     Nothing matches
                   </div>
                 )}
@@ -574,7 +581,9 @@ export class WorkspacePanel
               'terminals',
               'TERMINALS',
               terminals.length,
-              terminals.map(t => this._terminalRow(holder(t.alsoIn), t, now)),
+              terminals.map(t =>
+                this._terminalRow(holder(t.alsoIn), t, now, true)
+              ),
               'terminals'
             )}
             {this._renderSection(
@@ -597,6 +606,15 @@ export class WorkspacePanel
     if (target) {
       target.scrollIntoView?.({ block: 'nearest' });
       this._scrollTo = null;
+    }
+    // the selection lasts while its row is shown
+    if (
+      this._selected &&
+      !this.content.node.querySelector(
+        '.jp-WorkspaceManager-row.jp-mod-selected'
+      )
+    ) {
+      this._selected = null;
     }
     // one tab stop per list: the row focused last, else the first
     this.content.node.querySelectorAll(LIST).forEach(list => {
@@ -643,9 +661,9 @@ export class WorkspacePanel
   }
 
   /**
-   * One accordion section: the header carries the label, the count and, for the
-   * sections below WORKSPACES, a Shut down all; only the open section shows its body,
-   * and one of those three with nothing in it says so.
+   * One section: the header carries the label, the count and, for the
+   * sections below WORKSPACES, a Shut down all; an open section shows its body,
+   * which scrolls on its own, and one of those three with nothing in it says so.
    */
   private _renderSection(
     key: string,
@@ -654,7 +672,7 @@ export class WorkspacePanel
     body: React.ReactNode,
     shutdown?: 'servers' | 'terminals' | 'kernels'
   ): React.ReactElement {
-    const open = this._section === key;
+    const open = !this._closedSections.has(key);
     return (
       <div
         key={key}
@@ -665,6 +683,7 @@ export class WorkspacePanel
           className="jp-WorkspaceManager-sectionHeader"
           role="button"
           tabIndex={0}
+          aria-label={`${label} (${n})`}
           aria-expanded={open}
           onClick={() => this._toggleSection(key)}
           onKeyDown={e => {
@@ -749,9 +768,10 @@ export class WorkspacePanel
         data-workspace={id}
       >
         <div
-          className="jp-WorkspaceManager-cardHeader"
+          className={`jp-WorkspaceManager-cardHeader ${when.mod}`.trim()}
           role="button"
           tabIndex={0}
+          aria-label={section.hidden ? `${name} hidden` : name}
           aria-expanded={switches ? undefined : open}
           title={section.purpose ? `${name}\n${section.purpose}` : name}
           draggable={!filtering}
@@ -778,44 +798,42 @@ export class WorkspacePanel
           <div className="jp-WorkspaceManager-headerLine">
             {caret(open, () => this._toggle(key))}
             <span className="jp-WorkspaceManager-name">{name}</span>
-            {!open && !section.hidden && (
-              <span className="jp-WorkspaceManager-hoverActions">
-                {iconButton(
-                  openIcon,
-                  'Open workspace',
-                  () => void this._openWorkspace(section),
-                  section.current
-                )}
-                {iconButton(
-                  closeTabsIcon,
-                  'Close all tabs',
-                  () => void this._closeAll(section)
-                )}
-              </span>
-            )}
             {section.hidden ? (
-              <>
-                <span className="jp-WorkspaceManager-hiddenWord">hidden</span>
-                {iconButton(
-                  eyeOffIcon,
-                  'Show workspace again',
-                  () => void this._store(id, { hidden: false })
-                )}
-              </>
+              <span className="jp-WorkspaceManager-hiddenWord">hidden</span>
             ) : (
-              <span className={when.className}>
-                {when.dot && (
-                  <span className="jp-WorkspaceManager-dot jp-mod-busy" />
-                )}
-                {when.label}
-              </span>
+              <span className="jp-WorkspaceManager-age">{when.label}</span>
             )}
-            {!section.hidden &&
-              iconButton(ellipsesIcon, 'Workspace menu', e =>
-                this._openMenu(section, e.currentTarget as HTMLElement)
+            {/* every button on every card; one that does not apply is disabled (DQ-12) */}
+            <span className="jp-WorkspaceManager-cardActions">
+              {iconButton(
+                openIcon,
+                'Open workspace',
+                () => void this._openWorkspace(section),
+                section.current
               )}
+              {iconButton(
+                closeTabsIcon,
+                'Close all tabs',
+                () => void this._closeAll(section)
+              )}
+              {iconButton(
+                section.hidden ? eyeIcon : eyeOffIcon,
+                section.hidden ? 'Show workspace again' : 'Hide workspace',
+                () => void this._store(id, { hidden: !section.hidden }),
+                section.current,
+                undefined,
+                section.hidden
+              )}
+              {iconButton(
+                ellipsesIcon,
+                'Workspace menu',
+                e => this._openMenu(section, e.currentTarget as HTMLElement),
+                section.hidden
+              )}
+            </span>
           </div>
-          {!section.hidden && (
+          {/* the purpose and the counts show while the card is open, its selection (DQ-17) */}
+          {open && (
             <div className="jp-WorkspaceManager-headerLine">
               <span className="jp-WorkspaceManager-purpose">
                 {section.purpose}
@@ -880,6 +898,20 @@ export class WorkspacePanel
     );
   }
 
+  /** The selection of the row `key` of the list `list`: the panel has one selected row (DQ-17). */
+  private _selection(list: string, key: string) {
+    const id = `${list}/${key}`;
+    return {
+      selected: this._selected === id,
+      select: () => {
+        if (this._selected !== id) {
+          this._selected = id;
+          this._render();
+        }
+      }
+    };
+  }
+
   private _tabRow(section: ISection, tab: ITabRow): React.ReactElement {
     const live = section.current ? this._live.get(tab.key)?.[0] : undefined;
     const icon = tab.path
@@ -890,10 +922,10 @@ export class WorkspacePanel
         : fileIcon;
     return row({
       key: tab.key,
+      ...this._selection(keyOf(section), tab.key),
       icon,
       label: tab.label,
-      detail: dirname(tab.path),
-      folder: true,
+      detail: [[[dirname(tab.path), CODE]]],
       title: tab.path ?? '',
       open: () => this._openRow(section, tab.key),
       menu: [
@@ -910,29 +942,32 @@ export class WorkspacePanel
     /** null for a terminal in no workspace */
     section: ISection | null,
     t: ITerminalRow,
-    now: number
+    now: number,
+    /** a row of the TERMINALS section */
+    listed = false
   ): React.ReactElement {
     const when = age(t.lastActivity, now);
+    const key = `terminal:${t.name}`;
     return row({
-      key: `terminal:${t.name}`,
+      key,
+      ...this._selection(listed ? 'terminals' : keyOf(section!), key),
       icon: terminalGlyph,
-      label: t.process ?? `terminal ${t.name}`,
-      detail: t.process ? `terminal ${t.name}` : '',
+      label: `terminal ${t.name}`,
+      code: true,
+      detail: [[[t.process ?? '', '']]],
       title: lines(`terminal ${t.name}`, t.process, when.label),
-      age: (
-        <span className={when.className}>
-          {when.dot && <span className="jp-WorkspaceManager-dot jp-mod-busy" />}
-          {when.label}
-        </span>
-      ),
+      when,
+      // this window's row or a TERMINALS row activates the tab of its terminal;
+      // a row of another workspace's card opens that workspace
       open: () =>
-        section === null
-          ? void this._app.commands.execute('terminal:open', { name: t.name })
-          : this._openRow(section, `terminal:${t.name}`),
+        section !== null && !listed && !section.current
+          ? this._openRow(section, key)
+          : void this._openTerminal(t.name),
       menu: [
         {
           label: 'Shut down terminal',
           icon: closeIcon,
+          danger: true,
           execute: () => void this._shutDownTerminal(t, section)
         }
       ]
@@ -944,38 +979,46 @@ export class WorkspacePanel
     section: ISection | null,
     k: IKernelRow,
     now: number,
-    /** a row of the KERNELS section: the path, the state, the memory and the CPU in place of the file name and the age */
+    /** a row of the KERNELS section: its detail adds the memory and the CPU */
     listed = false
   ): React.ReactElement {
     const figures = this._data?.resources[k.id];
+    const key = `kernel:${k.id}`;
     return row({
-      key: `kernel:${k.id}`,
+      key,
+      ...this._selection(listed ? 'kernels' : keyOf(section!), key),
       icon: kernelIcon,
-      label: k.label,
-      detail: listed
-        ? k.path.slice(0, k.path.lastIndexOf('/') + 1) + k.detail
-        : k.detail,
-      path: listed,
+      // the file name of its notebook or console, the id with no session
+      label: k.detail || k.id,
+      code: !k.detail,
+      state: { word: k.state ?? 'unknown', dot: k.dotClass },
+      when: age(k.lastActivity, now),
+      // the path on a line of its own: the kernel type and the folder give way, the file name last (KERN-02)
+      detail: [
+        [
+          [k.label, SHRINK],
+          ...(listed
+            ? ([
+                [formatMemory(figures?.memory), ''],
+                [formatCpu(figures?.cpu), '']
+              ] as [string, string][])
+            : [])
+        ],
+        [
+          [k.path.slice(0, k.path.lastIndexOf('/') + 1), FOLDER],
+          [k.path && k.detail, CODE]
+        ]
+      ],
       title: k.title,
-      age: listed ? (
-        <span className="jp-WorkspaceManager-age">
-          <span className={k.dotClass} />
-          <span>{k.state}</span>
-          <span>{formatMemory(figures?.memory)}</span>
-          <span>{formatCpu(figures?.cpu)}</span>
-        </span>
-      ) : (
-        <span className={age(k.lastActivity, now).className}>
-          <span className={k.dotClass} />
-          {age(k.lastActivity, now).label}
-        </span>
-      ),
       open: () => {
-        if (section !== null) {
+        const session = this._data?.sessions.find(s => s.kernel?.id === k.id);
+        if (
+          section !== null &&
+          (!listed || section.current || session?.type !== 'notebook')
+        ) {
           this._openRow(section, `notebook:${k.path}`, `console:${k.path}`);
           return;
         }
-        const session = this._data?.sessions.find(s => s.kernel?.id === k.id);
         if (session?.type === 'notebook' && k.path) {
           void this._app.commands.execute('docmanager:open', { path: k.path });
         }
@@ -984,6 +1027,7 @@ export class WorkspacePanel
         {
           label: 'Shut down kernel',
           icon: closeIcon,
+          danger: true,
           execute: () => void this._shutDownKernel(k, section)
         }
       ]
@@ -1010,6 +1054,7 @@ export class WorkspacePanel
           return [
             row({
               key: `${key}:${i}`,
+              ...this._selection('servers', `${key}:${i}`),
               icon:
                 typeof icon === 'string' ? (
                   <img
@@ -1021,7 +1066,7 @@ export class WorkspacePanel
                   icon
                 ),
               label: item.label(),
-              detail: item.detail?.() ?? '',
+              detail: [[[item.detail?.() ?? '', '']]],
               title: languageServerTitle(item),
               child,
               shutdown: item.shutdown && {
@@ -1083,9 +1128,7 @@ export class WorkspacePanel
       if (kind === 'terminals') {
         await Promise.all(
           model.terminals.map(x =>
-            this._app.serviceManager.terminals
-              .shutdown(x.name)
-              .then(() => this._shutDown.set(x.name, x.fingerprint))
+            this._app.serviceManager.terminals.shutdown(x.name)
           )
         );
       } else {
@@ -1175,6 +1218,48 @@ export class WorkspacePanel
     }
   }
 
+  /** The terminal session of a shell widget, while its connection is open. */
+  private _openSession(widget: Widget): { name?: string } | undefined {
+    const w = widget as any;
+    const session = w.content?.hasClass?.('jp-Terminal')
+      ? w.content.session
+      : undefined;
+    // JupyterLab disposes the connection when terminado says the process ended
+    return session && !session.isDisposed ? session : undefined;
+  }
+
+  /** The tab of a terminal: the one a row opened, else one this window still has open. */
+  private _terminalView(name: string): Widget | undefined {
+    const kept = this._terminalTab.get(name);
+    if (kept && !kept.isDisposed && this._openSession(kept)?.name === name) {
+      return kept;
+    }
+    this._terminalTab.delete(name);
+    for (const area of ['main', 'down']) {
+      for (const widget of this._app.shell.widgets(area)) {
+        if (this._openSession(widget)?.name === name) {
+          return widget;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** A terminal row: activate the tab of its terminal, or open one. */
+  private async _openTerminal(name: string): Promise<void> {
+    // terminal:open cannot be used: it would activate the tab of an ended
+    // connection that a new terminal of the same name has taken over from
+    const view =
+      this._terminalView(name) ??
+      ((await this._app.commands.execute('terminal:create-new', {
+        name
+      })) as Widget | undefined);
+    if (view) {
+      this._terminalTab.set(name, view);
+      this._app.shell.activateById(view.id);
+    }
+  }
+
   private async _closeAll(section: ISection): Promise<void> {
     const id = section.id;
     await this._act(async () => {
@@ -1188,7 +1273,9 @@ export class WorkspacePanel
           `Close all tabs of ${id}?`,
           `The workspace holds ${n} ${n === 1 ? 'terminal' : 'terminals'}. ` +
             'They keep running without a tab, and the culler may then shut them down after its idle time.',
-          'Close all tabs'
+          'Close all tabs',
+          // closing tabs destroys nothing: the terminals keep running
+          false
         ))
       ) {
         return;
@@ -1278,7 +1365,6 @@ export class WorkspacePanel
     }
     await this._act(async () => {
       await this._app.serviceManager.terminals.shutdown(t.name);
-      this._shutDown.set(t.name, t.fingerprint);
     });
   }
 
@@ -1418,12 +1504,12 @@ export class WorkspacePanel
   private _loading: Promise<void> | null = null;
   /** user actions ended so far; a load started before the last one is discarded */
   private _changes = 0;
-  /** name to fingerprint of terminals this panel shut down, kept while a load lists both */
-  private _shutDown = new Map<string, string | null | undefined>();
   private _timer = 0;
   private _tabsTimer = 0;
   /** the views of each open tab key; two views of one document share a key */
   private _live = new Map<string, Widget[]>();
+  /** the tab a terminal row opened or activated, by terminal name */
+  private _terminalTab = new Map<string, Widget>();
   /** colours this page gave to workspaces whose record has none */
   private _colours: { [id: string]: Colour } = {};
   /** the colour given last, as the server keeps it for every window */
@@ -1434,9 +1520,11 @@ export class WorkspacePanel
   private _dragged: string | null = null;
   private _dropLine: { id: string; after: boolean } | null = null;
 
-  /** the open section of the accordion: one at a time, WORKSPACES first */
-  private _section: string | null = 'workspaces';
+  /** the sections the user closed; every other section is open */
+  private _closedSections = closedSections();
   private _open: string | null = null;
+  /** the selected row: its list and its key */
+  private _selected: string | null = null;
   private _scrollTo: string | null = null;
   private _query = '';
   private _filterShown = false;
@@ -1461,28 +1549,37 @@ function pressed(widget: Widget, on: boolean): void {
   widget.node.setAttribute('aria-pressed', String(on));
 }
 
-/** A button inside a card header: its click and keys never reach the header; `expanded` makes it the triangle. */
+/**
+ * A button inside a card header: its click, Enter and Space never reach the header; the arrow keys
+ * do, so they move the focus between rows. `expanded` makes it the triangle, `pressed` a toggle.
+ */
 function iconButton(
   icon: LabIcon,
   label: string,
   onClick: (e: React.MouseEvent) => void,
   disabled = false,
-  expanded?: boolean
+  expanded?: boolean,
+  pressed?: boolean
 ): React.ReactElement {
   return (
     <button
-      className={`jp-WorkspaceManager-iconButton${expanded === undefined ? '' : ' jp-WorkspaceManager-caret'}`}
+      className={`jp-WorkspaceManager-iconButton${expanded === undefined ? '' : ' jp-WorkspaceManager-caret'}${pressed ? ' jp-mod-active' : ''}`}
       title={label}
       aria-label={label}
       aria-expanded={expanded}
+      aria-pressed={pressed}
       disabled={disabled}
-      // a click leaves the focus where it was, so it leaves no hover icons shown
+      // a click leaves the focus where it was, so a row's shutdown button hides when the pointer leaves
       onMouseDown={e => e.preventDefault()}
       onClick={e => {
         e.stopPropagation();
         onClick(e);
       }}
-      onKeyDown={e => e.stopPropagation()}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.stopPropagation();
+        }
+      }}
     >
       <icon.react tag="span" />
     </button>
@@ -1563,30 +1660,60 @@ function moveFocus(from: HTMLElement, step: number): void {
   rows[rows.indexOf(from) + step]?.focus();
 }
 
+/** The classes of a detail part: an identifier in the code font (DQ-18), a part that gives way first, a folder of a path cut at its start. */
+const CODE = 'jp-WorkspaceManager-code';
+const SHRINK = 'jp-mod-shrink';
+const FOLDER = `${CODE} ${SHRINK} jp-WorkspaceManager-folder`;
+
+/**
+ * A row: its type icon, its name, a kernel's state dot and word, its time; selected, the lines of
+ * its details under them (DQ-17). Its focus, by a click or the arrow keys, selects it.
+ */
 function row(props: {
   key: string;
+  /** the panel's one selected row */
+  selected: boolean;
+  select: () => void;
   icon: LabIcon | React.ReactElement;
   label: React.ReactNode;
-  detail: string;
-  /** the detail is a folder: it shortens before the label does */
-  folder?: boolean;
-  /** the detail is a path: cut at its start, so its file name shows whole */
-  path?: boolean;
+  /** the label is an identifier: the code font */
+  code?: boolean;
+  /** a kernel's state: its word stands in the line, the title and the dot's aria-label (DQ-13) */
+  state?: { word: string; dot: string };
+  /** the time since the last activity, and its recent or stale emphasis (DQ-09) */
+  when?: IAge;
+  /** the detail lines while selected: each part's text and classes; an empty part, and a line of none, is left out */
+  detail?: [string, string][][];
   title: string;
-  age?: React.ReactElement;
   /** a child row of an item of another extension's section: indented */
   child?: boolean;
   /** the shutdown button of an item of another extension's section */
   shutdown?: { label: string; icon: LabIcon; execute: () => void };
   open: () => void;
-  menu?: { label: string; icon: LabIcon; execute: () => void }[];
+  menu?: {
+    label: string;
+    icon: LabIcon;
+    execute: () => void;
+    /** a destructive entry: the error-coloured label and icon (DQ-11) */
+    danger?: boolean;
+  }[];
 }): React.ReactElement {
-  const { icon, menu, shutdown } = props;
-  const file = props.detail.lastIndexOf('/') + 1;
+  const { icon, menu, shutdown, state, when } = props;
+  const detail = props.selected
+    ? (props.detail ?? [])
+        .map(line => line.filter(([text]) => text))
+        .filter(line => line.length)
+    : [];
+  const classes = [
+    'jp-WorkspaceManager-row',
+    props.child ? 'jp-mod-child' : '',
+    props.selected ? 'jp-mod-selected' : '',
+    when?.mod ?? ''
+  ];
   return (
     <div
       key={props.key}
-      className={`jp-WorkspaceManager-row${props.child ? ' jp-mod-child' : ''}`}
+      className={classes.filter(Boolean).join(' ')}
       // the list's tab stop is set on the DOM (_render), where React never resets it
       tabIndex={-1}
       title={props.title}
@@ -1595,6 +1722,7 @@ function row(props: {
         for (const r of list ? rowsOf(list) : []) {
           r.tabIndex = r === e.currentTarget ? 0 : -1;
         }
+        props.select();
       }}
       onClick={props.open}
       onKeyDown={e => {
@@ -1624,26 +1752,28 @@ function row(props: {
       ) : (
         icon
       )}
-      <span className="jp-WorkspaceManager-rowLabel">{props.label}</span>
-      {props.detail &&
-        (props.path ? (
-          <span className="jp-WorkspaceManager-rowDetail jp-WorkspaceManager-rowPath">
-            {file > 0 && (
-              <span className="jp-WorkspaceManager-rowPathFolder">
-                {props.detail.slice(0, file)}
-              </span>
-            )}
-            <span>{props.detail.slice(file)}</span>
-          </span>
-        ) : (
-          <span
-            className={`jp-WorkspaceManager-rowDetail${props.folder ? ' jp-WorkspaceManager-rowFolder' : ''}`}
-          >
-            {props.detail}
-          </span>
-        ))}
-      {props.age}
+      <span
+        className={`jp-WorkspaceManager-rowLabel${props.code ? ` ${CODE}` : ''}`}
+      >
+        {props.label}
+      </span>
+      {state && (
+        <span className="jp-WorkspaceManager-state">
+          <span className={state.dot} role="img" aria-label={state.word} />
+          {state.word}
+        </span>
+      )}
+      {when && <span className="jp-WorkspaceManager-age">{when.label}</span>}
       {shutdown && iconButton(shutdown.icon, shutdown.label, shutdown.execute)}
+      {detail.map((line, i) => (
+        <span key={`detail-${i}`} className="jp-WorkspaceManager-rowDetail">
+          {line.map(([text, classes], j) => (
+            <span key={j} className={classes || undefined}>
+              {text}
+            </span>
+          ))}
+        </span>
+      ))}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   PANEL,
   putWorkspace,
   refresh,
+  sectionBody,
   triangle,
   UNDER_LOAD
 } from './helpers';
@@ -209,8 +210,8 @@ test('ACC-PANEL-146-NEW-STAY: after Create the window stays and the new card is 
     await gotoWorkspace(page, current);
     await openPanel(page);
     await refresh(page);
-    // the new card comes last (ACC-ACCORD-198): scroll the list to its top first
-    const list = page.locator(`${PANEL} .jp-WorkspaceManager-list`);
+    // the new card comes last (ACC-ACCORD-198): scroll the WORKSPACES list to its top first
+    const list = sectionBody(page, 'workspaces');
     await list.evaluate(n => (n.scrollTop = 0));
     await expect(cards(page).last()).not.toBeInViewport();
     const url = page.url();

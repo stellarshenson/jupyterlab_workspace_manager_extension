@@ -4,7 +4,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import psutil
 import pytest
 
 NAMESPACE = "jupyterlab-workspace-manager-extension"
@@ -47,77 +46,40 @@ async def wait_for_process(jp_fetch, name, expected):
 
 
 async def test_two_terminals_with_their_fields(jp_fetch, jp_serverapp):
-    """ACC-SERVER-62, ACC-TERM-200: both terminals with name, last_activity, process and pty fingerprint."""
+    """ACC-SERVER-62, ACC-TERM-200: both terminals with name, last_activity and process; no fingerprint."""
     names = {await new_terminal(jp_fetch), await new_terminal(jp_fetch)}
     for name in names:
         assert await wait_for_process(jp_fetch, name, "bash") == "bash"
 
     terminals = await get_terminals(jp_fetch)
 
-    manager = jp_serverapp.web_app.settings["terminal_manager"]
     assert {t["name"] for t in terminals} == names
     for terminal in terminals:
-        assert set(terminal) == {"name", "last_activity", "process", "fingerprint"}
+        assert set(terminal) == {"name", "last_activity", "process"}
         datetime.fromisoformat(terminal["last_activity"])
         assert terminal["process"] == "bash"
-        pid = manager.terminals[terminal["name"]].ptyproc.pid
-        assert terminal["fingerprint"] == f"{pid}:{psutil.Process(pid).create_time()}"
-    assert len({t["fingerprint"] for t in terminals}) == 2
 
 
-async def test_reused_name_gets_another_fingerprint(jp_fetch):
-    """ACC-TERM-200: a new terminal that takes a shut-down terminal's name has another fingerprint."""
-    name = await new_terminal(jp_fetch)
-    [old] = await get_terminals(jp_fetch)
-    await jp_fetch("api", "terminals", name, method="DELETE")
-    # the server lists a shut-down terminal until its pty closes
-    for _ in range(200):
-        if not await get_terminals(jp_fetch):
-            break
-        await asyncio.sleep(0.1)
-
-    assert await new_terminal(jp_fetch) == name
-    [new] = await get_terminals(jp_fetch)
-    assert new["fingerprint"] != old["fingerprint"]
-
-
-async def test_fingerprint_without_start_time(jp_fetch, jp_serverapp, monkeypatch):
-    """ACC-TERM-200: the bare pid when the start time cannot be read."""
-    name = await new_terminal(jp_fetch)
-
-    def refuse(pid):
-        raise psutil.AccessDenied(pid)
-
-    monkeypatch.setattr(psutil, "Process", refuse)
-
-    [terminal] = await get_terminals(jp_fetch)
-    pid = jp_serverapp.web_app.settings["terminal_manager"].terminals[name].ptyproc.pid
-    assert terminal["fingerprint"] == str(pid)
-
-
-async def test_fingerprint_kept_while_listed_after_delete(jp_fetch, jp_serverapp, tmp_path):
-    """ACC-TERM-200: the server lists a shut-down terminal until its pty closes, with the same fingerprint."""
-    name = await new_terminal(jp_fetch)
-    pid = jp_serverapp.web_app.settings["terminal_manager"].terminals[name].ptyproc.pid
+async def test_ended_terminal_left_out(jp_fetch, jp_serverapp, tmp_path):
+    """ACC-TERM-200: the route leaves out a terminal whose pty has ended; a live one stays."""
+    ended = await new_terminal(jp_fetch)
+    live = await new_terminal(jp_fetch)
     held = tmp_path / "held"
     # a job that ignores SIGHUP holds the pty open after the shell ends, until the test removes `held`
-    type_into(jp_serverapp, name, f"(trap '' HUP; touch {held}; while [ -e {held} ]; do sleep 0.1; done) &\r")
+    type_into(jp_serverapp, ended, f"(trap '' HUP; touch {held}; while [ -e {held} ]; do sleep 0.1; done) &\r")
     try:
         for _ in range(200):
             if held.exists():
                 break
             await asyncio.sleep(0.1)
-        [before] = await get_terminals(jp_fetch)
 
-        response = await jp_fetch("api", "terminals", name, method="DELETE")
+        response = await jp_fetch("api", "terminals", ended, method="DELETE")
 
         assert response.code == 204
-        # terminado reaps the shell before the 204, so its start time can no longer be read
-        assert not psutil.pid_exists(pid)
-        for _ in range(3):
-            listed = [(t["name"], t["fingerprint"]) for t in await get_terminals(jp_fetch)]
-            assert listed == [(name, before["fingerprint"])]
-            await asyncio.sleep(0.1)
+        # terminado keeps listing the shut-down name until its pty closes
+        manager = jp_serverapp.web_app.settings["terminal_manager"]
+        assert ended in manager.terminals
+        assert [t["name"] for t in await get_terminals(jp_fetch)] == [live]
     finally:
         held.unlink(missing_ok=True)
 

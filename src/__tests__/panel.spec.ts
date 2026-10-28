@@ -4,7 +4,7 @@ import { PageConfig } from '@jupyterlab/coreutils';
 import { RunningSessionManagers } from '@jupyterlab/running';
 import { ServerConnection } from '@jupyterlab/services';
 import {
-  acceptDialog,
+  dangerDialog,
   dismissDialog,
   waitForDialog
 } from '@jupyterlab/testutils';
@@ -308,7 +308,12 @@ const header = (panel: Widget, key: string) =>
 /** The triangle of a card: it opens or closes the card. */
 const triangle = (panel: Widget, key: string) =>
   header(panel, key).querySelector<HTMLElement>('.jp-WorkspaceManager-caret')!;
-/** A section of the accordion: workspaces, kernels, terminals or servers. */
+/** The TABS, TERMINALS or KERNELS group of an open card. */
+const group = (root: HTMLElement, label: string) =>
+  Array.from(
+    root.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-group')
+  ).find(g => g.firstElementChild!.textContent!.startsWith(label))!;
+/** A section of the panel: workspaces, kernels, terminals or servers. */
 const section = (panel: Widget, key: string) =>
   $(panel, `[data-section="${key}"]`);
 const sectionHeader = (panel: Widget, key: string) =>
@@ -343,6 +348,9 @@ afterEach(() => {
   panels = [];
   document.body.innerHTML = '';
   jest.useRealTimers();
+  jest.restoreAllMocks();
+  // the open state of the sections is kept here
+  localStorage.clear();
 });
 
 describe('panel', () => {
@@ -459,9 +467,55 @@ describe('panel', () => {
     await settle();
     expect(shutdownAll).not.toHaveBeenCalled();
     all.click();
-    await acceptDialog();
+    await dangerDialog();
     await settle();
     expect(shutdownAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACC-PANEL-207-BUTTON-ARROWS: ArrowDown and ArrowUp pressed on a row button move the focus between rows; Enter and Space on the button stay with it and do not open the row', async () => {
+    const managers = new RunningSessionManagers();
+    const shutdown = jest.fn();
+    const open = jest.fn();
+    managers.add({
+      ...manager('Language servers', []),
+      running: () => [
+        { label: () => 'pylsp (python)', icon: () => '', shutdown, open },
+        { label: () => 'bash-lsp (bash)', icon: () => '', shutdown, open }
+      ],
+      shutdownLabel: 'Shut Down'
+    });
+    const { panel } = await mount(standard(), { managers });
+    const rows = Array.from(
+      openSection(panel, 'servers').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    const button = (row: HTMLElement) =>
+      row.querySelector<HTMLElement>('button')!;
+    const key = (target: HTMLElement, name: string) =>
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: name,
+          bubbles: true,
+          cancelable: true
+        })
+      );
+
+    button(rows[0]).focus();
+    key(button(rows[0]), 'ArrowDown');
+    expect(document.activeElement).toBe(rows[1]);
+    key(button(rows[1]), 'ArrowUp');
+    expect(document.activeElement).toBe(rows[0]);
+
+    // Enter and Space stay with the button: the row's own Enter does not open it
+    button(rows[0]).focus();
+    key(button(rows[0]), 'Enter');
+    key(button(rows[0]), ' ');
+    expect(open).not.toHaveBeenCalled();
+    // the browser activates the button; its click shuts that server down and opens nothing
+    button(rows[0]).click();
+    expect(shutdown).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('ACC-PANEL-157-OTHERS-ACTIONS: a row of the KERNELS and TERMINALS sections keeps its shutdown action, and each section header carries Shut down all', async () => {
@@ -535,7 +589,7 @@ describe('panel', () => {
     expect(dialogText()).toContain('Shut down 3 terminals.');
     // while the dialog is open, terminal 9 ends
     server.terminals = server.terminals.filter(t => t.name !== '9');
-    await acceptDialog();
+    await dangerDialog();
     await settle();
     expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([
       ['1'],
@@ -567,6 +621,61 @@ describe('panel', () => {
     }
   });
 
+  it('ACC-PANEL-182-SECTION-HEADS: every section starts open; a header click closes or opens its section only; a new panel keeps the state', async () => {
+    const { panel } = await mount(standard());
+    const expanded = (p: Widget) =>
+      ['workspaces', 'kernels', 'terminals', 'servers'].map(key =>
+        sectionHeader(p, key).getAttribute('aria-expanded')
+      );
+    expect(expanded(panel)).toEqual(['true', 'true', 'true', 'true']);
+    expect($$(panel, '.jp-WorkspaceManager-sectionBody')).toHaveLength(4);
+    sectionHeader(panel, 'kernels').click();
+    expect(expanded(panel)).toEqual(['true', 'false', 'true', 'true']);
+    expect(
+      section(panel, 'kernels')!.querySelector(
+        '.jp-WorkspaceManager-sectionBody'
+      )
+    ).toBeNull();
+    sectionHeader(panel, 'terminals').click();
+    expect(expanded(panel)).toEqual(['true', 'false', 'false', 'true']);
+    sectionHeader(panel, 'terminals').click();
+    expect(expanded(panel)).toEqual(['true', 'false', 'true', 'true']);
+    // the next page of this browser
+    const { panel: next } = await mount(standard());
+    expect(expanded(next)).toEqual(['true', 'false', 'true', 'true']);
+  });
+
+  it('ACC-PANEL-208-SECTION-STORE: a localStorage that throws, or an unreadable stored state, opens every section, and a click still closes one', async () => {
+    const expanded = (p: Widget) =>
+      ['workspaces', 'kernels', 'terminals', 'servers'].map(key =>
+        sectionHeader(p, key).getAttribute('aria-expanded')
+      );
+    const failing = [
+      jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('denied');
+      }),
+      jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied');
+      })
+    ];
+    const { panel } = await mount(standard());
+    expect(expanded(panel)).toEqual(['true', 'true', 'true', 'true']);
+    sectionHeader(panel, 'kernels').click();
+    expect(expanded(panel)).toEqual(['true', 'false', 'true', 'true']);
+    failing.forEach(spy => spy.mockRestore());
+
+    for (const stored of ['{', '{"kernels": false}']) {
+      localStorage.setItem(
+        'jupyterlab_workspace_manager_extension:closed-sections',
+        stored
+      );
+      const { panel: other } = await mount(standard());
+      expect(expanded(other)).toEqual(['true', 'true', 'true', 'true']);
+      sectionHeader(other, 'servers').click();
+      expect(expanded(other)).toEqual(['true', 'true', 'true', 'false']);
+    }
+  });
+
   it('ACC-LISTS-194-ALL-TERMINALS, ACC-LISTS-195-ALL-KERNELS: TERMINALS and KERNELS list what a workspace holds too; such a row acts as in its card; the card counts stay', async () => {
     const server = standard();
     // terminal 2 open in this window; the kernel's notebook is in auto-6
@@ -590,6 +699,7 @@ describe('panel', () => {
     };
     const { panel, app } = await mount(server, { live: [tab] });
     const execute = jest.spyOn(app.commands, 'execute');
+    app.commands.addCommand('docmanager:open', { execute: () => undefined });
 
     const terminals = Array.from(
       openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
@@ -611,14 +721,182 @@ describe('panel', () => {
       )
     );
     expect(kernels.map(r => r.title.split('\n')[0])).toEqual([PYTHON]);
+    // a kernel held only by auto-6: its KERNELS row opens the notebook here, no switch
+    const openWorkspace = jest.spyOn(panel as any, '_openWorkspace');
+    kernels[0].click();
+    expect(execute).toHaveBeenCalledWith('docmanager:open', {
+      path: 'a.ipynb'
+    });
+    expect(openWorkspace).not.toHaveBeenCalled();
 
     openSection(panel, 'workspaces');
-    const counts = (key: string) =>
-      Array.from(
+    // DQ-17: a card shows its counts while it is open
+    const counts = (key: string) => {
+      triangle(panel, key).click();
+      return Array.from(
         header(panel, key).querySelectorAll('.jp-WorkspaceManager-count')
       ).map(c => c.textContent);
+    };
     expect(counts('w:auto-6')).toEqual(['1', '1', '1']);
     expect(counts('w:default')).toEqual(['0', '1', '0']);
+  });
+
+  it('ACC-KERNEL-151-ROW-CLICK, ACC-LISTS-195-ALL-KERNELS: a KERNELS row of a console kernel held by another workspace switches to that workspace', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'Console 1',
+      path: 'console-1-7f3a',
+      type: 'console',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, ['console:console-1-7f3a']);
+    const { panel } = await mount(server);
+    const rows = Array.from(
+      openSection(panel, 'kernels').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    expect(
+      rows.map(
+        r => r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+      )
+    ).toEqual(['Console 1']);
+    // a console has no tab here: the row switches to the workspace that holds it
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    rows[0].click();
+    expect(openWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'auto-6' })
+    );
+  });
+
+  it('ACC-TERM-215-TAB-MATCH: a terminal row activates the tab of its running terminal, never the kept tab of an ended one; without such a tab it opens one', async () => {
+    const server = standard();
+    server.terminals.push({ name: '2', last_activity: iso(0), process: 'vim' });
+    // both terminals ended and left their tabs open: the connection is disposed
+    const ended = (name: string) => {
+      const tab = new Widget();
+      tab.id = `stale-${name}`;
+      (tab as any).content = {
+        hasClass: (c: string) => c === 'jp-Terminal',
+        session: { name, isDisposed: true }
+      };
+      return tab;
+    };
+    const created: Widget[] = [];
+    const { panel, app } = await mount(server, {
+      live: [ended('1'), ended('2')]
+    });
+    // terminal:open would activate the kept tab of an ended connection: the rows must not use it
+    const opened: string[] = [];
+    app.commands.addCommand('terminal:open', {
+      execute: (args: any) => {
+        opened.push(args.name);
+      }
+    });
+    app.commands.addCommand('terminal:create-new', {
+      execute: (args: any) => {
+        const tab = new Widget();
+        tab.id = `new-${args.name}`;
+        (tab as any).content = {
+          hasClass: (c: string) => c === 'jp-Terminal',
+          session: { name: args.name }
+        };
+        created.push(tab);
+        return tab;
+      }
+    });
+
+    // this window's card: terminal 1 has a row, from its kept tab, though that tab is stale
+    if (!card(panel, 'w:default').classList.contains('jp-mod-open')) {
+      triangle(panel, 'w:default').click();
+    }
+    const cardRow = Array.from(
+      card(panel, 'w:default').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title.startsWith('terminal 1'))!;
+    cardRow.click();
+    await settle();
+    expect(app.shell.activateById).toHaveBeenCalledWith('new-1');
+    expect(app.shell.activateById).not.toHaveBeenCalledWith('stale-1');
+
+    // the TERMINALS section: the same rule, and no such tab exists for terminal 2 either
+    const sectionRow = Array.from(
+      openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title.startsWith('terminal 2'))!;
+    sectionRow.click();
+    await settle();
+    expect(app.shell.activateById).toHaveBeenCalledWith('new-2');
+    expect(app.shell.activateById).not.toHaveBeenCalledWith('stale-2');
+    // each row opened a tab, since no open tab of its terminal existed
+    expect(created.map(t => t.id)).toEqual(['new-1', 'new-2']);
+    expect(opened).toEqual([]);
+  });
+
+  it('ACC-TERM-216-TAB-KEPT: a row activates the tab it opened on every later click, until the terminal ends or the tab closes; then it opens a new tab', async () => {
+    const created: Widget[] = [];
+    const server = standard();
+    // terminal 9 is in no workspace: its TERMINALS row opens a tab, not a workspace
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
+    });
+    const { panel, app } = await mount(server);
+    // terminal:open would find a tab by name alone: the rows must not use it
+    const opened: string[] = [];
+    app.commands.addCommand('terminal:open', {
+      execute: (args: any) => {
+        opened.push(args.name);
+      }
+    });
+    app.commands.addCommand('terminal:create-new', {
+      execute: (args: any) => {
+        const tab = new Widget();
+        tab.id = `new-${created.length + 1}`;
+        (tab as any).content = {
+          hasClass: (c: string) => c === 'jp-Terminal',
+          session: { name: args.name }
+        };
+        created.push(tab);
+        return tab;
+      }
+    });
+    const row = () =>
+      Array.from(
+        openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      ).find(r => r.title.startsWith('terminal 9'))!;
+
+    row().click();
+    await settle();
+    expect(app.shell.activateById.mock.calls).toEqual([['new-1']]);
+    // the first tab is no longer active: the row activates it again, opening no second tab
+    row().click();
+    await settle();
+    expect(app.shell.activateById.mock.calls).toEqual([['new-1'], ['new-1']]);
+    expect(created).toHaveLength(1);
+
+    // the terminal ends: the kept tab's connection is disposed, so the row opens a new tab
+    (created[0] as any).content.session.isDisposed = true;
+    row().click();
+    await settle();
+    expect(created).toHaveLength(2);
+    expect(app.shell.activateById.mock.calls.slice(-1)).toEqual([['new-2']]);
+
+    // the tab closes: the row opens a new tab again
+    created[1].dispose();
+    row().click();
+    await settle();
+    expect(created).toHaveLength(3);
+    expect(app.shell.activateById.mock.calls.slice(-1)).toEqual([['new-3']]);
+    expect(opened).toEqual([]);
   });
 
   it('ACC-PANEL-7-REFRESH-BUSY: the refresh button turns and waits for the requests, at least 500 ms', async () => {
@@ -656,7 +934,7 @@ describe('panel', () => {
     expect(button.classList).not.toContain('jp-mod-spinning');
   });
 
-  it('ACC-PANEL-8-POLL: a visible panel reloads every 10 s without the turning icon and keeps scroll, focus, open card and menu', async () => {
+  it('ACC-PANEL-8-POLL: a visible panel reloads every 10 s without the turning icon and keeps the section scroll, the closed section, the focus, the selected row, the open card and the menu', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
     const { panel, reloads, hold, release } = await mount(server);
@@ -671,15 +949,18 @@ describe('panel', () => {
     release();
     await settle();
 
-    // a card open, a row focused, the list scrolled
+    // a card open, a row focused, the WORKSPACES list scrolled, KERNELS closed
     triangle(panel, 'w:auto-6').click();
-    const list = $(panel, '.jp-WorkspaceManager-list')!;
+    const list = sectionBody(panel, 'workspaces');
     list.scrollTop = 40;
+    sectionHeader(panel, 'kernels').click();
+    expect(section(panel, 'kernels')!.textContent).not.toContain('k1');
     const row = card(panel, 'w:auto-6').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
     )!;
     row.focus();
     expect(document.activeElement).toBe(row);
+    expect($$(panel, '.jp-mod-selected')).toEqual([row]);
     // the next reload brings a change: a second terminal in the open card
     server.workspaces[1] = workspace('auto-6', 0, [
       'terminal:1',
@@ -694,10 +975,15 @@ describe('panel', () => {
     jest.advanceTimersByTime(10000);
     await settle();
     expect(reloads()).toBe(3);
-    expect(card(panel, 'w:auto-6').textContent).toContain('fish');
-    expect($(panel, '.jp-WorkspaceManager-list')).toBe(list);
+    expect(card(panel, 'w:auto-6').textContent).toContain('terminal 2');
+    expect(sectionBody(panel, 'workspaces')).toBe(list);
     expect(list.scrollTop).toBe(40);
+    expect(sectionHeader(panel, 'kernels').getAttribute('aria-expanded')).toBe(
+      'false'
+    );
+    expect(section(panel, 'kernels')!.textContent).not.toContain('k1');
     expect(document.activeElement).toBe(row);
+    expect($$(panel, '.jp-mod-selected')).toEqual([row]);
     expect(card(panel, 'w:auto-6').classList).toContain('jp-mod-open');
     expect(triangle(panel, 'w:auto-6').getAttribute('aria-expanded')).toBe(
       'true'
@@ -770,13 +1056,13 @@ describe('panel', () => {
     const rows = $$(panel, '.jp-WorkspaceManager-row').map(r => r.textContent);
     expect(rows).toContain('terminal 1now');
     expect(card(panel, 'w:auto-6').textContent).not.toContain('claude');
-    expect(openSection(panel, 'kernels').textContent).toContain(PYTHON);
+    expect(openSection(panel, 'kernels').textContent).toContain('k1');
   });
 
   it('ACC-PANEL-96-LOAD-ERROR, DEF-PANEL-2-PARTIAL-RELOAD: a failed list keeps its rows under one line naming it, the other lists update; the next good reload removes the line', async () => {
     const server = standard();
     const { panel } = await mount(server);
-    expect(openSection(panel, 'kernels').textContent).toContain(PYTHON);
+    expect(openSection(panel, 'kernels').textContent).toContain('k1');
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
 
     // the kernel list fails while its kernel ends and a terminal starts
@@ -793,15 +1079,15 @@ describe('panel', () => {
       'Reload failed: kernels (Unhandled error)'
     ]);
     // the KERNELS section keeps its last rows under the line
-    expect(sectionBody(panel, 'kernels').textContent).toContain(PYTHON);
+    expect(sectionBody(panel, 'kernels').textContent).toContain('k1');
     // the TERMINALS section lists the new terminal
-    expect(openSection(panel, 'terminals').textContent).toContain('htop');
+    expect(openSection(panel, 'terminals').textContent).toContain('terminal 9');
 
     server.failing = false;
     await panel.refresh();
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
     expect(sectionCount(panel, 'kernels')).toBe('(0)');
-    expect(sectionBody(panel, 'terminals').textContent).toContain('htop');
+    expect(sectionBody(panel, 'terminals').textContent).toContain('terminal 9');
   });
 
   it('ACC-CULLER-65-CULLED: a kernel list that answers 500 once, as jupyter_server does while a kernel starts, is asked again and shows no line', async () => {
@@ -815,7 +1101,7 @@ describe('panel', () => {
     await panel.refresh();
     expect(log.filter(l => l.endsWith('/api/kernels'))).toHaveLength(2);
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
-    expect(sectionBody(panel, 'kernels').textContent).toContain('julia');
+    expect(sectionBody(panel, 'kernels').textContent).toContain('k2');
   });
 
   it('DEF-PANEL-1-REFRESH-STALE: a refresh pressed while a poll load is in flight shows data asked for after the press', async () => {
@@ -838,7 +1124,7 @@ describe('panel', () => {
     release();
     await settle();
     expect(reloads()).toBe(3);
-    expect(openSection(panel, 'terminals').textContent).toContain('htop');
+    expect(openSection(panel, 'terminals').textContent).toContain('terminal 9');
     jest.advanceTimersByTime(500);
     await settle();
     expect(refreshButton(panel).disabled).toBe(false);
@@ -862,6 +1148,7 @@ describe('panel', () => {
 
   it('ACC-ACCORD-71-COUNT-ICONS: the header counts carry tabIcon, the terminal glyph and kernelIcon', async () => {
     const { panel } = await mount(standard());
+    triangle(panel, 'w:default').click();
     const icons = Array.from(
       header(panel, 'w:default').querySelectorAll(
         '.jp-WorkspaceManager-count svg'
@@ -874,17 +1161,19 @@ describe('panel', () => {
     ]);
   });
 
-  it('ACC-PANEL-168-COUNT-BRACKETS: a section count reads (N), a filtered card (N of M); the header icon counts stay bare', async () => {
+  it('ACC-PANEL-168-COUNT-BRACKETS, ACC-ACCORD-22-COUNTS, ACC-ACCORD-70-COUNT-TABS: a section count reads (N), a filtered card (N of M); the header icon counts stay bare and show while the card is open only', async () => {
     const { panel } = await mount(standard());
     expect(sectionCount(panel, 'workspaces')).toBe('(2)');
     expect(sectionCount(panel, 'kernels')).toBe('(1)');
-    expect(
+    const counts = () =>
       Array.from(
         header(panel, 'w:auto-6').querySelectorAll('.jp-WorkspaceManager-count')
-      ).map(c => c.textContent)
-    ).toEqual(['1', '1', '0']);
+      ).map(c => c.textContent);
+    // DQ-17: a closed card shows no counts
+    expect(counts()).toEqual([]);
 
     triangle(panel, 'w:auto-6').click();
+    expect(counts()).toEqual(['1', '1', '0']);
     expect(
       Array.from(
         card(panel, 'w:auto-6').querySelectorAll(
@@ -942,24 +1231,35 @@ describe('panel', () => {
       l => l.textContent
     );
     expect(labels).toContain(`${MARKUP}.md`);
-    expect(labels).toContain(MARKUP);
-    const details = $$(panel, '.jp-WorkspaceManager-rowDetail').map(
-      d => d.textContent
+    // the folder of the document and the process of the terminal, each in its selected row's detail line
+    const rows = card(panel, 'w:default').querySelectorAll<HTMLElement>(
+      '.jp-WorkspaceManager-row'
     );
-    expect(details).toContain(MARKUP);
+    const details = Array.from(rows).map(r => {
+      r.focus();
+      return $(panel, '.jp-mod-selected .jp-WorkspaceManager-rowDetail')!
+        .textContent;
+    });
+    expect(details).toEqual([MARKUP, MARKUP]);
+    expect(panel.node.querySelector('img')).toBeNull();
     const terminalRow = $$(panel, '.jp-WorkspaceManager-row').find(r =>
       r.textContent!.includes('terminal 1')
     )!;
     expect(terminalRow.title).toBe(`terminal 1\n${MARKUP}\nnow`);
   });
 
-  it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME: a kernel row shows kernelIcon and the display name of its kernelspec, its tooltip the display name and state', async () => {
+  it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-48-ROW: a kernel row shows kernelIcon and, with no session, its id in the code font; selected, the display name of its kernelspec; its tooltip the display name and state', async () => {
     const { panel } = await mount(standard());
     const row = openSection(panel, 'kernels').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
     )!;
+    const label = row.querySelector('.jp-WorkspaceManager-rowLabel')!;
+    expect(label.textContent).toBe('k1');
+    expect(label.classList).toContain('jp-WorkspaceManager-code');
+    expect(row.textContent).not.toContain(PYTHON);
+    row.focus();
     expect(
-      row.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+      row.querySelector('.jp-WorkspaceManager-rowDetail > span')!.textContent
     ).toBe(PYTHON);
     expect(row.title).toBe(`${PYTHON}\nidle`);
     expect(
@@ -969,7 +1269,108 @@ describe('panel', () => {
     ).toBe('ui-components:kernel');
   });
 
-  it('ACC-KERNEL-196-KERNEL-DETAILS: a KERNELS row shows the display name, the session path, the state, the memory and the CPU, refreshed by the poll; figures the server cannot read show a dash; a card kernel row keeps its file name and age', async () => {
+  it('ACC-LISTS-209-ROW-LINE, ACC-KERNEL-49-STATE: an unselected tab, terminal or kernel row shows its name, a kernel its state word, and the time only; the state word is in the line, the title and the dot aria-label, in a card and in KERNELS', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'work/a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'editor:docs/README.md',
+      'terminal:1',
+      'notebook:work/a.ipynb'
+    ]);
+    server.resources = { k1: { memory: 150 * 2 ** 20, cpu: 12.6 } };
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const text = (root: HTMLElement) =>
+      Array.from(
+        root.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+      ).map(r => r.textContent);
+    expect(text(card(panel, 'w:auto-6'))).toEqual([
+      'README.md',
+      'a.ipynb',
+      'terminal 1now',
+      'a.ipynbidle5m ago'
+    ]);
+    expect(text(openSection(panel, 'kernels'))).toEqual(['a.ipynbidle5m ago']);
+    expect(text(openSection(panel, 'terminals'))).toEqual(['terminal 1now']);
+    expect($(panel, '.jp-WorkspaceManager-rowDetail')).toBeNull();
+    // the process, the kernel type, the path, the folder, memory and CPU wait for the selection
+    for (const hidden of ['claude', PYTHON, 'docs', 'work/', 'MB', '%']) {
+      expect(
+        panel.node.querySelector('.jp-WorkspaceManager-list')!.textContent
+      ).not.toContain(hidden);
+    }
+    // ACC-KERNEL-49-STATE: the word in the line, the title and the dot's aria-label
+    for (const root of [
+      group(card(panel, 'w:auto-6'), 'KERNELS'),
+      sectionBody(panel, 'kernels')
+    ]) {
+      const row = root.querySelector<HTMLElement>('.jp-WorkspaceManager-row')!;
+      const dot = row.querySelector('.jp-WorkspaceManager-dot')!;
+      expect(row.querySelector('.jp-WorkspaceManager-state')!.textContent).toBe(
+        'idle'
+      );
+      expect(row.title.split('\n')).toContain('idle');
+      expect(dot.getAttribute('role')).toBe('img');
+      expect(dot.getAttribute('aria-label')).toBe('idle');
+      expect(dot.classList).toContain('jp-mod-idle');
+    }
+  });
+
+  it('ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS, ACC-TERM-44-PROCESS-UNREAD: a focused row is the one selected row and shows its detail line; the arrow keys move it; a terminal with no readable process shows no detail line', async () => {
+    const server = standard();
+    server.terminals.push({ name: '2', last_activity: iso(0), process: null });
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'editor:docs/README.md',
+      'terminal:1',
+      'terminal:2'
+    ]);
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const rows = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    const selected = () => $$(panel, '.jp-mod-selected');
+    const detail = () =>
+      $(panel, '.jp-mod-selected .jp-WorkspaceManager-rowDetail')
+        ?.textContent ?? null;
+    rows[0].focus();
+    expect(selected()).toEqual([rows[0]]);
+    expect(detail()).toBe('docs');
+    rows[0].dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })
+    );
+    expect(document.activeElement).toBe(rows[1]);
+    expect(selected()).toEqual([rows[1]]);
+    expect(detail()).toBe('claude');
+    rows[1].dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })
+    );
+    expect(selected()).toEqual([rows[2]]);
+    expect(detail()).toBeNull();
+    // a row of a section takes the selection from the card's row
+    const listed = openSection(panel, 'terminals').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!;
+    listed.focus();
+    expect(selected()).toEqual([listed]);
+    expect(detail()).toBe('claude');
+    // a reload keeps it while its item exists
+    await panel.refresh();
+    expect(selected()).toEqual([listed]);
+    server.terminals = server.terminals.filter(t => t.name !== '1');
+    await panel.refresh();
+    expect(selected()).toEqual([]);
+  });
+
+  it('ACC-KERNEL-196-KERNEL-DETAILS: a selected KERNELS row shows the display name, the session path, the memory and the CPU, refreshed by the poll; figures the server cannot read show a dash; a kernel with no session shows no path; a card kernel row shows its file name, state and age', async () => {
     const server = standard();
     server.kernels.push({
       ...server.kernels[0],
@@ -990,33 +1391,43 @@ describe('panel', () => {
     };
     const { panel } = await mount(server);
 
+    // each row selected in turn: its name, then the parts of its detail line
     const shown = () =>
       Array.from(
         openSection(panel, 'kernels').querySelectorAll<HTMLElement>(
           '.jp-WorkspaceManager-row'
         )
-      ).map(r => [
-        r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent,
-        r.querySelector('.jp-WorkspaceManager-rowDetail')?.textContent ?? '',
-        ...Array.from(
-          r.querySelectorAll(
-            '.jp-WorkspaceManager-age > span:not(.jp-WorkspaceManager-dot)'
-          )
-        ).map(x => x.textContent)
-      ]);
+      ).map(r => {
+        r.focus();
+        return [
+          r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent,
+          ...Array.from(
+            r.querySelectorAll('.jp-WorkspaceManager-rowDetail > span')
+          ).map(x => x.textContent)
+        ];
+      });
+    // the path on a second detail line
+    const row = $(panel, '[data-section="kernels"] .jp-WorkspaceManager-row')!;
+    row.focus();
+    expect(
+      Array.from(row.querySelectorAll('.jp-WorkspaceManager-rowDetail')).map(
+        d => d.textContent
+      )
+    ).toEqual([`${PYTHON}150 MB13%`, 'work/a.ipynb']);
     expect(shown()).toEqual([
-      [PYTHON, 'work/a.ipynb', 'idle', '150 MB', '13%'],
-      [PYTHON, '', 'busy', '-', '-']
+      ['a.ipynb', PYTHON, '150 MB', '13%', 'work/', 'a.ipynb'],
+      ['k2', PYTHON, '-', '-']
     ]);
 
     server.resources.k1 = { memory: 3 * 2 ** 30, cpu: 0.2 };
     await panel.refresh();
     expect(shown()[0]).toEqual([
+      'a.ipynb',
       PYTHON,
-      'work/a.ipynb',
-      'idle',
       '3.0 GB',
-      '0%'
+      '0%',
+      'work/',
+      'a.ipynb'
     ]);
 
     openSection(panel, 'workspaces');
@@ -1026,7 +1437,7 @@ describe('panel', () => {
         '.jp-WorkspaceManager-row'
       )
     ).find(r => r.title.startsWith(PYTHON))!;
-    expect(cardRow.textContent).toBe(`${PYTHON}a.ipynb5m`);
+    expect(cardRow.textContent).toBe('a.ipynbidle5m ago');
   });
 
   it('ACC-LISTS-37-TWO-WORKSPACES, ACC-KERNEL-196-KERNEL-DETAILS: no terminal or kernel row, in a section or a card, shows an also in mark, and no hover text names another workspace', async () => {
@@ -1078,7 +1489,7 @@ describe('panel', () => {
     }
   });
 
-  it('ACC-KERNEL-196-KERNEL-DETAILS: a console KERNELS row shows the console name, not the generated session path', async () => {
+  it('ACC-KERNEL-196-KERNEL-DETAILS, ACC-LISTS-109-CONSOLE: a console KERNELS row is named by the console name, not the generated session path, also in its detail line', async () => {
     const server = standard();
     server.sessions.push({
       id: 's1',
@@ -1088,35 +1499,46 @@ describe('panel', () => {
       kernel: server.kernels[0]
     });
     const { panel } = await mount(server);
-    const text = openSection(panel, 'kernels').querySelector<HTMLElement>(
+    const row = openSection(panel, 'kernels').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
-    )!.textContent!;
-    expect(text).toContain('Console 1');
-    expect(text).not.toContain('console-1-');
+    )!;
+    expect(
+      row.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+    ).toBe('Console 1');
+    row.focus();
+    expect(
+      Array.from(
+        row.querySelectorAll('.jp-WorkspaceManager-rowDetail > span')
+      ).map(x => x.textContent)
+    ).toEqual([PYTHON, '-', '-', 'dir/', 'Console 1']);
+    expect(row.textContent).not.toContain('console-1-');
   });
 
   it('ACC-KERNEL-196-KERNEL-DETAILS: a failed read of memory and CPU after a good one shows dashes, and Shut down all in KERNELS and TERMINALS still shuts down', async () => {
     const server = standard();
     server.resources = { k1: { memory: 150 * 2 ** 20, cpu: 12.6 } };
     const { panel, app } = await mount(server);
-    const figures = () =>
-      Array.from(
-        openSection(panel, 'kernels').querySelectorAll(
-          '.jp-WorkspaceManager-age > span:not(.jp-WorkspaceManager-dot)'
-        )
+    const figures = () => {
+      openSection(panel, 'kernels')
+        .querySelector<HTMLElement>('.jp-WorkspaceManager-row')!
+        .focus();
+      return $$(
+        panel,
+        '.jp-mod-selected .jp-WorkspaceManager-rowDetail > span'
       ).map(x => x.textContent);
-    expect(figures()).toEqual(['idle', '150 MB', '13%']);
+    };
+    expect(figures()).toEqual([PYTHON, '150 MB', '13%']);
 
     server.resourcesFailing = true;
     await panel.refresh();
-    expect(figures()).toEqual(['idle', '-', '-']);
+    expect(figures()).toEqual([PYTHON, '-', '-']);
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
 
     for (const key of ['kernels', 'terminals']) {
       openSection(panel, key);
       shutDownAll(panel, key).click();
       await waitForDialog();
-      await acceptDialog();
+      await dangerDialog();
       await settle();
     }
     expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k1']]);
@@ -1168,7 +1590,7 @@ describe('panel', () => {
     expect(app.serviceManager.kernels.shutdown).not.toHaveBeenCalled();
 
     shutDown('a.ipynb');
-    await acceptDialog();
+    await dangerDialog();
     await settle();
     expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k1']]);
 
@@ -1269,8 +1691,9 @@ describe('panel', () => {
     expect(three).toBe('Workspaces auto-7 and auto-8 also hold this terminal.');
   });
 
-  it('ACC-TERM-200-ROW-LEAVES: after Shut down terminal its row and the card Terminals count leave at once while the server still lists it; a new terminal of that name and another fingerprint shows; a failed shutdown keeps the row; one without a fingerprint stays', async () => {
-    // the fake server keeps listing a terminal after its DELETE, as Jupyter does until the pty closes
+  it('ACC-TERM-200-ROW-LEAVES: the panel keeps no map of shut-down terminals, so the route decides: a load that still lists a shut-down terminal keeps its row, whatever its fingerprint; the row and the card Terminals count leave when the route drops it; a new terminal of the same name shows; a failed shutdown keeps the row', async () => {
+    // Jupyter lists a shut-down terminal while its pty closes; the old panel hid it by
+    // the fingerprint of the row it shut down itself
     const server = standard();
     server.terminals[0].fingerprint = '101:1000.25';
     const { panel, app } = await mount(server);
@@ -1282,6 +1705,10 @@ describe('panel', () => {
       ).map(r => r.title.split('\n')[0]);
     const terminalCount = () => {
       openSection(panel, 'workspaces');
+      // DQ-17: the counts show while the card is open
+      if (!card(panel, 'w:auto-6').classList.contains('jp-mod-open')) {
+        triangle(panel, 'w:auto-6').click();
+      }
       return header(panel, 'w:auto-6').querySelector(
         '.jp-WorkspaceManager-count[title="Terminals"]'
       )!.textContent;
@@ -1293,29 +1720,29 @@ describe('panel', () => {
       chooseMenuItem(0); // Shut down terminal
       await settle();
     };
-    const terminal = (name: string, fingerprint: string | null) => ({
+    const terminal = (name: string) => ({
       name,
       last_activity: iso(0),
-      process: 'bash',
-      fingerprint
+      process: 'bash'
     });
     expect(rows()).toEqual(['terminal 1']);
     expect(terminalCount()).toBe('1');
 
+    // no map hides the row: the route still lists it, so it stays
     await shutDown();
     expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
-    expect(server.terminals.map(t => t.name)).toEqual(['1']);
+    expect(rows()).toEqual(['terminal 1']);
+    expect(terminalCount()).toBe('1');
+
+    // the route leaves the ended pty out, so the row and the count leave at the next load
+    server.terminals = [];
+    await panel.refresh();
     expect(rows()).toEqual([]);
     expect(sectionCount(panel, 'terminals')).toBe('(0)');
     expect(terminalCount()).toBe('0');
-    // a poll while the server still lists it keeps it gone
-    await panel.refresh();
-    expect(rows()).toEqual([]);
-    expect(terminalCount()).toBe('0');
 
-    // the server drops it and a new terminal takes the free name before any
-    // load sees the name missing: another fingerprint, so it shows
-    server.terminals = [terminal('1', '202:1010.5')];
+    // a new terminal of the same name shows
+    server.terminals = [terminal('1')];
     await panel.refresh();
     expect(rows()).toEqual(['terminal 1']);
     expect(terminalCount()).toBe('1');
@@ -1330,33 +1757,22 @@ describe('panel', () => {
     expect(rows()).toEqual(['terminal 1']);
     expect(terminalCount()).toBe('1');
 
-    // terminal 1 (202) shut down and still listed; terminal 2 starts
-    await shutDown();
-    server.terminals.push(terminal('2', '301:1020.75'));
+    // Shut down all reads the server afresh and shuts down every listed terminal
+    server.terminals.push(terminal('2'));
     await panel.refresh();
-    expect(rows()).toEqual(['terminal 2']);
-    // a new terminal 1 while the entry of 202 is still kept: Shut down
-    // all reads the server afresh and shuts down both
-    server.terminals = [
-      terminal('1', '303:1030.5'),
-      terminal('2', '301:1020.75')
-    ];
     shutDownAll(panel, 'terminals').click();
     await waitForDialog();
-    await acceptDialog();
+    await dangerDialog();
     await settle();
-    expect(app.serviceManager.terminals.shutdown.mock.calls.slice(3)).toEqual([
+    expect(app.serviceManager.terminals.shutdown.mock.calls.slice(2)).toEqual([
       ['1'],
       ['2']
     ]);
+    // the route drops both ended ptys on the next load
+    server.terminals = [];
+    await panel.refresh();
     expect(rows()).toEqual([]);
     expect(terminalCount()).toBe('0');
-
-    // without a fingerprint nothing tells it from a new terminal: it stays
-    server.terminals = [terminal('1', null)];
-    await panel.refresh();
-    await shutDown();
-    expect(rows()).toEqual(['terminal 1']);
   });
 
   it('ACC-ACCORD-191-DRAG-ORDER: Move up in the card menu moves the card at once with one stored position, the same in a second window; Move down is disabled on the last card', async () => {

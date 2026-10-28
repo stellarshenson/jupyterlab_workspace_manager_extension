@@ -8,11 +8,25 @@ export const COLOURS = ['rose', 'peach', 'lemon', 'mint', 'sky', 'lavender'];
 export const COLOUR_LABELS = [
   'Red',
   'Orange',
-  'Yellow',
+  'Amber',
   'Green',
   'Blue',
-  'Purple'
+  'Cyan'
 ];
+
+/** The theme token of each palette colour, in the same order (DQ-01). */
+export const TOKENS = [
+  '--jp-error-color1',
+  '--jp-warn-color1',
+  '--jp-warn-color2',
+  '--jp-success-color1',
+  '--jp-brand-color1',
+  '--jp-info-color1'
+];
+
+/** The workspace colour of a card: its 4 px left border, as the page draws it. */
+export const stripColour = (c: Locator): Promise<string> =>
+  c.evaluate(n => getComputedStyle(n).borderLeftColor);
 
 /** The workspace panel. */
 export const PANEL = '#jp-running-sessions';
@@ -20,6 +34,20 @@ export const PANEL = '#jp-running-sessions';
 /** The width of the panel: the left sidebar at JupyterLab's default 250 px. */
 export const panelWidth = (page: Page): Promise<number> =>
   page.locator(PANEL).evaluate(n => n.getBoundingClientRect().width);
+
+/** Drag the left sidebar to `width` px. */
+export async function sidebarTo(page: Page, width: number): Promise<void> {
+  const handle = page
+    .locator('#jp-main-split-panel > .lm-SplitPanel-handle')
+    .first();
+  const at = (await handle.boundingBox())!;
+  const [x, y] = [at.x + at.width / 2, at.y + at.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + width - (await panelWidth(page)), y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => panelWidth(page)).toBe(width);
+}
 
 /** The texts of the elements under `selector` that are cut: scrollWidth over clientWidth. */
 export const cut = (scope: Locator, selector: string): Promise<string[]> =>
@@ -71,6 +99,14 @@ export const cardHeader = (page: Page, id: string): Locator =>
 export const triangle = (page: Page, id: string): Locator =>
   card(page, id).locator('button.jp-WorkspaceManager-caret');
 
+/** Open the card of `id` with its triangle unless it is open: the purpose and the counts show while it is (DQ-17). */
+export async function openCard(page: Page, id: string): Promise<void> {
+  if (!(await card(page, id).getAttribute('class'))!.includes('jp-mod-open')) {
+    await triangle(page, id).click();
+  }
+  await expect(card(page, id)).toHaveClass(/jp-mod-open/);
+}
+
 export const headerButton = (page: Page, label: string): Locator =>
   page.locator(
     `${PANEL} .jp-WorkspaceManager-header button[aria-label="${label}"]`
@@ -121,6 +157,23 @@ export function rgb(page: Page, css: string): Promise<number[]> {
     ctx.fillStyle = resolved;
     ctx.fillRect(0, 0, 1, 1);
     return Array.from(ctx.getImageData(0, 0, 1, 1).data.slice(0, 3));
+  }, css);
+}
+
+/** Any CSS colour as the page draws it on nothing: 0-255 channels and 0-255 alpha. */
+export function rgba(page: Page, css: string): Promise<number[]> {
+  return page.locator(PANEL).evaluate((panel, css) => {
+    const probe = document.createElement('div');
+    probe.style.color = css;
+    panel.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = resolved;
+    ctx.fillRect(0, 0, 1, 1);
+    return Array.from(ctx.getImageData(0, 0, 1, 1).data);
   }, css);
 }
 
@@ -394,7 +447,7 @@ export const sectionCount = (page: Page, name: string): Locator =>
     `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionCount`
   );
 
-/** Open the panel section `name` if it is closed, and return nothing: one section is open at a time. */
+/** Open the panel section `name` if it is closed; the other sections stay as they are. */
 export async function openSection(page: Page, name: string): Promise<void> {
   const header = sectionHeader(page, name);
   if ((await header.getAttribute('aria-expanded')) !== 'true') {
@@ -522,11 +575,12 @@ export async function sendToTerminal(
 
 /** Open a document of the server in a tab of this window. */
 export async function openDocument(page: Page, path: string): Promise<void> {
-  await page.evaluate(
-    path =>
-      (window as any).jupyterapp.commands.execute('docmanager:open', { path }),
-    path
-  );
+  // the widget the command returns is not sent back: Playwright cannot serialize it
+  await page.evaluate(async path => {
+    await (window as any).jupyterapp.commands.execute('docmanager:open', {
+      path
+    });
+  }, path);
 }
 
 /** Open a new terminal in a tab of this window; its name. */
@@ -550,30 +604,41 @@ export function activeTab(page: Page): Promise<string | undefined> {
  * Put a connection of a fake language server into the lab's connection manager
  * (`add`) or take it out, then tell the Language servers section, so the
  * LANGUAGE SERVERS section lists it as `fake-lsp (python)`. It carries what the
- * panel's shutdown reads: a document to unregister and a dispose.
+ * panel's shutdown reads: a document to unregister and a dispose. `servers`
+ * gives the connection key and the server identifier of each, one by default.
  */
-export async function languageServer(page: Page, add: boolean): Promise<void> {
-  await page.evaluate(async add => {
-    const galata = (window as any).galata;
-    const manager = await galata.getPlugin('@jupyterlab/lsp-extension:plugin');
-    const key = 'workspace-manager-test';
-    if (add) {
-      manager.connections.set(key, {
-        serverIdentifier: 'fake-lsp',
-        serverLanguage: 'python',
-        dispose: () => undefined
-      });
-      manager.documents.set(key, { uri: key });
-    } else {
-      manager.connections.delete(key);
-      manager.documents.delete(key);
-    }
-    const managers = await galata.getPlugin(
-      '@jupyterlab/running-extension:plugin'
-    );
-    managers
-      .items()
-      .find((m: any) => m.name === 'Language servers')
-      .runningChanged.emit(undefined);
-  }, add);
+export async function languageServer(
+  page: Page,
+  add: boolean,
+  servers: [string, string][] = [['workspace-manager-test', 'fake-lsp']]
+): Promise<void> {
+  await page.evaluate(
+    async ({ add, servers }) => {
+      const galata = (window as any).galata;
+      const manager = await galata.getPlugin(
+        '@jupyterlab/lsp-extension:plugin'
+      );
+      for (const [key, identifier] of servers) {
+        if (add) {
+          manager.connections.set(key, {
+            serverIdentifier: identifier,
+            serverLanguage: 'python',
+            dispose: () => undefined
+          });
+          manager.documents.set(key, { uri: key });
+        } else {
+          manager.connections.delete(key);
+          manager.documents.delete(key);
+        }
+      }
+      const managers = await galata.getPlugin(
+        '@jupyterlab/running-extension:plugin'
+      );
+      managers
+        .items()
+        .find((m: any) => m.name === 'Language servers')
+        .runningChanged.emit(undefined);
+    },
+    { add, servers }
+  );
 }

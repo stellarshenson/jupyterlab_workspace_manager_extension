@@ -6,24 +6,28 @@ const before = (seconds: number) =>
   new Date(NOW - seconds * 1000).toISOString().replace('Z', '123+00:00');
 
 describe('age', () => {
-  it('ACC-ACCORD-20-AGE: 30 s, 5 min, 3 h and 2 d read now, 5m, 3h and 2d', () => {
+  it('ACC-ACCORD-20-AGE: 30 s, 5 min, 3 h, 2 d, 45 d and 400 d read now, 5m ago, 3h ago, 2d ago, 1mo ago and 1y ago; no stamp reads never', () => {
     expect(before(30)).toMatch(/\.\d{6}\+00:00$/);
     expect(age(before(30), NOW).label).toBe('now');
-    expect(age(before(5 * 60), NOW).label).toBe('5m');
-    expect(age(before(3 * 3600), NOW).label).toBe('3h');
-    expect(age(before(2 * 86400), NOW).label).toBe('2d');
-    expect(age(undefined, NOW).label).toBe('');
+    expect(age(before(5 * 60), NOW).label).toBe('5m ago');
+    expect(age(before(3 * 3600), NOW).label).toBe('3h ago');
+    expect(age(before(2 * 86400), NOW).label).toBe('2d ago');
+    expect(age(before(45 * 86400), NOW).label).toBe('1mo ago');
+    expect(age(before(400 * 86400), NOW).label).toBe('1y ago');
+    expect(age(undefined, NOW).label).toBe('never');
   });
 
-  it('ACC-ACCORD-130-NOW-DOT: 59 s gives now, the semibold class and the dot; 60 s gives 1m without them', () => {
-    const recent = age(before(59), NOW);
-    expect(recent.label).toBe('now');
-    expect(recent.className.split(' ')).toContain('jp-mod-now');
-    expect(recent.dot).toBe(true);
-
-    const older = age(before(60), NOW);
-    expect(older.label).toBe('1m');
-    expect(older.className.split(' ')).not.toContain('jp-mod-now');
-    expect(older.dot).toBe(false);
+  it('ACC-ACCORD-130-NOW-DOT: 59 s gives now and jp-mod-recentlyActive; 60 s gives 1m ago without it; 7 d is not stale, 8 d gives jp-mod-stale', () => {
+    expect(age(before(59), NOW)).toEqual({
+      label: 'now',
+      mod: 'jp-mod-recentlyActive'
+    });
+    expect(age(before(60), NOW)).toEqual({ label: '1m ago', mod: '' });
+    expect(age(before(7 * 86400), NOW)).toEqual({ label: '7d ago', mod: '' });
+    expect(age(before(8 * 86400), NOW)).toEqual({
+      label: '8d ago',
+      mod: 'jp-mod-stale'
+    });
+    expect(age(undefined, NOW)).toEqual({ label: 'never', mod: '' });
   });
 });

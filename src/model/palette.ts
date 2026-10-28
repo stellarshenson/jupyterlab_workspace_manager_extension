@@ -1,6 +1,6 @@
 /**
  * The six workspace colours, in the order of jupyterlab_colourful_tab_extension.
- * The values live in style/base.css as `--jp-workspace-manager-<colour>`.
+ * style/base.css maps each to a theme token through its `jp-mod-<colour>` class.
  */
 export const COLOURS = [
   'rose',

@@ -10,6 +10,7 @@ import {
   kernelIds,
   layout,
   listed,
+  openCard,
   PANEL,
   putWorkspace,
   refresh,
@@ -42,6 +43,7 @@ test('ACC-CULLER-65-CULLED: a workspace, a terminal and a kernel removed outside
   try {
     await enterWorkspace(page, current);
     await expect(card(page, gone)).toBeVisible();
+    await openCard(page, held);
     await expect(countOf(card(page, held), 'Terminals')).toHaveText('1');
     await expect(countOf(card(page, held), 'Kernels')).toHaveText('1');
     page.on('pageerror', error => errors.push(error.message));
@@ -119,6 +121,7 @@ test('ACC-CULLER-67-NO-SHUTDOWN: thirty seconds of the open panel and its polls 
   });
   try {
     await enterWorkspace(page, current);
+    await openCard(page, held);
     await expect(countOf(card(page, held), 'Kernels')).toHaveText('1');
     const before = [await saved(page, held), await saved(page, empty)];
     const start = polls;

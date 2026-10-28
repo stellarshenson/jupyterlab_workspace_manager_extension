@@ -72,7 +72,7 @@ export const eyeOffIcon = new LabIcon({
 export const warningIcon = new LabIcon({
   name: `${NS}:warning`,
   svgstr: svg(
-    '<path class="jp-icon3" fill="#616161" fill-rule="evenodd" d="M12 2.6a1.7 1.7 0 0 1 1.48.86l8.1 14.02A1.7 1.7 0 0 1 20.1 20H3.9a1.7 1.7 0 0 1-1.48-2.52l8.1-14.02A1.7 1.7 0 0 1 12 2.6zM11 9h2v5h-2V9zm0 7h2v2h-2v-2z"/>',
+    '<path class="jp-icon3" fill="currentColor" fill-rule="evenodd" d="M12 2.6a1.7 1.7 0 0 1 1.48.86l8.1 14.02A1.7 1.7 0 0 1 20.1 20H3.9a1.7 1.7 0 0 1-1.48-2.52l8.1-14.02A1.7 1.7 0 0 1 12 2.6zM11 9h2v5h-2V9zm0 7h2v2h-2v-2z"/>',
     24
   )
 });

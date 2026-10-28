@@ -9,6 +9,15 @@ import {
 } from '../model/new';
 
 /**
+ * The footer of a dialog (DQ-14): one filled primary action, a surface Cancel and,
+ * for a destructive action, an unfilled error-coloured button at the far left.
+ */
+const BUTTON = 'jp-WorkspaceManager-dialogButton';
+const PRIMARY = 'jp-WorkspaceManager-primary';
+const SECONDARY = 'jp-WorkspaceManager-secondary';
+const DANGER = 'jp-WorkspaceManager-danger';
+
+/**
  * A dialog whose accept button follows the form: Enter, in the name field or
  * in the description box, accepts only a valid form, and the description box
  * takes no line break, so Enter there accepts too.
@@ -115,12 +124,16 @@ class NewWorkspaceBody extends Widget {
     this._check();
   }
 
-  /** The rule stands under the field; a taken name replaces it with the reason. */
+  /** The rule stands under the field; a typed problem replaces it with the reason as a state line. */
   private _check(): void {
     const problem = nameProblem(this.name.value, this._existing);
     const taken = problem !== null && problem !== NAME_RULE;
     this._rule.textContent = problem ?? NAME_RULE;
-    this._rule.classList.toggle('jp-mod-error', taken);
+    // an empty field still shows the rule as the hint
+    this._rule.classList.toggle(
+      'jp-mod-error',
+      problem !== null && this.name.value !== ''
+    );
     this.name.classList.toggle('jp-mod-invalid', taken);
     // set after the dialog's own input check, which looks for .jp-mod-error only
     const accept = this.node
@@ -143,7 +156,13 @@ export async function newWorkspaceDialog(
     {
       title: 'New workspace',
       body,
-      buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Create' })],
+      buttons: [
+        Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` }),
+        Dialog.okButton({
+          label: 'Create',
+          className: `${BUTTON} ${PRIMARY}`
+        })
+      ],
       focusNodeSelector: 'input'
     },
     () => body.valid
@@ -176,7 +195,10 @@ export async function descriptionDialog(
     {
       title: `Set description of ${name}`,
       body: new DescriptionBody(purpose),
-      buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Save' })],
+      buttons: [
+        Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` }),
+        Dialog.okButton({ label: 'Save', className: `${BUTTON} ${PRIMARY}` })
+      ],
       focusNodeSelector: 'textarea'
     },
     () => true
@@ -186,16 +208,23 @@ export async function descriptionDialog(
   return result.button.accept ? result.value : null;
 }
 
-/** Ask once before an action; true when the user confirms it. */
+/**
+ * Ask once before an action; true when the user confirms it. A destructive action
+ * stands unfilled in the error colour at the far left; Cancel keeps the right (DQ-14).
+ */
 export async function confirm(
   title: string,
   body: string,
-  label: string
+  label: string,
+  danger = true
 ): Promise<boolean> {
+  const cancel = Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` });
   const result = await showDialog({
     title,
     body,
-    buttons: [Dialog.cancelButton(), Dialog.warnButton({ label })]
+    buttons: danger
+      ? [Dialog.warnButton({ label, className: `${BUTTON} ${DANGER}` }), cancel]
+      : [cancel, Dialog.okButton({ label, className: `${BUTTON} ${PRIMARY}` })]
   });
   return result.button.accept;
 }

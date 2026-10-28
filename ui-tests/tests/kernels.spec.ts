@@ -17,6 +17,7 @@ import {
   layout,
   NEXT_POLL,
   only,
+  openCard,
   openDocument,
   openSection,
   panelWidth,
@@ -52,7 +53,7 @@ async function sessionOf(page: Page, path: string): Promise<any> {
   return session;
 }
 
-test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a kernel row shows the display name of its kernelspec, its details in its tooltip, its notebook and age; Shut down kernel ends it and the notebook stays open', async ({
+test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a kernel row shows its notebook, its state and its age, its details in its tooltip and, selected, the display name of its kernelspec and the path; Shut down kernel ends it and the notebook stays open', async ({
   page,
   tmpPath
 }) => {
@@ -71,7 +72,7 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a
     const display = await displayName(page, session.kernel.name);
     expect(display).not.toBe(session.kernel.name);
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-      display
+      'kernelled.ipynb'
     );
     // ACC-PANEL-185: the display name, the session path and the state, one per line
     await expect
@@ -86,20 +87,24 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a
       );
     await refresh(page);
     await expect(row).toHaveAttribute('title', `${display}\n${notebook}\nidle`);
-    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
-      'kernelled.ipynb'
+    // DQ-17, DQ-13: the line holds the notebook, the state word and the age only; the dot carries the word
+    await expect(row).toHaveText('kernelled.ipynbidlenow');
+    await expect(row.locator('.jp-WorkspaceManager-dot')).toHaveAttribute(
+      'aria-label',
+      'idle'
     );
-    await expect(row.locator('.jp-WorkspaceManager-age')).toHaveText('now');
-    // at the 250 px sidebar the name and the notebook each show their first characters, the age whole
+    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
+    // selected, the detail line: the kernel type and the path
+    await row.focus();
+    await expect(row).toHaveClass(/jp-mod-selected/);
+    await expect(
+      row.locator('.jp-WorkspaceManager-rowDetail > span')
+    ).toHaveText([display, `${tmpPath}/`, 'kernelled.ipynb']);
+    // at the 250 px sidebar the name shows its first characters, the age whole
     expect(await panelWidth(page)).toBe(250);
-    for (const part of [
-      '.jp-WorkspaceManager-rowLabel',
-      '.jp-WorkspaceManager-rowDetail'
-    ]) {
-      const s = await shows(row, part);
-      expect(s.inside, part).toBe(true);
-      expect(s.width, part).toBeGreaterThanOrEqual(s.start);
-    }
+    const name = await shows(row, '.jp-WorkspaceManager-rowLabel');
+    expect(name.inside).toBe(true);
+    expect(name.width).toBeGreaterThanOrEqual(name.start);
     expect(await shows(row, '.jp-WorkspaceManager-age')).toMatchObject({
       inside: true,
       whole: true
@@ -121,7 +126,7 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a
     });
     await refresh(page);
     await expect(row.locator('.jp-WorkspaceManager-age')).toHaveText(
-      '5m',
+      '5m ago',
       NEXT_POLL
     );
     await page.unroute(list);
@@ -158,7 +163,7 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-114-SHUTDOWN: a
   }
 });
 
-test('ACC-KERNEL-196-KERNEL-DETAILS: a row of the KERNELS section shows the kernel type, its notebook path, its state, its memory in MB or GB and its CPU percent; at a 300 px panel the path is cut at the left and the file name shows whole; from 300 to 560 px the kernel type keeps its first characters; the row has no also in mark and its hover text names no workspace', async ({
+test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK: a KERNELS row shows its notebook, state and age; selected, its detail line shows the kernel type, the notebook path, the memory in MB or GB and the CPU percent; its path on a line of its own; from 300 to 560 px a 29-character file name shows whole and at 300 px the kernel type and the folder are cut first; the row has no also in mark and its hover text names no workspace', async ({
   page,
   tmpPath
 }) => {
@@ -174,7 +179,7 @@ test('ACC-KERNEL-196-KERNEL-DETAILS: a row of the KERNELS section shows the kern
     expect(made.ok()).toBe(true);
   }
   const notebook = `${tmpPath}/projects/clients/acme/eda.ipynb`;
-  const long = `${tmpPath}/projects/clients/acme/quarterly_revenue_forecast.ipynb`;
+  const long = `${tmpPath}/projects/clients/acme/quarterly_revenue_stats.ipynb`;
   await putNotebook(page, notebook);
   await putNotebook(page, long);
   try {
@@ -206,23 +211,37 @@ test('ACC-KERNEL-196-KERNEL-DETAILS: a row of the KERNELS section shows the kern
 
     await refresh(page);
     await openSection(page, 'kernels');
-    const row = rowOf(sectionBody(page, 'kernels'), notebook);
+    const row = rowOf(sectionBody(page, 'kernels'), 'eda.ipynb');
     const display = await displayName(page, session.kernel.name);
+    // DQ-17: the line holds the notebook, the state and the age; no also in mark, no workspace in the hover text
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-      display
+      'eda.ipynb'
     );
-    // the path and no also in mark; the hover text names no workspace
-    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
-      notebook
-    );
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveText('idle');
+    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
     await expect(row).not.toContainText('also in');
     await expect(row).toHaveAttribute('title', `${display}\n${notebook}\nidle`);
-    // the state, the memory and the CPU after the state dot
+    // selected, the detail line: the kernel type, the folder, the file name, the memory and the CPU
+    await row.click();
+    await expect(row).toHaveClass(/jp-mod-selected/);
+    // the kernel type, the memory and the CPU; under them the path
     await expect(
-      row.locator('.jp-WorkspaceManager-age > span:not([class])')
-    ).toHaveText(['idle', /^\d+(\.\d)? (MB|GB)$/, /^\d+%$/]);
+      row.locator('.jp-WorkspaceManager-rowDetail > span')
+    ).toHaveText([
+      display,
+      /^\d+(\.\d)? (MB|GB)$/,
+      /^\d+%$/,
+      `${tmpPath}/projects/clients/acme/`,
+      'eda.ipynb'
+    ]);
 
-    const longRow = rowOf(sectionBody(page, 'kernels'), long);
+    const longRow = rowOf(
+      sectionBody(page, 'kernels'),
+      'quarterly_revenue_stats.ipynb'
+    );
+    await longRow.focus();
+    await expect(longRow).toHaveClass(/jp-mod-selected/);
+    await expect(row).not.toHaveClass(/jp-mod-selected/);
     const handle = page
       .locator('#jp-main-split-panel > .lm-SplitPanel-handle')
       .first();
@@ -239,71 +258,42 @@ test('ACC-KERNEL-196-KERNEL-DETAILS: a row of the KERNELS section shows the kern
       });
       await page.mouse.up();
       expect(await panelWidth(page)).toBe(width);
-      if (width === 300) {
-        // the folders cut at their start, the file name whole before the state
-        expect(
-          await row.evaluate(r => {
-            const [folder, file] = Array.from(
-              r.querySelectorAll('.jp-WorkspaceManager-rowPath > span')
-            );
-            const start = document.createRange();
-            start.setStart(folder.firstChild!, 0);
-            start.setEnd(folder.firstChild!, 1);
-            // the whole text of the file name: scrollWidth and clientWidth round away a cut under 1 px
-            const text = document.createRange();
-            text.selectNodeContents(file);
-            const [f, n, a] = [
-              folder,
-              file,
-              r.querySelector('.jp-WorkspaceManager-age')!
-            ].map(e => e.getBoundingClientRect());
-            return {
-              file: file.textContent,
-              fileWhole:
-                text.getBoundingClientRect().width - n.width < 1 / 64 &&
-                n.right <= a.left,
-              folderCut:
-                folder.scrollWidth > folder.clientWidth &&
-                start.getBoundingClientRect().right <= f.left,
-              ellipsis: `${getComputedStyle(folder).textOverflow} ${getComputedStyle(folder).direction}`
-            };
-          })
-        ).toEqual({
-          file: 'eda.ipynb',
-          fileWhole: true,
-          folderCut: true,
-          ellipsis: 'ellipsis rtl'
-        });
-      }
-      // the kernel type keeps its first characters; the file name shows whole until the kernel type is at its minimum
-      for (const [name, r] of [
-        ['eda.ipynb', row],
-        ['quarterly_revenue_forecast.ipynb', longRow]
-      ] as const) {
-        const { label, cut } = await r.evaluate(r => {
-          const file = r.querySelector(
-            '.jp-WorkspaceManager-rowPath > span:last-child'
-          )!;
+      // per part of the detail line: its text, whether the text is cut, whether it lies inside the row
+      const parts = await longRow.evaluate(r => {
+        const box = r.getBoundingClientRect();
+        return Array.from(
+          r.querySelectorAll<HTMLElement>(
+            '.jp-WorkspaceManager-rowDetail > span'
+          )
+        ).map(e => {
+          // the whole text: scrollWidth and clientWidth round away a cut under 1 px
           const text = document.createRange();
-          text.selectNodeContents(file);
+          text.selectNodeContents(e);
+          const b = e.getBoundingClientRect();
           return {
-            label: r
-              .querySelector('.jp-WorkspaceManager-rowLabel')!
-              .getBoundingClientRect().width,
-            cut:
-              text.getBoundingClientRect().width -
-              file.getBoundingClientRect().width
+            text: e.textContent,
+            cut: text.getBoundingClientRect().width - b.width > 1 / 64,
+            inside: b.right <= box.right + 0.5,
+            style: `${getComputedStyle(e).textOverflow} ${getComputedStyle(e).direction}`
           };
         });
-        expect(label, `${name} label at ${width} px`).toBeGreaterThanOrEqual(
-          30
-        );
-        if (label > 35.5) {
-          expect(
-            cut,
-            `${name} file name cut at ${width} px with a ${label} px label`
-          ).toBeLessThan(1 / 64);
-        }
+      });
+      const [type, memory, cpu, folder, file] = parts;
+      expect(file, `file name at ${width} px`).toMatchObject({
+        text: 'quarterly_revenue_stats.ipynb',
+        cut: false,
+        inside: true
+      });
+      for (const figure of [memory, cpu]) {
+        expect(figure, `figure at ${width} px`).toMatchObject({
+          cut: false,
+          inside: true
+        });
+      }
+      if (width === 300) {
+        // the kernel type and the folder give way first (KERN-02); the folder is cut at its start
+        expect(type).toMatchObject({ cut: true, style: 'ellipsis ltr' });
+        expect(folder).toMatchObject({ cut: true, style: 'ellipsis rtl' });
       }
     }
   } finally {
@@ -338,7 +328,7 @@ test.describe('kernels and sessions of the server', () => {
 
       // B's kernel is in the KERNELS section: a click opens its notebook here
       await openSection(page, 'kernels');
-      await rowOf(sectionBody(page, 'kernels'), b).click();
+      await rowOf(sectionBody(page, 'kernels'), `${tag}-b.ipynb`).click();
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(b);
       // the tab of B runs on the kernel of its session
       expect((await sessionOf(page, b)).kernel.id).toBe(sessionB.kernel.id);
@@ -410,8 +400,9 @@ test.describe('kernels and sessions of the server', () => {
       await openSection(page, 'kernels');
       const body = sectionBody(page, 'kernels');
       await expect(body.locator(ROW)).toHaveCount(3);
-      await expect(rowOf(body, mine)).toBeVisible();
-      await expect(rowOf(body, hiddenNb)).toBeVisible();
+      // each named by its notebook (DQ-17)
+      await expect(rowOf(body, 'mine.ipynb')).toBeVisible();
+      await expect(rowOf(body, 'hidden.ipynb')).toBeVisible();
     } finally {
       for (const s of sessions) {
         await page.request.delete(`/api/sessions/${s.id}`);
@@ -458,6 +449,7 @@ test.describe('kernels and sessions of the server', () => {
         .poll(() => kernelIds(page), UNDER_LOAD)
         .not.toContain(session.kernel.id);
       for (const id of [a, b]) {
+        await openCard(page, id);
         await expect(countOf(card(page, id), 'Kernels')).toHaveText(
           '0',
           NEXT_POLL

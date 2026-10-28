@@ -273,7 +273,7 @@ describe('model', () => {
     expect(a.kernels.map(k => [k.id, k.detail])).toEqual([['k1', 'x.ipynb']]);
   });
 
-  it('ACC-LISTS-109-CONSOLE: the kernel of a console tab carries the console name as its detail', () => {
+  it('ACC-LISTS-109-CONSOLE: the kernel of a console tab carries the console name, the name of its row', () => {
     const k1 = kernel('k1');
     const k2 = kernel('k2');
     const path = 'console-1-7f3a';

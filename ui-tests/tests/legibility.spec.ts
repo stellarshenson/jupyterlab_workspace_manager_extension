@@ -1,5 +1,5 @@
 import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   card,
@@ -9,15 +9,17 @@ import {
   fresh,
   gotoWorkspace,
   headerButton,
+  layout,
   onlyWorkspaces,
+  openCard,
   openPanel,
   openSection,
   PANEL,
   panelWidth,
   patchMeta,
-  layout,
   putWorkspace,
   refresh,
+  rgba,
   sectionCount,
   sectionHeader,
   startTerminal,
@@ -33,70 +35,34 @@ const LIGHT = 'JupyterLab Light';
 /** One text of the panel as the browser draws it. */
 interface IText {
   text: string;
-  contrast: number;
+  /** the computed colour of the text */
+  colour: string;
   size: number;
   style: string;
   group: boolean;
+  /** the panel title, a section label or a section count */
+  heading: boolean;
+  /** an empty-state line */
+  empty: boolean;
   /** the class of the element that draws the text */
   where: string;
 }
 
-/**
- * Every text of the panel that is drawn: text nodes, and the placeholder of
- * an empty field. The contrast is that of the text colour to the colours of
- * the boxes under it, composed from the outermost one.
- */
+/** Every text of the panel that is drawn: text nodes, and the placeholder of an empty field. */
 function texts(page: Page): Promise<IText[]> {
   return page.locator(PANEL).evaluate(panel => {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 1;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-    // any CSS colour, color-mix() included, as 0-255 channels and alpha 0-1
-    const rgba = (css: string): number[] => {
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = css;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-      return [r, g, b, a / 255];
-    };
-    const over = (top: number[], under: number[]) =>
-      [0, 1, 2].map(i => top[i] * top[3] + under[i] * (1 - top[3]));
-    const luminance = (c: number[]) => {
-      const [r, g, b] = c.map(v => {
-        const s = v / 255;
-        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-      });
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    };
-    const backdrop = (el: Element) => {
-      const chain: Element[] = [];
-      for (let e: Element | null = el; e; e = e.parentElement) {
-        chain.unshift(e);
-      }
-      let colour = [255, 255, 255];
-      for (const e of chain) {
-        colour = over(rgba(getComputedStyle(e).backgroundColor), colour);
-      }
-      return colour;
-    };
     const measure = (el: Element, text: string, colour: string): IText => {
       const style = getComputedStyle(el);
-      let alpha = 1;
-      for (let e: Element | null = el; e; e = e.parentElement) {
-        alpha *= parseFloat(getComputedStyle(e).opacity);
-      }
-      const fg = rgba(colour);
-      fg[3] *= alpha;
-      const bg = backdrop(el);
-      const [l1, l2] = [luminance(over(fg, bg)), luminance(bg)].sort(
-        (a, b) => b - a
-      );
       return {
         text,
-        contrast: (l1 + 0.05) / (l2 + 0.05),
+        colour,
         size: parseFloat(style.fontSize),
         style: style.fontStyle,
         group: !!el.closest('.jp-WorkspaceManager-groupLabel'),
+        heading: !!el.closest(
+          '.jp-WorkspaceManager-title, .jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
+        ),
+        empty: !!el.closest('.jp-WorkspaceManager-empty'),
         where: el.getAttribute('class') ?? el.tagName
       };
     };
@@ -204,13 +170,12 @@ async function textsOfOpenCards(
   ids: { current: string; coloured: string[] }
 ): Promise<IText[]> {
   const found: IText[] = [];
-  // the cards render only while WORKSPACES is the open section
+  // every section is open: the cards and the TERMINALS rows render
   await openSection(page, 'workspaces');
+  await openSection(page, 'terminals');
   for (const caret of [
     triangle(page, ids.current),
-    triangle(page, ids.coloured[0]),
-    // a section header is one button; its caret is decoration
-    sectionHeader(page, 'terminals')
+    triangle(page, ids.coloured[0])
   ]) {
     await caret.click();
     await expect(caret).toHaveAttribute('aria-expanded', 'true');
@@ -220,32 +185,150 @@ async function textsOfOpenCards(
   return found;
 }
 
-test('ACC-PANEL-73-TEXT-CONTRAST: every text reads at 4.5:1 or more in Galaxa Steel dark and JupyterLab Light', async ({
+test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a card name, a purpose, the section and group labels and a row name are colour 1; a time, a detail, a note, the counts, the carets and the empty lines are colour 2; recent emphasis is brand colour 1; no text is colour 3', async ({
   page
 }) => {
+  test.setTimeout(150000);
   const ids = await populate(page);
+  // the server's file times cannot be set back: the list reports the second coloured workspace as three hours old
+  const aged = ids.coloured[1];
+  await page.route(/\/lab\/api\/workspaces\/?(\?.*)?$/, async route => {
+    if (route.request().method() !== 'GET') {
+      return route.fallback();
+    }
+    const response = await route.fetch();
+    const json = await response.json();
+    for (const w of json.workspaces.values) {
+      if (w.metadata.id === aged) {
+        w.metadata.last_modified = new Date(
+          Date.now() - 3 * 3600 * 1000
+        ).toISOString();
+      }
+    }
+    await route.fulfill({ response, json });
+  });
   try {
-    const themes: string[] = await page.evaluate(async () => {
-      const manager: any = await (window as any).galata.getPlugin(
-        '@jupyterlab/apputils-extension:themes'
-      );
-      return manager.themes;
-    });
-    expect(themes).toContain(DARK);
+    await refresh(page);
+    await openSection(page, 'workspaces');
+    await openSection(page, 'terminals');
     for (const theme of [DARK, LIGHT]) {
       await page.theme.setTheme(theme);
-      // this window's card in each colour, as its header takes the active shade
-      for (const colour of COLOURS) {
-        await patchMeta(page, ids.current, { colour });
-        await refresh(page);
-        await openSection(page, 'workspaces');
-        await expect(card(page, ids.current)).toHaveClass(
-          new RegExp(`jp-mod-${colour}`)
+      const [colour1, colour2, colour3, brand1] = [
+        await rgba(page, 'var(--jp-ui-font-color1)'),
+        await rgba(page, 'var(--jp-ui-font-color2)'),
+        await rgba(page, 'var(--jp-ui-font-color3)'),
+        await rgba(page, 'var(--jp-brand-color1)')
+      ];
+      const colourOf = async (l: Locator, property = 'color') =>
+        rgba(
+          page,
+          await l.evaluate((n, p) => (getComputedStyle(n) as any)[p], property)
         );
-        const low = (await textsOfOpenCards(page, ids))
-          .filter(t => t.contrast < 4.5)
-          .map(t => `${t.text} (${t.where}): ${t.contrast.toFixed(2)}`);
-        expect.soft(low, `${theme}, this window's card ${colour}`).toEqual([]);
+      // the panel root is #jp-running-sessions.jp-WorkspaceManager
+      expect(await colourOf(page.locator(PANEL)), `${theme} root`).toEqual(
+        colour1
+      );
+
+      // the aged card: its name colour 1, its time colour 2; open, its purpose colour 1 and its counts colour 2
+      await openCard(page, aged);
+      const header = cardHeader(page, aged);
+      await expect(header.locator('.jp-WorkspaceManager-age')).toHaveText(
+        '3h ago'
+      );
+      const checks: [string, Locator, number[]][] = [
+        ['name', header.locator('.jp-WorkspaceManager-name'), colour1],
+        [
+          'time',
+          header.locator(
+            '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
+          ),
+          colour2
+        ],
+        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), colour1],
+        [
+          'section label',
+          sectionHeader(page, 'workspaces').locator(
+            '.jp-WorkspaceManager-sectionLabel'
+          ),
+          colour1
+        ],
+        ['section count', sectionCount(page, 'workspaces'), colour2],
+        [
+          'note',
+          page.locator(`${PANEL} .jp-WorkspaceManager-note`).first(),
+          colour2
+        ],
+        [
+          'empty line',
+          page.locator(`${PANEL} .jp-WorkspaceManager-empty`).first(),
+          colour2
+        ]
+      ];
+      for (const c of await header
+        .locator('.jp-WorkspaceManager-count')
+        .all()) {
+        checks.push(['count', c, colour2]);
+      }
+      // read while the aged card is open: one card is open at a time
+      const check = async () => {
+        for (const [what, l, token] of checks.splice(0)) {
+          expect.soft(await colourOf(l), `${theme} ${what}`).toEqual(token);
+        }
+      };
+      await check();
+      // the first coloured card: a group label colour 1, its count colour 2; a row name colour 1, its detail colour 2
+      await openCard(page, ids.coloured[0]);
+      const body = card(page, ids.coloured[0]);
+      const tab = body.locator('.jp-WorkspaceManager-row').first();
+      await tab.focus();
+      checks.push(
+        [
+          'group label',
+          body.locator('.jp-WorkspaceManager-groupLabel').first(),
+          colour1
+        ],
+        [
+          'group count',
+          body.locator('.jp-WorkspaceManager-groupLabel > span').first(),
+          colour2
+        ],
+        ['row name', tab.locator('.jp-WorkspaceManager-rowLabel'), colour1],
+        ['detail', tab.locator('.jp-WorkspaceManager-rowDetail'), colour2]
+      );
+      await check();
+      // the carets, of a section and of a card
+      for (const caret of [
+        sectionHeader(page, 'workspaces').locator(
+          '.jp-WorkspaceManager-caret .jp-icon3[fill]'
+        ),
+        triangle(page, ids.coloured[0]).locator('.jp-icon3[fill]')
+      ]) {
+        expect
+          .soft(await colourOf(caret.first(), 'fill'), `${theme} caret`)
+          .toEqual(colour2);
+      }
+      // a terminal row: name and time in brand colour 1 while it was active under a minute ago, else colour 1 and colour 2
+      const terminal = page
+        .locator(`${PANEL} [data-section="terminals"] .jp-WorkspaceManager-row`)
+        .first();
+      const recent = (await terminal.getAttribute('class'))!.includes(
+        'jp-mod-recentlyActive'
+      );
+      for (const [part, token] of [
+        ['.jp-WorkspaceManager-rowLabel', recent ? brand1 : colour1],
+        ['.jp-WorkspaceManager-age', recent ? brand1 : colour2]
+      ] as const) {
+        expect
+          .soft(
+            await colourOf(terminal.locator(part)),
+            `${theme} terminal ${part}`
+          )
+          .toEqual(token);
+      }
+      // no text in colour 3
+      const colours = new Set((await texts(page)).map(t => t.colour));
+      for (const c of colours) {
+        expect.soft(await rgba(page, c), `${theme} ${c}`).not.toEqual(colour3);
       }
     }
   } finally {
@@ -253,7 +336,7 @@ test('ACC-PANEL-73-TEXT-CONTRAST: every text reads at 4.5:1 or more in Galaxa St
   }
 });
 
-test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: no text under font size 1 but the group labels at size 0, none in italics', async ({
+test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section labels and counts, the group labels and the empty states at font size 0, every other text at size 1 or more; the empty-state lines are italic and colour 2, no other text is italic', async ({
   page
 }) => {
   const ids = await populate(page);
@@ -263,21 +346,59 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: no text under font size 1 
       const size0 = await fontSize(page, '--jp-ui-font-size0');
       const size1 = await fontSize(page, '--jp-ui-font-size1');
       expect(size0).toBeLessThan(size1);
+      // the empty-state lines shown in each pass, whole
+      const lines = new Set<string>();
+      const shown = async () => {
+        for (const line of await page
+          .locator(`${PANEL} .jp-WorkspaceManager-empty`)
+          .allTextContents()) {
+          lines.add(line);
+        }
+        return texts(page);
+      };
       const found = await textsOfOpenCards(page, ids);
-      const groups = found.filter(t => t.group);
-      expect(groups.length).toBeGreaterThan(0);
+      await shown();
+      // an empty workspace's card open, then a filter that matches nothing
+      await openCard(page, ids.coloured[2]);
+      found.push(...(await shown()));
+      await page
+        .locator(`${PANEL} .jp-WorkspaceManager-filterInput`)
+        .fill('zzzz');
+      found.push(...(await shown()));
+      await page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`).fill('');
+      const small = found.filter(t => t.group || t.heading || t.empty);
+      expect(found.filter(t => t.group).length).toBeGreaterThan(0);
+      // WORKBENCH, four section labels and four counts in each pass
+      expect(found.filter(t => t.heading).length).toBeGreaterThanOrEqual(9);
       expect(
-        groups.filter(t => t.size !== size0).map(t => `${t.text}: ${t.size}`),
+        small.filter(t => t.size !== size0).map(t => `${t.text}: ${t.size}`),
         theme
       ).toEqual([]);
       expect(
         found
-          .filter(t => !t.group && t.size < size1)
+          .filter(t => !t.group && !t.heading && !t.empty && t.size < size1)
           .map(t => `${t.text}: ${t.size}`),
         theme
       ).toEqual([]);
+      // DQ-08: the empty-state lines are italic and colour 2, nothing else is italic
+      const empty = found.filter(t => t.empty);
+      expect(lines, theme).toEqual(
+        new Set([
+          'No kernels',
+          'No language servers',
+          'No tabs, terminals or kernels',
+          'Nothing matches'
+        ])
+      );
+      const colour2 = await rgba(page, 'var(--jp-ui-font-color2)');
+      for (const t of empty) {
+        expect.soft(t.style, `${theme} ${t.text}`).toBe('italic');
+        expect
+          .soft(await rgba(page, t.colour), `${theme} ${t.text}`)
+          .toEqual(colour2);
+      }
       expect(
-        found.filter(t => t.style === 'italic').map(t => t.text),
+        found.filter(t => !t.empty && t.style === 'italic').map(t => t.text),
         theme
       ).toEqual([]);
     }
@@ -332,7 +453,7 @@ test('ACC-PANEL-94-THEME: a theme change repaints the cards without a reload', a
   }
 });
 
-test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title and the WORKSPACES label with its count show in full', async ({
+test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title and each of the four section labels with its count show in full', async ({
   page
 }) => {
   const current = fresh('narrow');
@@ -357,12 +478,20 @@ test('ACC-PANEL-152-NARROW-LABELS: at the 250 px sidebar the title and the WORKS
         theme
       ).toEqual([]);
     }
-    expect(
-      await cut(
-        sectionHeader(page, 'workspaces'),
-        '.jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
-      )
-    ).toEqual([]);
+    for (const name of ['workspaces', 'kernels', 'terminals', 'servers']) {
+      await expect(
+        sectionHeader(page, name).locator(
+          '.jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
+        )
+      ).toHaveCount(2);
+      expect(
+        await cut(
+          sectionHeader(page, name),
+          '.jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
+        ),
+        name
+      ).toEqual([]);
+    }
   } finally {
     await deleteWorkspaces(page, [current, ...others]);
   }
@@ -383,6 +512,8 @@ test('ACC-PANEL-181-PURPOSE-WRAP: a purpose wraps onto as many lines as it needs
     await openPanel(page);
     await refresh(page);
     expect(await panelWidth(page)).toBe(250);
+    // DQ-17: the purpose shows while the card is open
+    await openCard(page, current);
     const element = card(page, current).locator('.jp-WorkspaceManager-purpose');
     await expect(element).toHaveText(purpose);
     const drawn = await element.evaluate(n => {
@@ -431,6 +562,7 @@ test('ACC-PANEL-168-COUNT-BRACKETS: the WORKSPACES count reads (4); the counts b
     expect(await header.evaluate(n => (n as HTMLElement).innerText)).toMatch(
       /^WORKSPACES\s*\(4\)$/
     );
+    await openCard(page, others[0]);
     await expect(
       cardHeader(page, others[0]).locator('.jp-WorkspaceManager-count')
     ).toHaveText(['1', '1', '0']);

@@ -7,16 +7,18 @@ inlines every model twice, once per theme.
 """
 
 from html import escape
+from textwrap import wrap
 from pathlib import Path
 
 HERE = Path(__file__).parent
 SVG_DIR = HERE / "svg"
 FONT = "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+MONO = "ui-monospace, SFMono-Regular, Menlo, monospace"
 W = 300  # sidebar width of the models
 
-# Token values: dark = Galaxa Dark Theme - Steel, read from the live lab on 2026-10-23;
-# light = stock JupyterLab Light. <colour>-act is the active tab shade of
-# jupyterlab_colourful_tab_extension, the same value in the lab's settings.
+# Token values: dark = Galaxa Dark Theme - Steel, read from the live lab on 2026-10-23 and from its
+# theme CSS on 2026-10-28 (b1, warn1, warn2, info1, inv0); light = stock JupyterLab Light.
+# rose ... lavender are the pastel strips of the first drafts, kept for the appendix models only.
 THEMES = {
     "dark": {
         "l0": "#252b32", "l1": "#303841", "l2": "#404b54", "l3": "#4d5a65", "l4": "#5d6d7a",
@@ -27,12 +29,7 @@ THEMES = {
         "rose": "#e8bbc6", "peach": "#ddc2a7", "lemon": "#ccc8a6",
         "mint": "#b3cdb1", "sky": "#a5cce5", "lavender": "#cfc1e1",
         "nb": "#ef6c00", "md": "#64b5f6", "py": "#ffca28",
-        "rose-act": "#3a2328",
-        "peach-act": "#3a3126",
-        "lemon-act": "#3a3825",
-        "mint-act": "#253b2a",
-        "sky-act": "#1d2a38",
-        "lavender-act": "#30253a",
+        "b1": "#404b54", "warn1": "#ff9800", "warn2": "#ffb74d", "info1": "#00bcd4", "inv0": "#1e2124",
     },
     "light": {
         "l0": "#ffffff", "l1": "#ffffff", "l2": "#eeeeee", "l3": "#bdbdbd", "l4": "#757575",
@@ -43,12 +40,7 @@ THEMES = {
         "rose": "#e39fb1", "peach": "#d2ab82", "lemon": "#bab56d",
         "mint": "#87c086", "sky": "#77bae0", "lavender": "#bfa9da",
         "nb": "#ef6c00", "md": "#1976d2", "py": "#f9a825",
-        "rose-act": "#e39fb1",
-        "peach-act": "#d2ab82",
-        "lemon-act": "#bab56d",
-        "mint-act": "#87c086",
-        "sky-act": "#77bae0",
-        "lavender-act": "#bfa9da",
+        "b1": "#bdbdbd", "warn1": "#f57c00", "warn2": "#ffb74d", "info1": "#0097a7", "inv0": "#ffffff",
     },
 }
 
@@ -59,15 +51,6 @@ def css_vars(theme: str) -> str:
 
 def v(name: str) -> str:
     return f"var(--m-{name})"
-
-
-def active_shade(colour: str) -> str:
-    return v(f"{colour}-act")
-
-
-def selected_body(colour: str) -> str:
-    """The body of this window's open card: 40% of the active shade over the panel."""
-    return f"color-mix(in srgb, {active_shade(colour)} {BODY_MIX}%, {v('l1')})"
 
 
 def tint(colour: str, pct: int, base: str = "l1") -> str:
@@ -98,7 +81,8 @@ class Svg:
     def line(self, x1, y1, x2, y2, colour, sw=1):
         self.add(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" style="stroke:{colour};stroke-width:{sw}"/>')
 
-    def text(self, x, y, s, colour="f1", size=12, weight=400, anchor="start", italic=False, spacing=0, upper=False):
+    def text(self, x, y, s, colour="f1", size=12, weight=400, anchor="start", italic=False, spacing=0, upper=False,
+             mono=False, opacity=None):
         if upper:
             s = s.upper()
         st = f"fill:{v(colour) if not colour.startswith(('var', 'color', '#')) else colour};font-size:{size}px;font-weight:{weight}"
@@ -106,6 +90,10 @@ class Svg:
             st += ";font-style:italic"
         if spacing:
             st += f";letter-spacing:{spacing}px"
+        if mono:
+            st += f";font-family:{MONO}"
+        if opacity is not None:
+            st += f";opacity:{opacity}"
         self.add(f'<text x="{x}" y="{y}" text-anchor="{anchor}" style="{st}">{escape(s)}</text>')
 
     def runs(self, x, y, parts, anchor="start"):
@@ -535,286 +523,346 @@ def row_c(s: Svg, x, y, kind, label, right, right_colour="f2", state="ok"):
     return y + 24
 
 
-# ---------- Design B refined (selected by the Star Colonel on 2026-10-23) ----------
+# ---------- Design B on the design system (aligned by the Star Colonel on 2026-10-28) ----------
 
 # Font sizes of Galaxa Dark Theme - Steel: --jp-ui-font-size1 is 11px, size2 1.2em of it,
-# size0 0.8333em. Every text on a card header is colour 0 (contrast >= 4.9:1 on the
-# strongest tint); body details are colour 1 (4.8:1 on layout-color1).
+# size0 0.8333em. Colour roles (DQ-07): primary text f1, meta text, counts, carets and empty
+# states f2; the recent emphasis brand1; destructive entries err.
 FS0, FS1, FS2 = 9.2, 11, 13.2
-TINT, BODY_MIX = 8, 40
+G = 12  # the scrollbar gutter every section list reserves (DQ-05)
+LW = W - G  # width of a section list
 TAB_PATH = "M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H3V5h10v4h8z"
 KERNEL_PATH = (
     "M15 9H9v6h6zm-2 4h-2v-2h2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2"
     "c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2zm-4 6H7V7h10z"
 )
 
+# Each workspace colour is a theme token (DQ-01); the menu names the hue the token shows
+WS_TOKEN = {"rose": "err", "peach": "warn1", "lemon": "warn2", "mint": "ok", "sky": "brand1", "lavender": "info1"}
+TOKEN_NAME = {"err": "--jp-error-color1", "warn1": "--jp-warn-color1", "warn2": "--jp-warn-color2",
+              "ok": "--jp-success-color1", "brand1": "--jp-brand-color1", "info1": "--jp-info-color1"}
+WS_LABEL = {"rose": "Red", "peach": "Orange", "lemon": "Amber", "mint": "Green", "sky": "Blue", "lavender": "Cyan"}
+ROTATION = ["sky", "lavender", "rose", "peach", "lemon", "mint"]
+STATE = {"idle": "ok", "busy": "brand2", "starting": "l4"}  # kernel state dot (DQ-13)
 
-def g_tab(s: Svg, x, y, colour="f1", size=16):
+
+def ws_colour(colour: str) -> str:
+    return v(WS_TOKEN[colour])
+
+
+def fit(s: str, px: float, per: float) -> str:
+    """Cut s to px at per pixels a character and end it in an ellipsis, as text-overflow does."""
+    n = int(px // per)
+    return s if len(s) <= n else s[: max(n - 1, 1)].rstrip() + "…"
+
+
+def g_tab(s: Svg, x, y, colour="glyph", size=16):
     """JupyterLab's own tabIcon (ui-components sidebar/tab.svg)."""
     s.raw(f'<path transform="translate({x},{y}) scale({size / 24})" d="{TAB_PATH}" style="fill:{v(colour)}"/>')
 
 
-def g_kern(s: Svg, x, y, colour="f1", size=16):
+def g_kern(s: Svg, x, y, colour="glyph", size=16):
     """JupyterLab's own kernelIcon (ui-components statusbar/kernel.svg)."""
     s.raw(f'<path transform="translate({x},{y}) scale({size / 24})" d="{KERNEL_PATH}" style="fill:{v(colour)}"/>')
 
 
-def dot(s: Svg, cx, cy, colour, r=3.5):
+def g_arrow(s: Svg, x, y, colour="glyph", up=True):
+    d = f"M{x+8} {y+13}V{y+3}M{x+4} {y+7}l4-4 4 4" if up else f"M{x+8} {y+3}v10M{x+4} {y+9}l4 4 4-4"
+    s.raw(f'<path d="{d}" style="fill:none;stroke:{v(colour)};stroke-width:1.2;stroke-linejoin:round"/>')
+
+
+def g_warn(s: Svg, x, y, colour="err"):
+    s.raw(f'<path d="M{x+8} {y+2}l6.5 11.5h-13z" style="fill:none;stroke:{v(colour)};stroke-width:1.2;stroke-linejoin:round"/>')
+    s.raw(f'<path d="M{x+8} {y+6.5}v3.5M{x+8} {y+11.3}v.8" style="fill:none;stroke:{v(colour)};stroke-width:1.3"/>')
+
+
+def dot(s: Svg, cx, cy, colour, r=4):
     s.raw(f'<circle cx="{cx}" cy="{cy}" r="{r}" style="fill:{v(colour)}"/>')
 
 
-def b2_age(s: Svg, xr, y, age):
-    """Age right-aligned at xr; 'now' is colour 0 semibold with the activity dot."""
-    if age == "now":
-        s.text(xr, y, "now", "f0", FS1, 600, anchor="end")
-        dot(s, xr - 31, y - 4, "brand2", 3)
-    else:
-        s.text(xr, y, age, "f0", FS1, anchor="end")
+def grouped(s: Svg, idx: int, style: str) -> None:
+    s.parts[idx:] = [f'<g style="{style}">' + "".join(s.parts[idx:]) + "</g>"]
 
 
-def b2_counts(s: Svg, xr, y, n):
-    """Tabs, terminals, kernels, right-aligned at xr; None skips one."""
-    x = xr
-    for glyph, num in reversed(list(zip(("tab", "term", "kern"), n))):
-        if num is None:
-            continue
-        x -= 7 * len(str(num))
-        s.text(x, y + 12, str(num), "f0", FS1)
-        x -= 18
-        {"tab": lambda: g_tab(s, x, y, "f1"), "term": lambda: g_terminal(s, x, y, "f1"),
-         "kern": lambda: g_kern(s, x, y, "f1")}[glyph]()
-        x -= 8
+def button(s: Svg, x, y, glyph, active=False, hover=False, disabled=False, **kw):
+    """A 24x24 header button with a 14px glyph (DQ-16): inactive glyph inverse layout 3, hover and
+    active on layout 3, active glyph brand 1; a disabled one keeps its place at opacity 0.4 (DQ-12)."""
+    if (active or hover) and not disabled:
+        s.rect(x, y, 24, 24, v("l3"), rx=2)
+    idx = len(s.parts)
+    glyph(s, 0, 0, colour="brand1" if active else ("f1" if hover else "glyph"), **kw)
+    op = ' opacity="0.4"' if disabled else ""
+    s.parts[idx:] = [f'<g transform="translate({x + 5},{y + 5}) scale(0.875)"{op}>' + "".join(s.parts[idx:]) + "</g>"]
 
 
-def b2_panel_header(s: Svg, y, count="11", filter_on=False, hidden_on=False):
-    s.rect(0, y, W, 32, v("l1"))
-    s.line(0, y + 32, W, y + 32, v("b2"))
-    s.runs(14, y + 20, [("WORKSPACES", "f0", FS1, 600, False, 0), (f"({count})", "f1", FS1, 400, False, 8)])
-    icon_button(s, W - 108, y + 4, g_plus)
-    icon_button(s, W - 82, y + 4, g_filter, active=filter_on)
-    icon_button(s, W - 56, y + 4, g_eye, active=hidden_on)
-    icon_button(s, W - 30, y + 4, g_refresh)
-    return y + 33
+def panel_band(s: Svg, y, filter_on=False, hidden_on=False):
+    """DQ-06: a 28px band on layout 2, the title on the column of the section labels."""
+    s.rect(0, y, W, 28, v("l2"))
+    s.text(18, y + 17.5, "WORKBENCH", "f1", FS0, 600, spacing=1)
+    for k, (glyph, on) in enumerate(((g_plus, False), (g_filter, filter_on), (g_eye, hidden_on), (g_refresh, False))):
+        button(s, W - 100 + 24 * k, y + 2, glyph, active=on)
+    return y + 28
 
 
-def b2_header(s: Svg, x, y, w, ws, n, open_, hover=False, current=False, hidden=False, right_text=None):
-    two_lines = bool(ws.get("purpose") or right_text or n is not None)
-    h = 46 if two_lines else 32
-    g_caret(s, x + 9, y + 8, open_=open_, colour="f0")
-    s.text(x + 28, y + 20, ws["name"], "f0", FS2, 600)
-    if hidden:
-        icon_button(s, x + w - 28, y + 4, g_eye, off=True)
-        s.text(x + w - 34, y + 20, "hidden", "f0", FS1, anchor="end")
-    else:
-        if not hover:
-            b2_age(s, x + w - 34, y + 20, ws["age"])
-        icon_button(s, x + w - 28, y + 4, g_dots, hover=hover)
-    if hover:
-        # the hover icons take the age's place, so the name keeps its width
-        icon_button(s, x + w - 104, y + 4, g_open_ws, hover=True)
-        icon_button(s, x + w - 80, y + 4, g_closeall, hover=True)
-    if ws.get("purpose"):
-        # the panel ellipsises the purpose before the counts; about 24 characters fit at 284px
-        purpose = ws["purpose"] if len(ws["purpose"]) <= 24 else ws["purpose"][:23].rstrip() + "\u2026"
-        s.text(x + 28, y + 38, purpose, "f0", FS1)
-    if right_text:
-        s.text(x + w - 10, y + 38, right_text, "f0", FS1, anchor="end")
-    elif n is not None:
-        b2_counts(s, x + w - 10, y + 26, n)
-    return y + h
-
-
-def b2_group(s: Svg, x, y, label, num):
-    s.runs(x, y + 15, [(label.upper(), "f1", FS0, 600, False, 0), (f"({num})", "f1", FS0, 600, False, 6)])
-    return y + 21
-
-
-def b2_row(s: Svg, x, y, w, kind, label, detail, right, hover=False, state=None):
-    if hover:
-        # a veil of the text colour, so the hover reads on a neutral body and on a shade alike
-        s.rect(x + 4, y, w - 4, 24, "color-mix(in srgb, var(--m-f0) 12%, transparent)")
-    gx = x + 14
-    if kind == "term":
-        g_terminal(s, gx, y + 4, "f1")
-    elif kind == "kern":
-        g_kern(s, gx, y + 4, "f1")
-    else:
-        g_file(s, gx, y + 4, kind)
-    # a hovered row lifts its detail to colour 0: under the veil it reads 5.2:1 or more
-    s.runs(gx + 22, y + 16, [(label, "f0", FS1, 400, False, 0)] +
-           ([(detail, "f0" if hover else "f1", FS1, 400, False, 8)] if detail else []))
-    if state:
-        dot(s, x + w - 46, y + 12, state, 3.5)
-    if right == "now":
-        b2_age(s, x + w - 10, y + 16, "now")
-    elif right:
-        s.text(x + w - 10, y + 16, right, "f1", FS1, anchor="end")
+def section_head(s: Svg, y, label, n, shutdown=None, open_=True):
+    """DQ-03: a band on layout 2, caret on the 4px inset, label at 18px, count in colour 2 6px
+    after it; Shut down all on the three lower sections, disabled while the section is empty."""
+    s.line(0, y - 0.5, W, y - 0.5, v("b3"))
+    s.rect(0, y, W, 24, v("l2"))
+    g_caret(s, 3, y + 4, open_=open_, colour="f2")
+    s.text(18, y + 15.5, label, "f1", FS0, 600, spacing=1)
+    s.text(18 + len(label) * 8 + 6, y + 15.5, f"({n})", "f2", FS0)
+    if shutdown is not None:
+        idx, bw = len(s.parts), 74
+        s.rect(W - 8 - bw, y + 3, bw, 18, v("l1"), rx=2, stroke=v("b1"))
+        s.text(W - 8 - bw / 2, y + 15, "Shut down all", "f1", FS0, anchor="middle")
+        if not shutdown:
+            grouped(s, idx, "opacity:0.4")
     return y + 24
 
 
-CARD_R = 3  # corner radius of a card
+def thumb(s: Svg, top, h, start, length):
+    """The scrollbar of a section's own list (DQ-05), in its reserved gutter."""
+    s.rect(LW + 3, top + 2 + (h - 4) * start, 6, (h - 4) * length, v("l4"), rx=3)
 
 
-def card_frame(s: Svg, idx, x, top, w, header_bottom, bottom, ws, open_, current):
-    """Paint a card under the content drawn since parts[idx]: one rounded shape; inside it,
-    square layers clipped by the shape - header, body, then the strip on top; then the outline,
-    flush against the card's edge, or the border of another open card."""
+def empty(s: Svg, y, text):
+    """DQ-08: an empty state is italic colour 2 at size 0."""
+    s.text(18, y + 15, text, "f2", FS0, italic=True)
+    return y + 24
+
+
+def b_counts(s: Svg, xr, y, n):
+    """Tabs, terminals, kernels, right-aligned at xr: glyphs inverse layout 3, numbers colour 2."""
+    x = xr
+    for glyph, num in reversed(list(zip(("tab", "term", "kern"), n))):
+        x -= 6.2 * len(str(num))
+        s.text(x, y + 12, str(num), "f2", FS1)
+        x -= 18
+        {"tab": lambda: g_tab(s, x, y), "term": lambda: g_terminal(s, x, y), "kern": lambda: g_kern(s, x, y)}[glyph]()
+        x -= 8
+
+
+def b_row(s: Svg, x, y, w, kind, name, time=None, state=None, selected=False, hover=False, detail=None, mono=False):
+    """DQ-17 row: type icon, name, the state dot and its word (DQ-13), the time; the detail line
+    shows only on the selected row. Hover and selection paint layout 2 (DQ-10). Identifiers in
+    the code font (DQ-18). detail: [(text, mono), ...]."""
+    h = 24 + (18 if selected and detail else 0)
+    if hover or selected:
+        s.rect(x, y, w, h, v("l2"))
+    gx = x + 13
+    if kind == "term":
+        g_terminal(s, gx, y + 4)
+    elif kind == "kern":
+        g_kern(s, gx, y + 4)
+    else:
+        g_file(s, gx, y + 4, kind)
+    recent = time == "now"
+    right = x + w - 8
+    if time:
+        s.text(right, y + 16, time, "brand1" if recent else "f2", FS1, anchor="end")
+        right -= 6.2 * len(time) + 12
+    if state:
+        s.text(right, y + 16, state, "f2", FS1, anchor="end")
+        right -= 6.2 * len(state) + 10
+        dot(s, right, y + 12, STATE[state])
+        right -= 10
+    nx = gx + 22
+    s.text(nx, y + 16, fit(name, right - nx - 4, 6.6 if mono else 6.2), "brand1" if recent else "f1", FS1, mono=mono)
+    if selected and detail:
+        dx = nx
+        for text, code in detail:
+            s.text(dx, y + 35, text, "f2", FS1, mono=code)
+            dx += len(text) * (6.6 if code else 6.2) + 8
+    return y + h
+
+
+def frame(s: Svg, idx, x, top, w, header_bottom, bottom, ws, current):
+    """DQ-02 card under the content drawn since parts[idx]: one shape with 2px corners that clips
+    the header (layout 2), the body (layout 1), the 1px border 1 and the 4px strip in the
+    workspace's token (the card's left border); this window's 2px brand 2 outline lies against it."""
     h, hh = bottom - top, header_bottom - top
     cid = s.uid("card")
     sq = lambda rx, ry, rw, rh, fill: (
         f'<rect x="{rx}" y="{ry}" width="{rw}" height="{rh}" style="fill:{fill}"/>' if rh > 0 else "")
-    layers = [f'<clipPath id="{cid}"><rect x="{x}" y="{top}" width="{w}" height="{h}" rx="{CARD_R}"/></clipPath>',
-              f'<g clip-path="url(#{cid})">']
+    s.parts.insert(idx, "".join([
+        f'<clipPath id="{cid}"><rect x="{x}" y="{top}" width="{w}" height="{h}" rx="2"/></clipPath>',
+        f'<g clip-path="url(#{cid})">',
+        sq(x, top, w, hh, v("l2")), sq(x, header_bottom, w, h - hh, v("l1")),
+        f'<rect x="{x + .5}" y="{top + .5}" width="{w - 1}" height="{h - 1}" rx="1.5" style="fill:none;stroke:{v("b1")}"/>',
+        sq(x, top, 4, h, ws_colour(ws["colour"])), "</g>"]))
     if current:
-        layers += [sq(x, top, w, hh, active_shade(ws["colour"])),
-                   sq(x, header_bottom, w, h - hh, selected_body(ws["colour"]))]
-    else:
-        layers += [sq(x, top, w, hh, tint(ws["colour"], TINT)),
-                   sq(x, header_bottom, w, h - hh, v("l1"))]
-    layers += [sq(x, top, 4, h, v(ws["colour"])), "</g>"]
-    s.parts.insert(idx, "".join(layers))
-    if current:
-        # centre line 1px outside the card, 2px wide: the outline touches the card's edge;
-        # radius CARD_R + 1 keeps it concentric with the card's corners
-        s.rect(x - 1, top - 1, w + 2, h + 2, "none", rx=CARD_R + 1, stroke=v("brand2"), sw=2)
-    elif open_:
-        s.rect(x + 0.5, top + 0.5, w - 1, h - 1, "none", rx=CARD_R - 0.5, stroke=tint(ws["colour"], 55))
+        s.rect(x - 1, top - 1, w + 2, h + 2, "none", rx=3, stroke=v("brand2"), sw=2)
 
 
-def b2_card(s: Svg, x, y, w, ws, n, open_=False, hover=False, current=False, hover_row=None, rows=None):
+def card(s: Svg, x, y, w, ws, open_=False, current=False, hidden=False, hover=None, groups=None, of=None):
+    """Header: triangle, name, time, then Open workspace, Close all tabs, the eye and ... in the same
+    place on every card (DQ-12); purpose and counts only while open (DQ-17); recent and stale
+    emphasis (DQ-09)."""
     top, idx = y, len(s.parts)
-    y = hb = b2_header(s, x, y, w, ws, n, open_, hover=hover, current=current)
-    if not open_:
-        card_frame(s, idx, x, top, w, hb, hb, ws, False, current)
-        return y
-    y += 4
-    groups = rows or [
-        ("Tabs", [(k, name, folder, "", None) for k, name, folder in ws["docs"]]),
-        ("Terminals", [("term", proc, f"terminal {nm}", age, None) for proc, nm, age in ws["terms"]]),
-        ("Kernels", [("kern", kn, nb, age, st) for kn, nb, age, st in ws["kernels"]]),
-    ]
-    i = 0
-    for label, items in groups:
-        y = b2_group(s, x + 14, y, label, len(items))
-        for kind, lab, det, right, st in items:
-            y = b2_row(s, x, y, w, kind, lab, det, right, hover=(i == hover_row), state=st)
-            i += 1
+    age = ws["age"]
+    recent = age == "now"
+    stale = age.endswith("d ago") and int(age.split("d")[0]) > 7
+    g_caret(s, x + 7, y + 6, open_=open_, colour="f2")
+    bx = x + w - 2 - 96
+    tx = bx - 6
+    word = "hidden" if hidden else age
+    s.text(tx, y + 18, word, "brand1" if recent and not hidden else "f2", FS1, anchor="end")
+    name = fit(ws["name"], tx - 6.2 * len(word) - 8 - (x + 26), 7.6)
+    s.text(x + 26, y + 18.5, name, "brand1" if recent else "f1", FS2, 600, opacity=0.65 if stale else None)
+    for k, (glyph, kw, disabled) in enumerate((
+            (g_go, {}, current), (g_closeall, {}, False),
+            (g_eye, {"off": not hidden}, current), (g_dots, {}, hidden))):
+        button(s, bx + 24 * k, y + 2, glyph, hover=(hover == k), active=(hidden and glyph is g_eye),
+               disabled=disabled, **kw)
+    y += 28
+    if open_:
+        lines = wrap(ws.get("purpose", ""), 24) if ws.get("purpose") else []
+        if of:
+            s.text(x + w - 8, y + 9, of, "f2", FS1, anchor="end")
+        else:
+            b_counts(s, x + w - 8, y - 3, ws["n"])
+        for k, line in enumerate(lines):
+            s.text(x + 26, y + 9 + 15 * k, line, "f1", FS1)
+        y += max(1, len(lines)) * 15 + 4
+    hb = y
+    if open_ and groups:
         y += 4
-    card_frame(s, idx, x, top, w, hb, y, ws, True, current)
+        for label, rows in groups:
+            s.text(x + 18, y + 13, label.upper(), "f1", FS0, 600, spacing=1)
+            s.text(x + 18 + len(label) * 8 + 6, y + 13, f"({len(rows)})", "f2", FS0)
+            y += 19
+            for r in rows:
+                # rows start after the strip, the card's 4px left border
+                y = b_row(s, x + 4, y, w - 5, **r)
+            y += 3
+        y += 3
+    frame(s, idx, x, top, w, hb, y, ws, current)
     return y
 
 
-def b2_footer(s: Svg, x, y, w, hidden_n=3):
-    s.rect(x, y, w, 32, "none", rx=3, stroke=v("f2"), dash="3 2")
-    g_unassigned(s, x + 12, y + 8, colour="f1")
-    s.text(x + 34, y + 20, "In no workspace", "f0", FS2 - 1, 600)
-    b2_counts(s, x + w - 10, y + 8, (None, 10, 0))
-    y += 38
-    s.rect(x, y, w, 32, v("l2"), rx=3)
-    s.text(x + 14, y + 20, "Other sessions", "f0", FS2 - 1, 600)
-    s.text(x + w - 10, y + 20, "(2)", "f0", FS1, anchor="end")
-    y += 40
-    if hidden_n:
-        g_eye(s, x + 4, y, colour="f1", off=True)
-        s.text(x + 26, y + 12, f"{hidden_n} hidden workspaces", "f0", FS1)
-        y += 24
-    return y
-
-
+DEFAULT_B = {"name": "default", "colour": "sky", "purpose": "Extension development", "age": "2m ago", "n": (3, 5, 1)}
 B2_OTHERS = [
-    {"name": "iconprobe2", "colour": "mint", "purpose": "", "age": "8h", "n": (1, 0, 0)},
-    {"name": "auto-6", "colour": "peach", "purpose": "Firmware upload tests", "age": "3d", "n": (0, 1, 0)},
-    {"name": "wf-regression-hist-1", "colour": "lemon", "purpose": "Regression history workflow", "age": "3d", "n": (2, 0, 1)},
-    {"name": "fb-exp-panels-base", "colour": "lavender", "purpose": "", "age": "4d", "n": (0, 0, 0)},
+    {"name": "iconprobe2", "colour": "mint", "purpose": "", "age": "now", "n": (1, 0, 0)},
+    {"name": "auto-6", "colour": "peach", "purpose": "Firmware upload tests", "age": "3d ago", "n": (0, 1, 0)},
+    {"name": "wf-regression-hist-1", "colour": "lemon", "purpose": "Regression history workflow", "age": "3d ago", "n": (2, 0, 1)},
+    {"name": "scratch", "colour": "rose", "purpose": "", "age": "1h ago", "n": (0, 0, 0)},
+    {"name": "fb-exp-panels-base", "colour": "lavender", "purpose": "", "age": "9d ago", "n": (0, 0, 0)},
 ]
+TERMS = [("7", "now", "claude"), ("11", "2m ago", "claude"), ("13", "3h ago", "fish"),
+         ("14", "12m ago", "claude"), ("15", "1d ago", "fish")]
+
+
+def term_row(n, time, proc, **kw):
+    return dict(kind="term", name=f"terminal {n}", time=time, mono=True, detail=[(proc, False)], **kw)
+
+
+def workspaces(s: Svg, y, cards, n=None, hidden_line=3):
+    """The WORKSPACES section: cards in its own scroll container, then the hidden count line."""
+    y = section_head(s, y, "WORKSPACES", n if n is not None else len(cards)) + 6
+    for args in cards:
+        y = card(s, 8, y, LW - 16, **args) + 6
+    if hidden_line:
+        g_eye(s, 12, y, colour="glyph", off=True)
+        s.text(34, y + 12, f"{hidden_line} hidden workspaces", "f2", FS1)
+        y += 22
+    return y
 
 
 def b2_closed() -> Svg:
-    s = Svg(W, 520, "Design B refined - load state, no card open")
-    y = b2_panel_header(s, 0) + 8
-    x, w = 8, W - 16
-    y = b2_card(s, x, y, w, DEFAULT_WS, (3, 5, 1), current=True) + 6
-    for o in B2_OTHERS:
-        y = b2_card(s, x, y, w, o, o["n"], hover=(o["name"] == HOVER)) + 6
-    s.h = b2_footer(s, x, y, w) + 8
+    s = Svg(W, 600, "Design B on the design system - load state: every section open, no card open")
+    y = panel_band(s, 0)
+    y = workspaces(s, y, [dict(ws=DEFAULT_B, current=True)] +
+                   [dict(ws=o, hover=(1 if o["name"] == HOVER else None)) for o in B2_OTHERS])
+    return lower_sections(s, y)
+
+
+def lower_sections(s: Svg, y) -> Svg:
+    """KERNELS, TERMINALS (its own scroll bar) and LANGUAGE SERVERS, which a filter does not narrow."""
+    y = section_head(s, y, "KERNELS", 2, shutdown=True)
+    y = b_row(s, 0, y, LW, "kern", "design.ipynb", "5m ago", "idle")
+    y = b_row(s, 0, y, LW, "kern", "history.ipynb", "now", "busy")
+    y = section_head(s, y, "TERMINALS", 10, shutdown=True)
+    top = y
+    for n, time, proc in TERMS:
+        y = b_row(s, 0, y, LW, **term_row(n, time, proc))
+    thumb(s, top, y - top, 0, 0.5)
+    y = section_head(s, y, "LANGUAGE SERVERS", 0, shutdown=False)
+    s.h = empty(s, y, "No language servers") + 4
     return s
 
 
 def b2_open() -> Svg:
-    s = Svg(W, 720, "Design B refined - this window's workspace opened by a click")
-    y = b2_panel_header(s, 0) + 8
-    x, w = 8, W - 16
-    y = b2_card(s, x, y, w, DEFAULT_WS, (3, 5, 1), open_=True, current=True, hover_row=4) + 6
-    for o in B2_OTHERS[:3]:
-        y = b2_card(s, x, y, w, o, o["n"]) + 6
-    s.h = b2_footer(s, x, y, w) + 8
+    s = Svg(W, 720, "Design B on the design system - this window's card open, a KERNELS row selected (the panel's one selected row)")
+    y = panel_band(s, 0)
+    groups = [
+        ("Tabs", [dict(kind="md", name="README.md", detail=[("docs/", True)]),
+                  dict(kind="md", name="brief.md", detail=[("docs/", True)]),
+                  dict(kind="nb", name="design.ipynb", detail=[("notebooks/", True)])]),
+        ("Terminals", [term_row(n, t, p) for n, t, p in TERMS]),
+        ("Kernels", [dict(kind="kern", name="design.ipynb", time="5m ago", state="idle",
+                          detail=[("Python 3 (ipykernel)", False)])]),
+    ]
+    y = workspaces(s, y, [dict(ws=DEFAULT_B, current=True, open_=True, groups=groups)] +
+                   [dict(ws=o) for o in B2_OTHERS[:2]], n=6, hidden_line=0)
+    y = section_head(s, y, "KERNELS", 2, shutdown=True)
+    y = b_row(s, 0, y, LW, "kern", "design.ipynb", "5m ago", "idle")
+    # KERN-02: the file name shows whole; the kernel type and the folder give way first
+    y = b_row(s, 0, y, LW, "kern", "history.ipynb", "now", "busy", selected=True,
+            detail=[("Python…", False), ("…/history.ipynb", True), ("182 MB", False), ("3%", False)])
+    y = section_head(s, y, "TERMINALS", 10, shutdown=True)
+    s.h = y + 4
     return s
 
 
 def b2_filter() -> Svg:
-    s = Svg(W, 400, "Design B refined - filter claude")
-    y = b2_panel_header(s, 0, filter_on=True)
-    s.rect(8, y + 6, W - 16, 26, "color-mix(in srgb, #000 4%, var(--m-l1))", rx=2, stroke=v("brand1"))
-    g_filter(s, 14, y + 11, colour="f1")
-    s.text(36, y + 23, "claude", "f0", FS1)
-    s.text(W - 20, y + 23, "x", "f1", FS1 + 1, anchor="middle")
-    y += 40
-    x, w = 8, W - 16
+    s = Svg(W, 560, "Design B on the design system - filter claude: it narrows the workspace cards; KERNELS, TERMINALS and LANGUAGE SERVERS keep every row")
+    y = panel_band(s, 0, filter_on=True)
+    s.rect(8, y + 6, W - 16, 24, "color-mix(in srgb, #000 4%, var(--m-l1))", rx=2, stroke=v("brand1"))
+    g_filter(s, 13, y + 10, colour="f2")
+    s.text(34, y + 22, "claude", "f1", FS1)
+    s.text(W - 20, y + 22, "x", "f2", FS1 + 1, anchor="middle")
+    y += 36
     matches = [
-        (DEFAULT_WS, True, [("Terminals", [("term", "claude", "terminal 7", "now", None),
-                                           ("term", "claude", "terminal 11", "2m", None),
-                                           ("term", "claude", "terminal 14", "12m", None)])], "(3 of 9)"),
-        (B2_OTHERS[1], False, [("Terminals", [("term", "claude", "terminal 1", "1d", None)])], "(1 of 1)"),
+        dict(ws=DEFAULT_B, current=True, open_=True, of="(3 of 9)",
+             groups=[("Terminals", [term_row(n, t, p) for n, t, p in TERMS if p == "claude"])]),
+        dict(ws=B2_OTHERS[1], open_=True, of="(1 of 1)", groups=[("Terminals", [term_row("1", "1d ago", "claude")])]),
     ]
-    for ws, current, rows, of in matches:
-        top, idx = y, len(s.parts)
-        y = hb = b2_header(s, x, y, w, ws, None, True, current=current, right_text=of)
-        y += 4
-        for label, items in rows:
-            y = b2_group(s, x + 14, y, label, len(items))
-            for kind, lab, det, right, st in items:
-                y = b2_row(s, x, y, w, kind, lab, det, right)
-        y += 6
-        card_frame(s, idx, x, top, w, hb, y, ws, True, current)
-        y += 6
-    s.rect(x, y, w, 32, "none", rx=3, stroke=v("f2"), dash="3 2")
-    g_unassigned(s, x + 12, y + 8, colour="f1")
-    s.text(x + 34, y + 20, "In no workspace", "f0", FS2 - 1, 600)
-    s.text(x + w - 10, y + 20, "(4 of 10)", "f0", FS1, anchor="end")
-    y += 40
-    s.text(14, y + 10, "4 workspaces without a match are not shown", "f0", FS1)
-    s.h = y + 22
-    return s
+    y = workspaces(s, y, matches, hidden_line=0)
+    s.text(18, y + 10, "4 workspaces without a match are not shown", "f2", FS1)
+    # src/panel/panel.tsx _render applies the filter to the workspace cards only
+    return lower_sections(s, y + 20)
 
 
 def b2_menu() -> Svg:
-    s = Svg(W + 116, 330, "Design B refined - workspace menu with the Colour submenu")
+    s = Svg(W + 116, 380, "Design B on the design system - workspace menu with the Colour submenu")
     # the submenu reaches past the sidebar into the main area
     s.rect(W, 0, 116, 400, v("l0"))
     s.line(W, 0, W, 400, v("b2"))
-    y = b2_panel_header(s, 0) + 8
-    x, w = 8, W - 16
-    top, idx = y, len(s.parts)
-    y = b2_header(s, x, y, w, B2_OTHERS[1], (0, 1, 0), False)
-    card_frame(s, idx, x, top, w, y, y, B2_OTHERS[1], False, False)
-    icon_button(s, x + w - 28, top + 4, g_dots, active=True)
-    my, mx, mw = top + 32, 108, 188
+    y = panel_band(s, 0)
+    y = section_head(s, y, "WORKSPACES", 6) + 6
+    x, w = 8, LW - 16
+    top = y
+    y = card(s, x, y, w, B2_OTHERS[1])
+    button(s, x + w - 2 - 24, top + 2, g_dots, active=True)
+    my, mx, mw = y + 2, 104, 192
     colour = B2_OTHERS[1]["colour"]
-    # every item has an icon; Delete carries the error colour on its icon only, since the
-    # error colour reads 3.2:1 as text in Galaxa Steel
     items = [
-        ("Open workspace", lambda gx, gy: g_open_ws(s, gx, gy, "f1"), None),
-        ("Open in new browser tab", lambda gx, gy: g_open(s, gx, gy, "f1"), None),
-        ("Close all tabs", lambda gx, gy: g_closeall(s, gx, gy, "f1"), None), None,
-        ("Set description...", lambda gx, gy: g_pencil(s, gx, gy, "f1"), None),
-        ("Colour", lambda gx, gy: g_swatch(s, gx, gy, colour), ">"),
-        ("Hide workspace", lambda gx, gy: g_eye(s, gx, gy, "f1", off=True), None), None,
-        ("Delete workspace", lambda gx, gy: g_bin(s, gx, gy, "err"), None),
+        ("Open workspace", lambda gx, gy: g_go(s, gx, gy, "glyph"), None),
+        ("Open in new browser tab", lambda gx, gy: g_open(s, gx, gy, "glyph"), None),
+        ("Close all tabs", lambda gx, gy: g_closeall(s, gx, gy, "glyph"), None), None,
+        ("Set description...", lambda gx, gy: g_pencil(s, gx, gy, "glyph"), None),
+        ("Colour", lambda gx, gy: s.rect(gx + 2, gy + 2, 12, 12, ws_colour(colour), rx=2, stroke=v("l4")), ">"),
+        ("Hide workspace", lambda gx, gy: g_eye(s, gx, gy, "glyph", off=True), None),
+        ("Move up", lambda gx, gy: g_arrow(s, gx, gy, "glyph"), None),
+        ("Move down", lambda gx, gy: g_arrow(s, gx, gy, "glyph", up=False), None), None,
+        # DQ-11: a destructive entry draws label and icon in the error colour, at rest and selected
+        ("Delete workspace", lambda gx, gy: g_bin(s, gx, gy, "err"), "danger"),
     ]
-    h = sum(8 if it is None else 26 for it in items) + 8
+    h = sum(8 if it is None else 24 for it in items) + 8
     s.rect(mx + 2, my + 3, mw, h, "rgba(0,0,0,.25)", rx=2)
     s.rect(mx, my, mw, h, v("l1"), rx=2, stroke=v("l3"))
-    iy = my + 4
+    iy, sub_y = my + 4, my
     for it in items:
         if it is None:
             s.line(mx + 8, iy + 4, mx + mw - 8, iy + 4, v("l3"))
@@ -822,49 +870,60 @@ def b2_menu() -> Svg:
             continue
         label, glyph, mod = it
         if mod == ">":
-            s.rect(mx + 1, iy, mw - 2, 26, v("l2"))
-        glyph(mx + 8, iy + 5)
-        s.text(mx + 32, iy + 17, label, "f0", FS1 + 1)
-        if mod == ">":
-            s.text(mx + mw - 12, iy + 17, ">", "f1", FS1, anchor="end")
+            s.rect(mx + 1, iy, mw - 2, 24, v("l2"))
+            s.text(mx + mw - 12, iy + 16, ">", "f1", FS1, anchor="end")
             sub_y = iy
-        iy += 26
-    # the open submenu: the names and swatches of the colourful tab extension's Tab Colour menu
-    names = [("rose", "Red"), ("peach", "Orange"), ("lemon", "Yellow"), ("mint", "Green"), ("sky", "Blue"), ("lavender", "Purple")]
+        glyph(mx + 8, iy + 4)
+        s.text(mx + 32, iy + 16, label, "err" if mod == "danger" else "f1", FS1 + 1)
+        iy += 24
+    names = ROTATION[2:] + ROTATION[:2]  # Red, Orange, Amber, Green, Blue, Cyan
     sx, sy, sw = mx + mw - 2, sub_y - 4, 112
-    sh = len(names) * 26 + 8
+    sh = len(names) * 24 + 8
     s.rect(sx + 2, sy + 3, sw, sh, "rgba(0,0,0,.25)", rx=2)
     s.rect(sx, sy, sw, sh, v("l1"), rx=2, stroke=v("l3"))
-    for k, (cid, label) in enumerate(names):
-        g_swatch(s, sx + 8, sy + 4 + k * 26 + 5, cid)
-        s.text(sx + 32, sy + 4 + k * 26 + 17, label, "f0", FS1 + 1)
+    for k, cid in enumerate(names):
+        s.rect(sx + 10, sy + 4 + k * 24 + 6, 12, 12, ws_colour(cid), rx=2, stroke=v("l4"))
+        s.text(sx + 32, sy + 4 + k * 24 + 16, WS_LABEL[cid], "f1", FS1 + 1)
+        if cid == colour:
+            s.text(sx + sw - 10, sy + 4 + k * 24 + 16, "✓", "f1", FS1 + 1, anchor="end")
     s.h = max(my + h, sy + sh) + 12
     return s
 
 
 def b2_hidden() -> Svg:
-    s = Svg(W, 330, "Design B refined - hidden workspaces shown")
-    y = b2_panel_header(s, 0, hidden_on=True) + 8
-    x, w = 8, W - 16
-    rows = [
-        (DEFAULT_WS, False, True), (B2_OTHERS[1], False, False),
-        ({"name": "iconprobe", "colour": "rose", "purpose": "", "age": "2d"}, True, False),
-        ({"name": "fb-exp-rename-base", "colour": "mint", "purpose": "", "age": "1d"}, True, False),
-        ({"name": "fb-exp-simcheck", "colour": "lemon", "purpose": "", "age": "1d"}, True, False),
-    ]
-    for ws, hidden, current in rows:
-        top, idx = y, len(s.parts)
-        y = b2_header(s, x, y, w, ws, None if hidden else ws.get("n", (3, 5, 1)), False, current=current, hidden=hidden)
-        card_frame(s, idx, x, top, w, y, y, ws, False, current)
-        y += 6
-    s.text(14, y + 12, "The eye button shows a hidden workspace again", "f0", FS1)
-    s.h = y + 24
+    s = Svg(W, 330, "Design B on the design system - hidden workspaces shown")
+    y = panel_band(s, 0, hidden_on=True)
+    hidden = [{"name": "iconprobe", "colour": "rose", "age": "2d ago"},
+              {"name": "fb-exp-rename-base", "colour": "mint", "age": "1d ago"},
+              {"name": "fb-exp-simcheck", "colour": "lemon", "age": "1d ago"}]
+    y = workspaces(s, y, [dict(ws=DEFAULT_B, current=True), dict(ws=B2_OTHERS[1])] +
+                   [dict(ws=h, hidden=True) for h in hidden], hidden_line=0)
+    s.text(18, y + 10, "The eye of a shown card hides it;", "f2", FS1)
+    s.text(18, y + 26, "the eye of a hidden card shows it again", "f2", FS1)
+    s.h = y + 38
     return s
+
+
+def footer_button(s: Svg, x, y, w, label, kind, disabled=False):
+    """dialog-controls recipe: primary filled brand 1 (the only fill); secondary a surface button,
+    border 2; danger unfilled with error-coloured text and border (DQ-14)."""
+    idx = len(s.parts)
+    if kind == "primary":
+        s.rect(x, y, w, 26, v("brand1"), rx=2)
+        s.text(x + w / 2, y + 17, label, "inv0", FS1 + 1, 600, anchor="middle")
+    elif kind == "danger":
+        s.rect(x + .5, y + .5, w - 1, 25, "none", rx=2, stroke=f"color-mix(in srgb, {v('err')} 60%, {v('b2')})")
+        s.text(x + w / 2, y + 17, label, "err", FS1 + 1, anchor="middle")
+    else:
+        s.rect(x + .5, y + .5, w - 1, 25, f"color-mix(in srgb, {v('l1')} 92%, {v('f0')})", rx=2, stroke=v("b2"))
+        s.text(x + w / 2, y + 17, label, "f0", FS1 + 1, anchor="middle")
+    if disabled:
+        grouped(s, idx, "opacity:0.4")
 
 
 def b2_new() -> Svg:
     """The dialog of the + button: filled in, and a name that exists."""
-    s = Svg(560, 276, "Design B refined - New workspace dialog")
+    s = Svg(560, 290, "Design B on the design system - New workspace dialog")
     field = "color-mix(in srgb, #000 4%, var(--m-l1))"
     states = [
         ("fb-review", "Review of the feedback runs before\nthe release of the new grader", None),
@@ -872,35 +931,59 @@ def b2_new() -> Svg:
     ]
     for i, (name, purpose, error) in enumerate(states):
         x, y, w = 8 + i * 276, 8, 268
-        s.rect(x + 2, y + 3, w, 260, "rgba(0,0,0,.25)", rx=2)
-        s.rect(x, y, w, 260, v("l1"), rx=2, stroke=v("l3"))
-        s.text(x + 16, y + 28, "New workspace", "f0", FS2, 600)
-        s.text(x + 16, y + 54, "Name", "f0", FS1)
-        s.rect(x + 16, y + 60, w - 32, 26, field, rx=2, stroke=v("err" if error else "brand1"))
-        s.text(x + 24, y + 77, name, "f0", FS1 + 1)
+        s.rect(x + 2, y + 3, w, 272, "rgba(0,0,0,.25)", rx=2)
+        s.rect(x, y, w, 272, v("l1"), rx=2, stroke=v("l3"))
+        s.text(x + 16, y + 28, "New workspace", "f1", FS2, 600)
+        s.text(x + 16, y + 54, "Name", "f1", FS1)
+        s.rect(x + 16, y + 60, w - 32, 26, field, rx=2, stroke=v("brand1"))
+        s.text(x + 24, y + 77, name, "f1", FS1 + 1)
         if error:
-            dot(s, x + 20, y + 98, "err", 3.5)
-            s.text(x + 28, y + 102, error, "f0", FS1)
+            # DQ-15: a state line - padding 6px 12px on layout 2, a 2px left border in the state colour
+            s.rect(x + 16, y + 92, w - 32, 24, v("l2"))
+            s.rect(x + 16, y + 92, 2, 24, v("err"))
+            s.text(x + 28, y + 108, error, "f1", FS1)
         else:
-            s.text(x + 16, y + 102, "Letters, digits, - and _", "f1", FS1)
-        s.text(x + 16, y + 128, "Short description (optional)", "f0", FS1)
-        # three lines that wrap the text: 100 characters fill about three lines at this width
-        s.rect(x + 16, y + 134, w - 32, 58, field, rx=2, stroke=v("l3"))
+            s.text(x + 16, y + 106, "Letters, digits, - and _", "f2", FS1)
+        s.text(x + 16, y + 140, "Short description (optional)", "f1", FS1)
+        s.rect(x + 16, y + 146, w - 32, 58, field, rx=2, stroke=v("b2"))
         for k, line in enumerate(purpose.split("\n") if purpose else []):
-            s.text(x + 24, y + 151 + k * 16, line, "f0", FS1 + 1)
-        # the counter counts the characters typed; a wrap is not a character
-        s.text(x + w - 16, y + 208, f"{len(purpose.replace(chr(10), ' '))}/100", "f1", FS1, anchor="end")
-        bx = x + w - 16 - 64
-        s.rect(bx, y + 222, 64, 26, v("l3") if error else v("brand1"), rx=2)
-        s.text(bx + 32, y + 239, "Create", "f2" if error else "#fff", FS1 + 1, 600, anchor="middle")
-        bx -= 72
-        s.rect(bx, y + 222, 64, 26, v("l2"), rx=2)
-        s.text(bx + 32, y + 239, "Cancel", "f0", FS1 + 1, anchor="middle")
+            s.text(x + 24, y + 163 + k * 16, line, "f1", FS1 + 1)
+        s.text(x + w - 16, y + 220, f"{len(purpose.replace(chr(10), ' '))}/100", "f2", FS1, anchor="end")
+        footer_button(s, x + w - 16 - 64, y + 234, 64, "Create", "primary", disabled=bool(error))
+        footer_button(s, x + w - 16 - 136, y + 234, 64, "Cancel", "secondary")
+    return s
+
+
+def b2_shutdown() -> Svg:
+    """DQ-14 and DQ-15: a shutdown question with no filled button, and the panel's banner."""
+    s = Svg(560, 190, "Design B on the design system - shutdown dialog and the failed-reload banner")
+    x, y, w = 8, 8, 268
+    s.rect(x + 2, y + 3, w, 150, "rgba(0,0,0,.25)", rx=2)
+    s.rect(x, y, w, 150, v("l1"), rx=2, stroke=v("l3"))
+    s.text(x + 16, y + 28, "Shut down terminal 7?", "f1", FS2, 600)
+    s.text(x + 16, y + 58, "Workspace auto-6 also holds this terminal.", "f1", FS1)
+    footer_button(s, x + 16, y + 110, 84, "Shut down", "danger")
+    footer_button(s, x + w - 16 - 64, y + 110, 64, "Cancel", "secondary")
+    px = 288
+    s.rect(px, 8, 264, 174, v("l1"))
+    panel_band_y = 8
+    s.rect(px, panel_band_y, 264, 28, v("l2"))
+    s.text(px + 18, panel_band_y + 17.5, "WORKBENCH", "f1", FS0, 600, spacing=1)
+    by = panel_band_y + 34
+    s.rect(px + 8, by, 248, 26, f"color-mix(in srgb, {v('err')} 15%, transparent)", rx=2,
+           stroke=f"color-mix(in srgb, {v('err')} 35%, transparent)")
+    s.text(px + 16, by + 17, "Reload failed: terminals answered 500", "f1", FS1)
+    s.line(px, by + 34.5, px + 264, by + 34.5, v("b3"))
+    s.rect(px, by + 35, 264, 24, v("l2"))
+    g_caret(s, px + 3, by + 39, colour="f2")
+    s.text(px + 18, by + 50.5, "WORKSPACES", "f1", FS0, 600, spacing=1)
+    s.text(px + 18 + 10 * 8 + 6, by + 50.5, "(6)", "f2", FS0)
+    s.text(px + 16, by + 90, "The last content stays under the banner", "f2", FS1)
     return s
 
 
 def b2_legend() -> Svg:
-    s = Svg(560, 140, "Icons and marks of design B refined")
+    s = Svg(560, 150, "Icons and marks of design B on the design system")
     items = [
         ("tab", "Tab count", "tabIcon"), ("term", "Terminal", "own glyph"),
         ("kern", "Kernel / notebook", "kernelIcon"),
@@ -908,42 +991,43 @@ def b2_legend() -> Svg:
     x = 12
     for kind, name, src in items:
         s.rect(x, 10, 170, 44, v("l2"), rx=2)
-        {"tab": lambda: g_tab(s, x + 12, 24, "f0"), "term": lambda: g_terminal(s, x + 12, 24, "f0"),
-         "kern": lambda: g_kern(s, x + 12, 24, "f0")}[kind]()
-        s.text(x + 38, 30, name, "f0", FS1 + 1, 600)
-        s.text(x + 38, 45, src, "f1", FS1)
+        {"tab": lambda: g_tab(s, x + 12, 24, "f1"), "term": lambda: g_terminal(s, x + 12, 24, "f1"),
+         "kern": lambda: g_kern(s, x + 12, 24, "f1")}[kind]()
+        s.text(x + 38, 30, name, "f1", FS1 + 1, 600)
+        s.text(x + 38, 45, src, "f2", FS1)
         x += 180
     x = 12
-    for colour, label in (("ok", "kernel idle"), ("brand2", "kernel busy, or active under 60 s"), ("l4", "kernel state unknown")):
-        dot(s, x + 6, 74, colour, 4)
-        s.text(x + 16, 78, label, "f0", FS1)
-        x += {"ok": 90, "brand2": 220}.get(colour, 0)
-    g_caret(s, 12, 96, open_=False, colour="f0")
-    g_caret(s, 28, 96, open_=True, colour="f0")
-    s.text(50, 109, "closed / open; triangle toggles, header switches", "f0", FS1)
-    card_frame(s, len(s.parts), 330, 94, 40, 114, 114, {"colour": "sky"}, False, True)
-    s.text(380, 109, "this window's workspace", "f0", FS1)
+    # DQ-13: the dot always has its word
+    for state, label in (("idle", "idle"), ("busy", "busy"), ("starting", "starting, restarting, dead, unknown")):
+        dot(s, x + 6, 74, STATE[state])
+        s.text(x + 16, 78, label, "f1", FS1)
+        x += {"idle": 60, "busy": 64}.get(state, 0)
+    s.text(12, 104, "now", "brand1", FS1)
+    s.text(40, 104, "under 60 s: name and time brand 1", "f2", FS1)
+    s.text(270, 104, "fb-exp-panels-base", "f1", FS1, 600, opacity=0.65)
+    s.text(392, 104, "over 7 days: name at 0.65", "f2", FS1)
+    g_caret(s, 12, 120, open_=False, colour="f2")
+    g_caret(s, 28, 120, open_=True, colour="f2")
+    s.text(50, 133, "closed / open; triangle toggles, header switches", "f1", FS1)
+    frame(s, len(s.parts), 330, 118, 40, 138, 138, {"colour": "sky"}, True)
+    s.text(380, 133, "this window's workspace", "f1", FS1)
     return s
 
 
 # ---------- palette and icons ----------
 
 def palette() -> Svg:
-    names = ["rose", "peach", "lemon", "mint", "sky", "lavender"]
-    s = Svg(560, 184, "Workspace palette in rotation order")
-    for i, n in enumerate(names):
-        x = 12 + i * 90
-        s.rect(x, 12, 80, 44, v("l2"), rx=2)
-        s.rect(x, 12, 6, 44, v(n))
-        s.text(x + 14, 30, f"{i + 1}. {n}", "f0", 11, 600)
-        s.text(x + 14, 46, "strip", "f0", 11)
-        s.rect(x, 64, 80, 26, tint(n, TINT), rx=2)
-        s.text(x + 8, 81, f"header {TINT}%", "f0", 11)
-        s.rect(x, 96, 80, 26, active_shade(n), rx=2)
-        s.text(x + 8, 113, "selected header", "f0", 11)
-        s.rect(x, 128, 80, 26, selected_body(n), rx=2)
-        s.text(x + 8, 145, "selected body", "f0", 11)
-    s.text(12, 174, "Order of rotation: 1 to 6, then 1 again. Values follow the colourful tab palette (see the page).", "f0", 11)
+    """DQ-01: each workspace colour is a theme token; the menu names its hue."""
+    s = Svg(560, 156, "Workspace colours as theme tokens, in rotation order")
+    for i, n in enumerate(ROTATION):
+        x, y = 12 + (i % 3) * 182, 12 + (i // 3) * 66
+        s.rect(x, y, 174, 56, v("l2"), rx=2)
+        s.rect(x, y, 4, 56, ws_colour(n))
+        s.rect(x + 14, y + 10, 12, 12, ws_colour(n), rx=2, stroke=v("l4"))
+        s.text(x + 34, y + 21, f"{i + 1}. {WS_LABEL[n]}", "f1", FS1, 600)
+        s.text(x + 104, y + 21, n, "f2", FS1, mono=True)
+        s.text(x + 14, y + 44, TOKEN_NAME[WS_TOKEN[n]], "f2", FS1, mono=True)
+    s.text(12, 148, "Order of rotation: 1 to 6, then 1 again. The theme sets each value; a theme flip repaints them.", "f1", FS1)
     return s
 
 
@@ -1002,6 +1086,7 @@ MODELS = {
     "b2-menu": b2_menu,
     "b2-hidden": b2_hidden,
     "b2-new": b2_new,
+    "b2-shutdown": b2_shutdown,
     "b2-legend": b2_legend,
     "alt-a": alt_a,
     "alt-b": alt_b,

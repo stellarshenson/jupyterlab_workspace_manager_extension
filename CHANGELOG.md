@@ -2,6 +2,32 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.23] - 2026-10-28
+
+### Added
+
+- Four independent sections, WORKSPACES, KERNELS, TERMINALS and LANGUAGE SERVERS, each opening and closing on its own and keeping its state in the browser
+- A fixed card order that a workspace switch does not change, with drag, Move up and Move down to change it
+- A KERNELS row and a TERMINALS row open their item in this window, and a terminal row activates the tab of its running terminal and keeps that tab while the terminal runs
+- The shutdown dialogs name every workspace that also holds the item
+
+### Changed
+
+- The panel follows the JupyterLab extension design system: header bands, neutral card surfaces, one scroll area per section with a fixed header, a 1 px focus ring and 14 px header glyphs
+- Every colour is a JupyterLab CSS variable, so the panel follows the active theme; the workspace strips are more saturated and the first workspace is blue
+- Every row shows only the status dot, the name and the time; the process, the kernel type, the document, the memory, the CPU, the purpose and the counts show when the row or its card is selected
+- Destructive menu entries are red, a dialog carries one filled button and an error banner, and an icon that does not apply is disabled instead of hidden
+- The KERNELS and TERMINALS sections list every item in the lab, in a workspace or not
+
+### Fixed
+
+- A TERMINALS or KERNELS row of another workspace's item switched the whole window instead of opening the item here, and a console kernel row did nothing
+- An open hidden workspace card showed neither its purpose nor its counts
+- Shut down all in a section header was too small to hit, and the shutdown dialog put the focus on Shut down so that Enter confirmed it
+- A section header's accessible name was the fused text of its nested buttons, and the arrow keys did not reach a row from its button
+- A shut-down terminal stayed in the list until the next poll; the terminals route now leaves out a terminal whose process has ended
+- A KERNELS row cut the document name at the left instead of showing the whole name
+
 ## [0.8.17] - 2026-10-25
 
 ### Added

@@ -17,15 +17,15 @@ import {
   kernelIds,
   languageServer,
   layout,
-  menuItem,
   menuButton,
+  menuItem,
   only,
   onlyWorkspaces,
+  openCard,
   openPanel,
   openSection,
   PANEL,
   PANEL_TAB,
-  panelWidth,
   patchMeta,
   putNotebook,
   putWorkspace,
@@ -42,7 +42,9 @@ import {
   shownElsewhere,
   startSession,
   startTerminal,
+  stripColour,
   terminalNames,
+  TOKENS,
   triangle,
   UNDER_LOAD
 } from './helpers';
@@ -58,10 +60,6 @@ const openCards = (page: Page) =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`);
 
 const dialog = (page: Page) => page.locator('.jp-Dialog');
-
-/** The colour of a card's strip, its `::before`, as the page draws it. */
-const stripColour = (c: Locator) =>
-  c.evaluate(n => getComputedStyle(n, '::before').backgroundColor);
 
 /**
  * This window in a workspace of its own, the panel showing only the
@@ -89,10 +87,6 @@ const ids = (current: string, ...suffixes: string[]) => [
   current,
   ...suffixes.map(s => `${current}-${s}`)
 ];
-
-/** A + b mixed in sRGB as `color-mix(in srgb, a p%, b)` mixes them. */
-const mix = (a: number[], p: number, b: number[]) =>
-  a.map((v, i) => Math.round(v * p + b[i] * (1 - p)));
 
 const near = (actual: number[], expected: number[], tolerance = 1) =>
   actual.every((v, i) => Math.abs(v - expected[i]) <= tolerance);
@@ -380,7 +374,7 @@ test('ACC-LISTS-158-LANG-LISTED: a language server of the lab is listed in the L
   }
 });
 
-test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Language servers sections keep their shutdown buttons, and each header carries Shut down all with its confirmation', async ({
+test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts its terminal down from its context menu, a LANGUAGE SERVERS row keeps its shutdown button, and each of the three headers carries Shut down all with its confirmation', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -392,7 +386,7 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
       'LANGUAGE SERVERS'
     );
     // each section header carries Shut down all
-    for (const name of ['terminals', 'servers']) {
+    for (const name of ['kernels', 'terminals', 'servers']) {
       await expect(
         sectionHeader(page, name).getByRole('button', {
           name: 'Shut down all',
@@ -405,8 +399,9 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
     await openSection(page, 'terminals');
     const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
     await expect(row).toBeVisible();
+    await expect(row.locator('button')).toHaveCount(0);
     await fromRowMenu(row, 'Shut down terminal');
-    // the panel removes the row itself; the server's list lags the DELETE
+    // the route leaves out the ended pty at the load after the DELETE
     await expect(row).toHaveCount(0);
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
@@ -440,7 +435,7 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: the rows of the Kernels, Terminals and Langu
   }
 });
 
-test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions for the kernels, terminals and language servers; one section is open at a time, and a click closes and reopens a header', async ({
+test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3), KERNELS, TERMINALS and LANGUAGE SERVERS start open; a header click closes or opens that section only; a reload keeps each state', async ({
   page
 }) => {
   // the terminals, kernels and language servers of other tests are listed too
@@ -492,43 +487,45 @@ test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions 
       'LANGUAGE SERVERS'
     ]);
 
-    // a click on a header opens it and closes the open one, and a second click closes it
+    // every section open, each with its rows
+    const expanded = () =>
+      Promise.all(
+        ['workspaces', 'kernels', 'terminals', 'servers'].map(name =>
+          sectionHeader(page, name).getAttribute('aria-expanded')
+        )
+      );
+    expect(await expanded()).toEqual(['true', 'true', 'true', 'true']);
     for (const [name, text] of [
-      ['kernels', 'Python'],
+      ['kernels', kernelId],
       ['terminals', `terminal ${terminal}`],
       ['servers', 'fake-lsp (python)']
     ] as const) {
-      await sectionHeader(page, name).click();
-      await expect(sectionHeader(page, name)).toHaveAttribute(
-        'aria-expanded',
-        'true'
-      );
       await expect(sectionBody(page, name)).toBeVisible();
       await expect(sectionBody(page, name)).toContainText(text);
       await expect(
         sectionBody(page, name).locator('.jp-WorkspaceManager-row')
       ).toHaveCount(1);
-      // WORKSPACES closed: its cards are not in the page
-      await expect(card(page, current)).toHaveCount(0);
-      await sectionHeader(page, name).click();
-      await expect(sectionHeader(page, name)).toHaveAttribute(
-        'aria-expanded',
-        'false'
-      );
-      await expect(
-        page.locator(`${PANEL} .jp-WorkspaceManager-sectionBody`)
-      ).toHaveCount(0);
     }
+
+    // a click closes KERNELS only, then TERMINALS only; a closed section shows its header only
+    await sectionHeader(page, 'kernels').click();
+    await expect(sectionBody(page, 'kernels')).toHaveCount(0);
+    expect(await expanded()).toEqual(['true', 'false', 'true', 'true']);
+    await expect(card(page, current)).toBeVisible();
     await sectionHeader(page, 'terminals').click();
-    await sectionHeader(page, 'servers').click();
-    await expect(sectionHeader(page, 'terminals')).toHaveAttribute(
-      'aria-expanded',
-      'false'
-    );
-    await expect(sectionHeader(page, 'servers')).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    );
+    await expect(sectionBody(page, 'terminals')).toHaveCount(0);
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'true']);
+    await expect(sectionBody(page, 'servers')).toContainText('fake-lsp');
+
+    // the open state outlives the page
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(card(page, current)).toBeVisible();
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'true']);
+    await sectionHeader(page, 'kernels').click();
+    await expect(sectionBody(page, 'kernels')).toContainText(kernelId);
+    expect(await expanded()).toEqual(['true', 'true', 'false', 'true']);
   } finally {
     await languageServer(page, false);
     if (terminal) {
@@ -541,15 +538,13 @@ test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3) stands above three accordions 
   }
 });
 
-test('ACC-ACCORD-15-STRIP: each card shows a strip in its workspace colour', async ({
+test('ACC-ACCORD-15-STRIP: each card shows a 4 px strip, its left border, in the theme token of its workspace colour', async ({
   page
 }) => {
   const current = await setUp(page, 'strip', { a: {}, b: {} });
   const [a, b] = [`${current}-a`, `${current}-b`];
   try {
-    const palette = await Promise.all(
-      COLOURS.map(c => rgb(page, `var(--jp-workspace-manager-${c})`))
-    );
+    const palette = await Promise.all(TOKENS.map(t => rgb(page, `var(${t})`)));
     const strips: number[][] = [];
     for (const id of [a, b]) {
       // the colour the panel gave, stored on the server
@@ -559,7 +554,7 @@ test('ACC-ACCORD-15-STRIP: each card shows a strip in its workspace colour', asy
       const strip = await rgb(page, await stripColour(card(page, id)));
       expect(strip).toEqual(palette[COLOURS.indexOf(colour)]);
       const width = await card(page, id).evaluate(
-        n => getComputedStyle(n, '::before').width
+        n => getComputedStyle(n).borderLeftWidth
       );
       expect(width).toBe('4px');
       strips.push(strip);
@@ -666,7 +661,7 @@ test('ACC-ACCORD-17-STABLE-COLOUR: colours stay across a reload and the delete o
   }
 });
 
-test('ACC-ACCORD-18-PURPOSE: the purpose shows on the card that has one only', async ({
+test('ACC-ACCORD-18-PURPOSE: the purpose shows while its card is open, on the card that has one only; a closed card shows no purpose', async ({
   page
 }) => {
   const current = fresh('purpose');
@@ -676,14 +671,34 @@ test('ACC-ACCORD-18-PURPOSE: the purpose shows on the card that has one only', a
   await patchMeta(page, a, { purpose: 'Review of the feature branch' });
   try {
     await setUpExisting(page, current);
+    // DQ-17: closed cards show no purpose
+    await expect(card(page, b)).toBeVisible();
+    await expect(
+      page.locator(`${PANEL} .jp-WorkspaceManager-purpose`)
+    ).toHaveCount(0);
+    await openCard(page, a);
     await expect(
       card(page, a).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('Review of the feature branch');
-    await expect(card(page, b)).toBeVisible();
+    await openCard(page, b);
+    await expect(
+      card(page, a).locator('.jp-WorkspaceManager-purpose')
+    ).toHaveCount(0);
     // no purpose line: the element holds no text and takes no width
     const purpose = card(page, b).locator('.jp-WorkspaceManager-purpose');
     await expect(purpose).toHaveText('');
     expect((await purpose.boundingBox())?.height ?? 0).toBe(0);
+    // a hidden workspace's open card shows its purpose and counts too
+    await patchMeta(page, a, { hidden: true });
+    await refresh(page);
+    await headerButton(page, 'Show hidden workspaces').click();
+    await openCard(page, a);
+    await expect(
+      card(page, a).locator('.jp-WorkspaceManager-purpose')
+    ).toHaveText('Review of the feature branch');
+    await expect(
+      card(page, a).locator('.jp-WorkspaceManager-counts')
+    ).toBeVisible();
   } finally {
     await deleteWorkspaces(page, [current, a, b]);
   }
@@ -701,7 +716,7 @@ async function setUpExisting(
   await page.mouse.move(0, 0);
 }
 
-test('ACC-ACCORD-20-AGE: the header shows the age of the workspace', async ({
+test('ACC-ACCORD-20-AGE: the header shows the age of the workspace, now under 60 s', async ({
   page
 }) => {
   const current = await setUp(page, 'age', { a: {} });
@@ -721,7 +736,7 @@ test.describe('kernels and sessions of the server', () => {
   // Galata lists only the kernels and sessions its page started; this test starts them by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-ACCORD-22-COUNTS, ACC-ACCORD-70-COUNT-TABS: the header counts tabs, terminals and kernels', async ({
+  test('ACC-ACCORD-22-COUNTS, ACC-ACCORD-70-COUNT-TABS: an open card counts its tabs, terminals and kernels in its header; a closed card shows no counts', async ({
     page,
     tmpPath
   }) => {
@@ -759,6 +774,10 @@ test.describe('kernels and sessions of the server', () => {
               nodes.map(n => [n.getAttribute('title'), n.textContent])
             )
           );
+      // DQ-17: no counts on a closed card
+      expect(await counts(held)).toEqual({});
+      expect(await counts(docs)).toEqual({});
+      await openCard(page, held);
       // ACC-ACCORD-22: the notebook tab is a tab too
       expect(await counts(held)).toEqual({
         Tabs: '1',
@@ -766,6 +785,8 @@ test.describe('kernels and sessions of the server', () => {
         Kernels: '1'
       });
       // ACC-ACCORD-70
+      await openCard(page, docs);
+      expect(await counts(held)).toEqual({});
       expect(await counts(docs)).toEqual({
         Tabs: '2',
         Terminals: '0',
@@ -809,9 +830,7 @@ test.describe('kernels and sessions of the server', () => {
       await expect
         .poll(async () => {
           await refresh(page);
-          return terminalRow
-            .locator('.jp-WorkspaceManager-rowLabel')
-            .textContent();
+          return (await terminalRow.getAttribute('title'))!.split('\n')[1];
         }, UNDER_LOAD)
         .toBe('sleep');
       const age = await terminalRow
@@ -832,7 +851,7 @@ test.describe('kernels and sessions of the server', () => {
       await openSection(page, 'kernels');
       await refresh(page);
       await expect(
-        rowOf(sectionBody(page, 'kernels'), notebook)
+        rowOf(sectionBody(page, 'kernels'), 'tips.ipynb')
       ).toHaveAttribute(
         'title',
         `${await displayName(page, session.kernel.name)}\n${notebook}\nidle`
@@ -1014,6 +1033,7 @@ test.describe('a kernel of the server', () => {
           `.jp-WorkspaceManager-count[title="${title}"]`
         );
       // the kernel belongs to the workspace through its notebook tab
+      await openCard(page, other);
       await expect(count('Kernels')).toHaveText('1');
       await fromMenu(page, other, 'Close all tabs');
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
@@ -1197,40 +1217,80 @@ test('ACC-SERVER-64-PRESENCE: a window that moves to another workspace no longer
   }
 });
 
-test('ACC-ACCORD-69-CARD: other cards have tinted headers; an open one has a neutral body and a border in its colour', async ({
+test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, open or closed, has 2 px corners, a 1 px border colour 1 border, a header on layout colour 2 and a body on layout colour 1", async ({
   page
 }) => {
   const current = fresh('card');
   const [a, b] = [`${current}-a`, `${current}-b`];
+  await putWorkspace(page, current);
   await putWorkspace(page, a);
   await putWorkspace(page, b);
+  await patchMeta(page, current, { colour: 'sky' });
   await patchMeta(page, a, { colour: 'mint' });
   await patchMeta(page, b, { colour: 'lavender' });
   try {
     await setUpExisting(page, current);
-    const background = (l: Locator) =>
-      l.evaluate(n => getComputedStyle(n).backgroundColor);
-    expect(await background(cardHeader(page, a))).not.toBe(
-      await background(cardHeader(page, b))
-    );
-    await triangle(page, a).click();
-    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
-    const open = await card(page, a).evaluate(n => {
-      const s = getComputedStyle(n);
-      return {
-        width: s.borderTopWidth,
-        style: s.borderTopStyle,
-        colour: s.borderTopColor,
-        body: getComputedStyle(n).backgroundColor
-      };
-    });
-    expect([open.width, open.style]).toEqual(['1px', 'solid']);
-    expect(await rgb(page, open.colour)).toEqual(
-      await rgb(page, 'var(--jp-workspace-manager-mint)')
-    );
-    expect(await rgb(page, open.body)).toEqual(
-      await rgb(page, 'var(--jp-layout-color1)')
-    );
+    for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
+      await page.theme.setTheme(theme);
+      const [border, layout1, layout2] = await Promise.all(
+        ['--jp-border-color1', '--jp-layout-color1', '--jp-layout-color2'].map(
+          t => rgb(page, `var(${t})`)
+        )
+      );
+      // the test can tell the header from the body
+      expect(layout2, theme).not.toEqual(layout1);
+      // one card opens at a time: this window's card, then another
+      for (const opened of [current, a]) {
+        if (opened === current) {
+          await cardHeader(page, current).click();
+        } else {
+          await triangle(page, a).click();
+        }
+        await expect(card(page, opened)).toHaveClass(/jp-mod-open/);
+        await page.mouse.move(0, 0);
+        for (const id of [current, a, b]) {
+          const s = await card(page, id).evaluate(n => {
+            const c = getComputedStyle(n);
+            const body = n.querySelector('.jp-WorkspaceManager-cardBody');
+            return {
+              radius: c.borderRadius,
+              widths: [
+                c.borderTopWidth,
+                c.borderRightWidth,
+                c.borderBottomWidth
+              ],
+              colours: [
+                c.borderTopColor,
+                c.borderRightColor,
+                c.borderBottomColor
+              ],
+              header: getComputedStyle(
+                n.querySelector('.jp-WorkspaceManager-cardHeader')!
+              ).backgroundColor,
+              card: c.backgroundColor,
+              body: body && getComputedStyle(body).backgroundColor
+            };
+          });
+          const what = `${theme} ${id}${id === opened ? ' open' : ''}`;
+          expect([s.radius, ...s.widths], what).toEqual([
+            '2px',
+            '1px',
+            '1px',
+            '1px'
+          ]);
+          for (const colour of s.colours) {
+            expect(await rgb(page, colour), what).toEqual(border);
+          }
+          expect(await rgb(page, s.header), what).toEqual(layout2);
+          expect(await rgb(page, s.card), what).toEqual(layout1);
+          // an open card's body paints nothing over the card's layout colour 1
+          expect(s.body, what).toBe(id === opened ? 'rgba(0, 0, 0, 0)' : null);
+        }
+      }
+      // close a again for the next theme
+      await triangle(page, a).click();
+      await expect(card(page, a)).not.toHaveClass(/jp-mod-open/);
+    }
   } finally {
     await deleteWorkspaces(page, [current, a, b]);
   }
@@ -1265,46 +1325,6 @@ test("ACC-ACCORD-76-OUTLINE: only this window's card has the brand colour 2 outl
   }
 });
 
-test("ACC-ACCORD-125-SELECTED-SHADE: this window's header takes the active shade, its body 40% of it; another header an 8% tint", async ({
-  page
-}) => {
-  const current = fresh('shade');
-  const other = `${current}-other`;
-  await putWorkspace(page, current);
-  await putWorkspace(page, other);
-  await patchMeta(page, current, { colour: 'sky' });
-  await patchMeta(page, other, { colour: 'rose' });
-  try {
-    await setUpExisting(page, current);
-    await cardHeader(page, current).click();
-    for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
-      await page.theme.setTheme(theme);
-      await page.mouse.move(0, 0);
-      const layout1 = await rgb(page, 'var(--jp-layout-color1)');
-      const active = await rgb(page, 'var(--jp-workspace-manager-sky-active)');
-      const rose = await rgb(page, 'var(--jp-workspace-manager-rose)');
-      const bg = async (l: Locator) =>
-        rgb(page, await l.evaluate(n => getComputedStyle(n).backgroundColor));
-
-      expect(await bg(cardHeader(page, current)), theme).toEqual(active);
-      const body = await bg(card(page, current));
-      expect(
-        near(body, mix(active, 0.4, layout1)),
-        `${theme} body ${body}`
-      ).toBe(true);
-      const tint = await bg(cardHeader(page, other));
-      expect(
-        near(tint, mix(rose, 0.08, layout1)),
-        `${theme} tint ${tint}`
-      ).toBe(true);
-      // the shades differ from the panel, so the test can tell them apart
-      expect(active).not.toEqual(layout1);
-    }
-  } finally {
-    await deleteWorkspaces(page, [current, other]);
-  }
-});
-
 test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the purpose wraps in full; the tooltip holds the full name and purpose', async ({
   page
 }) => {
@@ -1324,7 +1344,8 @@ test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the purpose wraps
         clipped: n.scrollWidth > n.clientWidth
       }));
     expect(name).toEqual({ overflow: 'ellipsis', clipped: true });
-    // the purpose is never shortened with an ellipsis
+    // the purpose, shown on the open card, is never shortened with an ellipsis
+    await openCard(page, long);
     const text = await card(page, long)
       .locator('.jp-WorkspaceManager-purpose')
       .evaluate(n => ({
@@ -1346,104 +1367,141 @@ test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the purpose wraps
   }
 });
 
-test('ACC-ACCORD-98-HOVER-ACTIONS: the open and close-all icons of a closed card show on hover and on keyboard focus', async ({
+test("ACC-ACCORD-98-HOVER-ACTIONS: Open workspace, Close all tabs, the eye and ... keep their place on a closed, a hovered, a focused, an open, a hidden and this window's card; one that does not apply is disabled", async ({
   page
 }) => {
-  const current = await setUp(page, 'hover', { a: {} });
-  const other = `${current}-a`;
-  const icons = card(page, other).locator(
-    'button[aria-label="Open workspace"], button[aria-label="Close all tabs"]'
-  );
+  const suffix = 'a-name-too-long-for-the-card';
+  const current = await setUp(page, 'hover', { [suffix]: {}, h: {} });
+  const [other, hidden] = [`${current}-${suffix}`, `${current}-h`];
+  const header = cardHeader(page, other);
+  const name = header.locator('.jp-WorkspaceManager-name');
+  /** The four buttons after the age: label, x, shown, disabled, pressed. */
+  const buttons = (id: string) =>
+    card(page, id)
+      .locator('.jp-WorkspaceManager-cardActions button')
+      .evaluateAll(nodes =>
+        nodes.map(n => {
+          const s = getComputedStyle(n);
+          const r = n.getBoundingClientRect();
+          return {
+            label: n.getAttribute('aria-label'),
+            x: Math.round(r.left),
+            shown:
+              s.display !== 'none' && s.visibility === 'visible' && r.width > 0,
+            disabled: (n as HTMLButtonElement).disabled,
+            pressed: n.getAttribute('aria-pressed')
+          };
+        })
+      );
+  const width = () => name.evaluate(n => n.getBoundingClientRect().width);
   try {
-    await expect(icons).toHaveCount(2);
-    await expect(icons.nth(0)).toBeHidden();
-    await expect(icons.nth(1)).toBeHidden();
-
-    await cardHeader(page, other).hover();
-    await expect(icons.nth(0)).toBeVisible();
-    await expect(icons.nth(1)).toBeVisible();
-
+    await patchMeta(page, hidden, { hidden: true });
+    await headerButton(page, 'Show hidden workspaces').click();
+    await refresh(page);
+    await expect(card(page, hidden)).toHaveClass(/jp-mod-hiddenWorkspace/);
+    await expect(header).toHaveAccessibleName(other);
+    await expect(cardHeader(page, hidden)).toHaveAccessibleName(
+      `${hidden} hidden`
+    );
     await page.mouse.move(0, 0);
-    await expect(icons.nth(0)).toBeHidden();
+    // the name is cut, so any width the buttons took would show less of it
+    expect(await name.evaluate(n => n.scrollWidth > n.clientWidth)).toBe(true);
+    const rest = await buttons(other);
+    const xs = rest.map(b => b.x);
+    const nameWidth = await width();
+    expect(rest).toEqual(
+      [
+        'Open workspace',
+        'Close all tabs',
+        'Hide workspace',
+        'Workspace menu'
+      ].map((label, i) => ({
+        label,
+        x: xs[i],
+        shown: true,
+        disabled: false,
+        pressed: label === 'Hide workspace' ? 'false' : null
+      }))
+    );
+    await expect(header.locator('.jp-WorkspaceManager-age')).toBeVisible();
+
+    const same = async (id: string, what: string) => {
+      const now = await buttons(id);
+      expect(
+        now.map(b => [b.x, b.shown]),
+        what
+      ).toEqual(xs.map(x => [x, true]));
+      return now;
+    };
+    await header.hover();
+    await same(other, 'hovered');
+    expect(await width()).toBe(nameWidth);
     // Tab from the WORKSPACES header, above every card, until this one has the focus
     await sectionHeader(page, 'workspaces').focus();
     for (let i = 0; i < 12; i++) {
       await page.keyboard.press('Tab');
-      if (
-        await cardHeader(page, other).evaluate(
-          n => n === document.activeElement
-        )
-      ) {
+      if (await header.evaluate(n => n === document.activeElement)) {
         break;
       }
     }
-    await expect(cardHeader(page, other)).toBeFocused();
-    await expect(icons.nth(0)).toBeVisible();
-    await expect(icons.nth(1)).toBeVisible();
+    await expect(header).toBeFocused();
+    await same(other, 'focused');
+    expect(await width()).toBe(nameWidth);
+    await triangle(page, other).click();
+    await expect(card(page, other)).toHaveClass(/jp-mod-open/);
+    await page.mouse.move(0, 0);
+    await same(other, 'open');
+    expect(await width()).toBe(nameWidth);
+
+    const mine = await same(current, "this window's card");
+    expect(mine.map(b => b.disabled)).toEqual([true, false, true, false]);
+    const shown = await same(hidden, 'hidden card');
+    expect(shown.map(b => [b.label, b.disabled, b.pressed])).toEqual([
+      ['Open workspace', false, null],
+      ['Close all tabs', false, null],
+      ['Show workspace again', false, 'true'],
+      ['Workspace menu', true, null]
+    ]);
   } finally {
-    await deleteWorkspaces(page, ids(current, 'a'));
+    await deleteWorkspaces(page, ids(current, suffix, 'h'));
   }
 });
 
-test('ACC-ACCORD-153-HOVER-NAME: on hover the icons take the place of the age, so a long name keeps its width', async ({
-  page
-}) => {
-  const suffix = 'a-name-too-long-for-the-card';
-  const current = await setUp(page, 'hovername', { [suffix]: {} });
-  const header = cardHeader(page, `${current}-${suffix}`);
-  const name = header.locator('.jp-WorkspaceManager-name');
-  const age = header.locator('.jp-WorkspaceManager-age');
-  const icons = header.locator('.jp-WorkspaceManager-hoverActions button');
-  const width = () => name.evaluate(n => n.getBoundingClientRect().width);
-  try {
-    expect(await panelWidth(page)).toBe(250);
-    // the name is cut, so any width the icons took would show less of it
-    expect(await name.evaluate(n => n.scrollWidth > n.clientWidth)).toBe(true);
-    await expect(age).toBeVisible();
-    await expect(icons.nth(0)).toBeHidden();
-    const before = await width();
-
-    await header.hover();
-    await expect(icons.nth(0)).toBeVisible();
-    await expect(icons.nth(1)).toBeVisible();
-    await expect(age).toBeHidden();
-    expect(await width()).toBe(before);
-  } finally {
-    await deleteWorkspaces(page, ids(current, suffix));
-  }
-});
-
-test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header the icons hide when the pointer leaves; Tab still shows and reaches them', async ({
+test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its buttons the buttons stay in their place when the pointer leaves; Tab reaches each enabled one', async ({
   page
 }) => {
   const current = await setUp(page, 'hoverclick', { a: {} });
   const other = `${current}-a`;
   const header = cardHeader(page, other);
-  const icons = header.locator('.jp-WorkspaceManager-hoverActions button');
+  const icons = header.locator('.jp-WorkspaceManager-cardActions button');
   const focused = (label: string) =>
     expect(header.locator(`button[aria-label="${label}"]`)).toBeFocused();
   try {
     // click an open card's header to close it, move the pointer off the card:
     // this window's card, as a header click on another workspace's card switches
     const mine = cardHeader(page, current);
-    const myIcons = mine.locator('.jp-WorkspaceManager-hoverActions button');
+    const myIcons = mine.locator('.jp-WorkspaceManager-cardActions button');
     await mine.click();
     await expect(mine).toHaveAttribute('aria-expanded', 'true');
     await mine.click();
     await expect(mine).toHaveAttribute('aria-expanded', 'false');
     await expect(mine).toBeFocused();
     await page.mouse.move(0, 0);
-    await expect(myIcons.nth(0)).toBeHidden();
-    await expect(myIcons.nth(1)).toBeHidden();
+    await expect(myIcons).toHaveCount(4);
+    for (let i = 0; i < 4; i++) {
+      await expect(myIcons.nth(i)).toBeVisible();
+    }
 
-    // a click on an icon: Close all tabs of a workspace without terminals asks nothing
-    await header.hover();
+    // a click on a button keeps the focus where it was: Close all tabs of a
+    // workspace without terminals asks nothing
     await icons.nth(1).click();
     await page.mouse.move(0, 0);
-    await expect(icons.nth(0)).toBeHidden();
-    await expect(icons.nth(1)).toBeHidden();
+    await expect(mine).toBeFocused();
+    for (let i = 0; i < 4; i++) {
+      await expect(icons.nth(i)).toBeVisible();
+    }
 
-    // keyboard focus shows them, and Tab moves from the header through both icons;
+    // Tab moves from the header through the triangle and the four buttons;
     // Tab from the WORKSPACES header, above every card
     await sectionHeader(page, 'workspaces').focus();
     for (let i = 0; i < 12; i++) {
@@ -1453,14 +1511,14 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header the icons hide wh
       }
     }
     await expect(header).toBeFocused();
-    await expect(icons.nth(0)).toBeVisible();
     await page.keyboard.press('Tab');
     await focused('Expand');
     await page.keyboard.press('Tab');
     await focused('Open workspace');
     await page.keyboard.press('Tab');
     await focused('Close all tabs');
-    await expect(icons.nth(0)).toBeVisible();
+    await page.keyboard.press('Tab');
+    await focused('Hide workspace');
     await page.keyboard.press('Tab');
     await focused('Workspace menu');
   } finally {
@@ -1468,7 +1526,7 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header the icons hide wh
   }
 });
 
-test('ACC-ACCORD-167-NO-BUTTONS: an open card ends with its last row, without Open or Close all tabs; both stay in its ... menu', async ({
+test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, without Open or Close all tabs; both stay in the card header and in its ... menu", async ({
   page,
   tmpPath
 }) => {
@@ -1493,6 +1551,11 @@ test('ACC-ACCORD-167-NO-BUTTONS: an open card ends with its last row, without Op
         )
       )
     ).toBe(true);
+    for (const name of ['Open workspace', 'Close all tabs']) {
+      await expect(
+        cardHeader(page, other).getByRole('button', { name, exact: true })
+      ).toBeVisible();
+    }
 
     await menuButton(page, other).click();
     await expect(menuItem(page, 'Open workspace')).toBeVisible();
@@ -1568,7 +1631,7 @@ test.describe('at 4x device scale', () => {
     }, png.toString('base64'));
   }
 
-  test('ACC-ACCORD-128-STRIP-PLAIN, ACC-ACCORD-129-FLUSH: the strip and shade stay inside the rounded card; the outline lies against it', async ({
+  test("ACC-ACCORD-128-STRIP-PLAIN, ACC-ACCORD-129-FLUSH: the strip and the header stay inside the card's 2 px corners; the outline lies against it; this window's strip is every card's strip", async ({
     page
   }) => {
     const current = fresh('fit');
@@ -1579,33 +1642,33 @@ test.describe('at 4x device scale', () => {
     await patchMeta(page, other, { colour: 'mint' });
     try {
       await setUpExisting(page, current);
-      // in Light the active shade is the strip colour, in Dark a darker one
       for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
         await page.theme.setTheme(theme);
         await page.mouse.move(0, 0);
-        const strip = await rgb(page, 'var(--jp-workspace-manager-mint)');
+        const strip = await rgb(page, 'var(--jp-success-color1)');
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
-        const shade = await rgb(
-          page,
-          await cardHeader(page, current).evaluate(
-            n => getComputedStyle(n).backgroundColor
-          )
-        );
-        if (theme === 'JupyterLab Dark') {
-          expect(shade).not.toEqual(strip);
-        }
+        const header = await rgb(page, 'var(--jp-layout-color2)');
 
-        // ACC-ACCORD-128: the same strip on both cards
-        const stripStyle = (id: string) =>
+        // ACC-ACCORD-128: the same strip on both cards; ACC-ACCORD-129: one clipped shape
+        const shape = (id: string) =>
           card(page, id).evaluate(n => {
-            const s = getComputedStyle(n, '::before');
-            return [s.width, s.backgroundColor];
+            const s = getComputedStyle(n);
+            return [
+              s.borderLeftWidth,
+              s.borderLeftColor,
+              s.borderRadius,
+              s.overflow
+            ];
           });
-        expect(await stripStyle(current)).toEqual(await stripStyle(other));
+        const mine = await shape(current);
+        expect(mine.slice(2)).toEqual(['2px', 'hidden']);
+        expect(mine[0]).toBe('4px');
+        expect(await shape(other)).toEqual(mine);
+        expect(await rgb(page, mine[1])).toEqual(strip);
 
         const S = 4; // device pixels per CSS pixel
-        const R = 3 * S; // the corner radius
+        const R = 2 * S; // the corner radius
         const W = 2 * S; // the outline width
         const at = (
           px: { width: number; data: number[] },
@@ -1652,7 +1715,7 @@ test.describe('at 4x device scale', () => {
             `${theme} ${id}: ${wrong.length} pixels`
           ).toEqual([]);
 
-          // ACC-ACCORD-128: the strip, then at its right edge the header background
+          // ACC-ACCORD-128: the strip, then at its right edge the header's layout colour 2
           const row = M * S + 2 * R;
           const x0 = M * S;
           expect(is(at(px, x0 + 1, row), strip), `${id} strip`).toBe(true);
@@ -1660,17 +1723,10 @@ test.describe('at 4x device scale', () => {
             is(at(px, x0 + 4 * S - 1, row), strip),
             `${id} strip end`
           ).toBe(true);
-          const header = outlined
-            ? shade
-            : await rgb(
-                page,
-                await cardHeader(page, id).evaluate(
-                  n => getComputedStyle(n).backgroundColor
-                )
-              );
-          expect(is(at(px, x0 + 4 * S, row), header), `${id} shade start`).toBe(
-            true
-          );
+          expect(
+            is(at(px, x0 + 4 * S, row), header),
+            `${id} header start`
+          ).toBe(true);
         }
       }
     } finally {

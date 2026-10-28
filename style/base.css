@@ -5,25 +5,10 @@
 */
 
 /*
-    The workspace palette, the one place with colour values. The strip colour is
-    more saturated than the active shade so neighbouring workspaces are told
-    apart: the active shade keeps the value jupyterlab_colourful_tab_extension
-    gives an active tab and tints this window's card. In a dark theme the strip
-    stays light, as dark shades disappear as a thin line on a dark panel.
+    Every colour is a --jp-* token, with no light or dark branch (DQ-01); the one
+    colour word is the black of the recessed filter field the design language prescribes
 */
 :root {
-  --jp-workspace-manager-rose: #ee7796;
-  --jp-workspace-manager-peach: #f1a350;
-  --jp-workspace-manager-lemon: #9c9421;
-  --jp-workspace-manager-mint: #3fc23d;
-  --jp-workspace-manager-sky: #2ba7ee;
-  --jp-workspace-manager-lavender: #a874e7;
-  --jp-workspace-manager-rose-active: #e39fb1;
-  --jp-workspace-manager-peach-active: #d2ab82;
-  --jp-workspace-manager-lemon-active: #bab56d;
-  --jp-workspace-manager-mint-active: #87c086;
-  --jp-workspace-manager-sky-active: #77bae0;
-  --jp-workspace-manager-lavender-active: #bfa9da;
   --jp-workspace-manager-filter-background: color-mix(
     in srgb,
     var(--jp-layout-color1) 96%,
@@ -31,25 +16,13 @@
   );
 }
 
-[data-jp-theme-light='false'] {
-  --jp-workspace-manager-rose: #f094aa;
-  --jp-workspace-manager-peach: #f2b87d;
-  --jp-workspace-manager-lemon: #e3d76d;
-  --jp-workspace-manager-mint: #8cd586;
-  --jp-workspace-manager-sky: #80c4ef;
-  --jp-workspace-manager-lavender: #bd9aea;
-  --jp-workspace-manager-rose-active: #3a2328;
-  --jp-workspace-manager-peach-active: #3a3126;
-  --jp-workspace-manager-lemon-active: #3a3825;
-  --jp-workspace-manager-mint-active: #253b2a;
-  --jp-workspace-manager-sky-active: #1d2a38;
-  --jp-workspace-manager-lavender-active: #30253a;
-}
-
-/* The panel: header, filter field, and the card list that scrolls under them */
+/*
+    The panel: header, filter field, and the four sections, each scrolling on its own; the root and
+    primary text in colour 1, meta text, counts, carets and empty states in colour 2 (DQ-07)
+*/
 .jp-WorkspaceManager {
   background: var(--jp-layout-color1);
-  color: var(--jp-ui-font-color0);
+  color: var(--jp-ui-font-color1);
   font-size: var(--jp-ui-font-size1);
 }
 
@@ -60,13 +33,13 @@
   height: 16px;
 }
 
-/* the count glyphs in colour 1, their numbers in colour 0 */
+/* the count glyphs in inverse layout colour 3, kernelIcon's jp-icon2 included */
 .jp-WorkspaceManager-count [class*='jp-icon'][fill] {
-  fill: var(--jp-ui-font-color1);
+  fill: var(--jp-inverse-layout-color3);
 }
 
 .jp-WorkspaceManager-count [class*='jp-icon'][stroke] {
-  stroke: var(--jp-ui-font-color1);
+  stroke: var(--jp-inverse-layout-color3);
 }
 
 /* One line: the title gives way before a button wraps */
@@ -74,34 +47,42 @@
   flex-wrap: nowrap;
 }
 
+/* A 28 px band on layout colour 2 (DQ-06); the toolbar takes its height and its inline min-height from the variable */
 .jp-WorkspaceManager .jp-WorkspaceManager-header {
+  --jp-private-toolbar-height: 28px;
+
   align-items: center;
   gap: 0;
-  min-height: 32px;
   padding: 0 4px 0 0;
   border-bottom: var(--jp-border-width) solid var(--jp-border-color2);
+  background: var(--jp-layout-color2);
   box-shadow: none;
 }
 
-/* The word gives way to the buttons before the count does; at 250 px it wraps. It starts on the x of the section labels */
+/* The title starts on the x of the section labels; it gives way to the buttons with an ellipsis */
 .jp-WorkspaceManager-header > .jp-WorkspaceManager-title {
   flex: 0 1 auto;
   min-width: 0;
   margin-left: 18px;
+  font-size: var(--jp-ui-font-size0);
   font-weight: 600;
-  color: var(--jp-ui-font-color0);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--jp-ui-font-color1);
 }
 
 .jp-WorkspaceManager-titleLabel {
-  min-width: 0;
-  overflow-wrap: anywhere;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .jp-WorkspaceManager-header > .jp-Toolbar-item {
   padding: 0;
 }
 
-/* Every header button, other extensions' included, is 24px square */
+/* Every header button, other extensions' included, is 24px square with a 14 px glyph (DQ-16) */
 .jp-WorkspaceManager-header .jp-WorkspaceManager-headerButton,
 .jp-WorkspaceManager-header .jp-ToolbarButtonComponent {
   display: flex;
@@ -123,6 +104,11 @@
   background: var(--jp-layout-color3);
 }
 
+/* the carets of the sections and of the cards */
+.jp-WorkspaceManager-caret .jp-icon3[fill] {
+  fill: var(--jp-ui-font-color2);
+}
+
 .jp-WorkspaceManager-headerButton.jp-mod-active .jp-icon3[fill] {
   fill: var(--jp-brand-color1);
 }
@@ -131,9 +117,11 @@
   stroke: var(--jp-brand-color1);
 }
 
-.jp-WorkspaceManager-headerButton svg {
-  width: 16px;
-  height: 16px;
+.jp-WorkspaceManager-header .jp-WorkspaceManager-headerButton svg,
+.jp-WorkspaceManager-header .jp-ToolbarButtonComponent svg,
+.jp-WorkspaceManager-cardHeader .jp-WorkspaceManager-iconButton svg {
+  width: 14px;
+  height: 14px;
 }
 
 .jp-WorkspaceManager-headerButton.jp-mod-spinning svg {
@@ -158,58 +146,83 @@
   overflow: hidden;
 }
 
+/*
+    The sections share the panel's height and none of them scrolls the panel (DQ-05):
+    a grid gives each section its whole height while it fits, and the sections that
+    do not fit share the height left in equal parts, so a short panel shortens the
+    long lists and keeps every header and a short or empty list whole
+*/
 .jp-WorkspaceManager-list {
+  display: grid;
   flex: 1 1 auto;
+  grid-auto-rows: minmax(0, max-content);
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   min-height: 0;
-  overflow-y: auto;
-  padding: 0 0 8px;
+
+  /* 2 px at the sides leave the room for a full-width header's outside focus rim (DQ-19) */
+  padding: 0 2px 8px;
 }
 
-/*
- * The top of a section: its label, its count and, below WORKSPACES, Shut down all;
- * flat and full width, as .jp-AccordionPanel-title and .jp-SidePanel-header draw a sidebar section,
- * in font size 1, not their 0: only the group labels are under size 1 (ACC-PANEL-74)
- */
-.jp-WorkspaceManager-sectionHeader {
+.jp-WorkspaceManager-section {
   display: flex;
+  flex-direction: column;
+  border-bottom: var(--jp-border-width) solid var(--jp-border-color3);
+}
+
+/* A section header is a band on layout colour 2 (DQ-03): 6 px above and below the text, no shadow */
+.jp-WorkspaceManager-sectionHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  min-height: 25px;
-  padding: 2px 6px 2px 4px;
-  border-bottom: var(--jp-border-width) solid var(--jp-toolbar-border-color);
-  background: var(--jp-layout-color1);
-  box-shadow: var(--jp-toolbar-box-shadow);
+  padding: 6px 8px 6px 2px;
+  background: var(--jp-layout-color2);
+  font-size: var(--jp-ui-font-size0);
   letter-spacing: 1px;
   text-transform: uppercase;
   cursor: pointer;
 }
 
-/* the caret: a 14 px column on the 4 px inset; it takes back the gap, so the label starts at 18 px */
+.jp-WorkspaceManager-sectionHeader:hover {
+  background: var(--jp-layout-color3);
+}
+
+/* the caret: a 14 px column on the 2 px left after the list's side gutter, so the label starts at 18 px */
 .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-caret {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
   width: 14px;
-  margin-right: -4px;
 }
 
 /* the label keeps its whole text; a Shut down all too wide for the line wraps below it */
 .jp-WorkspaceManager-sectionLabel {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
   white-space: nowrap;
   font-weight: 600;
-  color: var(--jp-ui-font-color0);
+  color: var(--jp-ui-font-color1);
 }
 
 .jp-WorkspaceManager-sectionCount {
   flex: 0 0 auto;
-  color: var(--jp-ui-font-color0);
+  margin-left: 6px;
+  color: var(--jp-ui-font-color2);
   white-space: nowrap;
 }
 
+/* Each section's list is its own scroll container, 5 to 10 rows of 24 px tall (DQ-05) */
 .jp-WorkspaceManager-sectionBody {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: clamp(120px, 33vh, 240px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 2px 0;
 }
 
@@ -251,6 +264,15 @@
 .jp-WorkspaceManager :focus-visible,
 .jp-ThemedContainer .jp-WorkspaceManager button:focus-visible {
   outline: 1px solid var(--jp-brand-color1);
+  outline-offset: 1px;
+}
+
+/* a card clips its content: the rim of an element inside it sits 1 px inside the edge (DQ-19) */
+.jp-WorkspaceManager .jp-WorkspaceManager-card :focus-visible,
+.jp-ThemedContainer
+  .jp-WorkspaceManager
+  .jp-WorkspaceManager-card
+  button:focus-visible {
   outline-offset: -1px;
 }
 
@@ -258,66 +280,57 @@
   outline: none;
 }
 
-/* A card: one rounded shape that clips its strip and backgrounds */
+/*
+    A card (DQ-02): 2 px corners that clip the header, a layout colour 1 body and a
+    border colour 1 border; the 4 px strip in the workspace colour is its left border
+*/
 .jp-WorkspaceManager-card {
   --wm-strip: transparent;
-  --wm-active: var(--jp-layout-color1);
 
   position: relative;
   margin: 4px 8px;
-  border-radius: 3px;
+  border: var(--jp-border-width) solid var(--jp-border-color1);
+  border-left: 4px solid var(--wm-strip);
+  border-radius: var(--jp-border-radius);
   overflow: hidden;
   background: var(--jp-layout-color1);
 }
 
-.jp-WorkspaceManager-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--wm-strip);
+/* The workspace colours are theme tokens (DQ-01); the stored names stay */
+.jp-WorkspaceManager-card.jp-mod-rose,
+.jp-WorkspaceManager-swatch.jp-mod-rose {
+  --wm-strip: var(--jp-error-color1);
 }
 
-.jp-WorkspaceManager-card.jp-mod-rose {
-  --wm-strip: var(--jp-workspace-manager-rose);
-  --wm-active: var(--jp-workspace-manager-rose-active);
+.jp-WorkspaceManager-card.jp-mod-peach,
+.jp-WorkspaceManager-swatch.jp-mod-peach {
+  --wm-strip: var(--jp-warn-color1);
 }
 
-.jp-WorkspaceManager-card.jp-mod-peach {
-  --wm-strip: var(--jp-workspace-manager-peach);
-  --wm-active: var(--jp-workspace-manager-peach-active);
+.jp-WorkspaceManager-card.jp-mod-lemon,
+.jp-WorkspaceManager-swatch.jp-mod-lemon {
+  --wm-strip: var(--jp-warn-color2);
 }
 
-.jp-WorkspaceManager-card.jp-mod-lemon {
-  --wm-strip: var(--jp-workspace-manager-lemon);
-  --wm-active: var(--jp-workspace-manager-lemon-active);
+.jp-WorkspaceManager-card.jp-mod-mint,
+.jp-WorkspaceManager-swatch.jp-mod-mint {
+  --wm-strip: var(--jp-success-color1);
 }
 
-.jp-WorkspaceManager-card.jp-mod-mint {
-  --wm-strip: var(--jp-workspace-manager-mint);
-  --wm-active: var(--jp-workspace-manager-mint-active);
+.jp-WorkspaceManager-card.jp-mod-sky,
+.jp-WorkspaceManager-swatch.jp-mod-sky {
+  --wm-strip: var(--jp-brand-color1);
 }
 
-.jp-WorkspaceManager-card.jp-mod-sky {
-  --wm-strip: var(--jp-workspace-manager-sky);
-  --wm-active: var(--jp-workspace-manager-sky-active);
+.jp-WorkspaceManager-card.jp-mod-lavender,
+.jp-WorkspaceManager-swatch.jp-mod-lavender {
+  --wm-strip: var(--jp-info-color1);
 }
 
-.jp-WorkspaceManager-card.jp-mod-lavender {
-  --wm-strip: var(--jp-workspace-manager-lavender);
-  --wm-active: var(--jp-workspace-manager-lavender-active);
-}
-
-/* the border lies inside the card's box, so opening changes neither its x nor its width */
-.jp-WorkspaceManager-card.jp-mod-open:not(.jp-mod-current) {
-  border: 1px solid var(--wm-strip);
-}
-
-/* This window's card: the active tab shade, its body 40% of it, the outline */
+/* This window's card: the outline */
 .jp-WorkspaceManager-card.jp-mod-current {
   outline: 2px solid var(--jp-brand-color2);
   outline-offset: 0;
-  background: color-mix(in srgb, var(--wm-active) 40%, var(--jp-layout-color1));
 }
 
 /* While a card is dragged: the line above or below the card where it lands */
@@ -329,16 +342,11 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header and the rows of a card start at the strip's right edge: the strip would cover their focus outline */
+/* the header one step up, with no tint (DQ-02) */
 .jp-WorkspaceManager-cardHeader {
-  margin-left: 4px;
   padding: 6px 8px;
-  background: color-mix(in srgb, var(--wm-strip) 8%, var(--jp-layout-color1));
+  background: var(--jp-layout-color2);
   cursor: pointer;
-}
-
-.jp-WorkspaceManager-card.jp-mod-current > .jp-WorkspaceManager-cardHeader {
-  background: var(--wm-active);
 }
 
 .jp-WorkspaceManager-headerLine {
@@ -360,7 +368,6 @@
   white-space: nowrap;
   font-size: var(--jp-ui-font-size2);
   font-weight: 600;
-  color: var(--jp-ui-font-color0);
 }
 
 /* As many lines as the purpose needs: the card grows with it */
@@ -369,18 +376,18 @@
   min-width: 0;
   overflow-wrap: anywhere;
   white-space: normal;
-  color: var(--jp-ui-font-color0);
 }
 
 .jp-WorkspaceManager-counts,
 .jp-WorkspaceManager-count,
 .jp-WorkspaceManager-age,
-.jp-WorkspaceManager-hiddenWord {
+.jp-WorkspaceManager-hiddenWord,
+.jp-WorkspaceManager-state {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
-  color: var(--jp-ui-font-color0);
+  color: var(--jp-ui-font-color2);
   white-space: nowrap;
 }
 
@@ -388,9 +395,25 @@
   gap: 10px;
 }
 
-.jp-WorkspaceManager-age.jp-mod-now {
-  font-weight: 600;
-  color: var(--jp-ui-font-color0);
+/* only the name ellipsises; a basis of 0 never pushes the time onto the detail line */
+.jp-WorkspaceManager-rowLabel {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Under 60 s the name and the time in brand colour 1; over 7 days the name alone at 0.65 (DQ-09) */
+.jp-mod-recentlyActive .jp-WorkspaceManager-name,
+.jp-mod-recentlyActive .jp-WorkspaceManager-rowLabel,
+.jp-mod-recentlyActive .jp-WorkspaceManager-age {
+  color: var(--jp-brand-color1);
+}
+
+.jp-mod-stale .jp-WorkspaceManager-name,
+.jp-mod-stale .jp-WorkspaceManager-rowLabel {
+  opacity: 0.65;
 }
 
 .jp-WorkspaceManager-dot {
@@ -439,35 +462,34 @@
   visibility: hidden;
 }
 
+.jp-WorkspaceManager-iconButton:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.jp-WorkspaceManager-iconButton:hover:not(:disabled),
+.jp-WorkspaceManager-iconButton.jp-mod-active {
+  background: var(--jp-layout-color3);
+}
+
 .jp-WorkspaceManager-row:hover > .jp-WorkspaceManager-iconButton,
 .jp-WorkspaceManager-row:focus-within:not(:focus:not(:focus-visible))
   > .jp-WorkspaceManager-iconButton {
   visibility: visible;
 }
 
-.jp-WorkspaceManager-iconButton:disabled {
-  cursor: default;
-  opacity: 0.4;
+.jp-WorkspaceManager-iconButton.jp-mod-active .jp-icon3[fill] {
+  fill: var(--jp-brand-color1);
 }
 
-.jp-WorkspaceManager-iconButton:hover:not(:disabled) {
-  background: var(--jp-layout-color3);
+.jp-WorkspaceManager-iconButton.jp-mod-active .jp-icon3[stroke] {
+  stroke: var(--jp-brand-color1);
 }
 
-/* The open and close-all-tabs icons of a closed card: on hover or keyboard focus */
-.jp-WorkspaceManager-hoverActions {
-  display: none;
-  gap: 2px;
-}
-
-/*
-    :focus-within keeps the icons while Tab moves from the header to them; a
-    header focused by a click is excluded, and a click never focuses an icon
-*/
-.jp-WorkspaceManager-cardHeader:hover .jp-WorkspaceManager-hoverActions,
-.jp-WorkspaceManager-cardHeader:focus-within:not(:focus:not(:focus-visible))
-  .jp-WorkspaceManager-hoverActions {
+/* Open workspace, Close all tabs, the eye and ... keep their place on every card (DQ-12) */
+.jp-WorkspaceManager-cardActions {
   display: flex;
+  flex: 0 0 auto;
 }
 
 .jp-WorkspaceManager-cardBody {
@@ -481,21 +503,29 @@
   color: var(--jp-ui-font-color1);
 }
 
+/* the count of a group is meta text */
+.jp-WorkspaceManager-groupLabel > span {
+  color: var(--jp-ui-font-color2);
+}
+
+/* a selected row's detail line wraps under its name */
 .jp-WorkspaceManager-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
   min-height: 24px;
   padding: 0 8px 0 16px;
   cursor: pointer;
 }
 
-.jp-WorkspaceManager-row:hover {
-  background: color-mix(in srgb, var(--jp-ui-font-color0) 12%, transparent);
+/* hover and selection on layout colour 2; the text keeps its colours (DQ-10) */
+.jp-WorkspaceManager-row:hover,
+.jp-WorkspaceManager-row.jp-mod-selected {
+  background: var(--jp-layout-color2);
 }
 
 .jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row {
-  margin-left: 4px;
   padding-left: 12px;
 }
 
@@ -506,98 +536,53 @@
   height: 16px;
 }
 
-/*
- * The label and the detail share the room the icon and the age leave (basis 0, each at most its
- * text) equally (grow 1000 each), so they shorten together
- */
-.jp-WorkspaceManager-rowLabel {
-  flex: 1000 1 0;
-  max-width: max-content;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--jp-ui-font-color0);
+/* identifiers: terminal names, kernel ids and paths (DQ-18) */
+.jp-WorkspaceManager-code {
+  font-family: var(--jp-code-font-family);
 }
 
+/* The detail lines of the selected row, under the name: the parts marked to shrink give way first (KERN-02) */
 .jp-WorkspaceManager-rowDetail {
-  flex: 1000 1 0;
-  max-width: max-content;
+  display: flex;
+  flex: 1 0 100%;
+  gap: 8px;
+  box-sizing: border-box;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding-left: 22px;
+  color: var(--jp-ui-font-color2);
   white-space: nowrap;
-  color: var(--jp-ui-font-color1);
 }
 
-/* the folder takes a share of 1 against the file name's 1000, so it shortens first */
-.jp-WorkspaceManager-rowDetail.jp-WorkspaceManager-rowFolder {
-  flex: 1 1 0;
+.jp-WorkspaceManager-rowDetail:last-child {
+  padding-bottom: 4px;
 }
 
-/*
- * A path of the KERNELS section: its folder and its file name are items of the row, each cut at its
- * start. The folder gives way first, then the label down to its first characters, and the file name
- * last
- */
-.jp-WorkspaceManager-rowDetail.jp-WorkspaceManager-rowPath {
-  display: contents;
-}
-
-.jp-WorkspaceManager-rowPath > span {
+.jp-WorkspaceManager-rowDetail > span {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* shrink shares are proportional to the width, so a factor of 1e5 keeps the file name whole until these are cut */
+.jp-WorkspaceManager-rowDetail > .jp-mod-shrink {
+  flex-shrink: 100000;
+}
+
+/* a folder is cut at its start and runs on into its file name; left-to-right marks keep its / in place in the right-to-left box */
+.jp-WorkspaceManager-folder {
+  margin-right: -8px;
   direction: rtl;
 }
 
-/* left-to-right marks keep a leading or trailing / or . in its place in the right-to-left box */
-.jp-WorkspaceManager-rowPath > span::before,
-.jp-WorkspaceManager-rowPath > span::after {
+.jp-WorkspaceManager-folder::before,
+.jp-WorkspaceManager-folder::after {
   content: '\200E';
-}
-
-/* the folder takes back the row's gap before the file name and keeps the room of its ellipsis */
-.jp-WorkspaceManager-rowPath > .jp-WorkspaceManager-rowPathFolder {
-  flex: 1000 1 0;
-  max-width: max-content;
-  min-width: 1em;
-  margin-right: -6px;
-}
-
-/* the label keeps its whole text until the folder is cut, then its first characters */
-.jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-rowPath) {
-  /* shrink shares are proportional, so each step is a factor of 1e5, which keeps a lower item's share under Chromium's 1/64 px layout unit */
-  flex: 0 100000 auto;
-  min-width: 35px;
-}
-
-.jp-WorkspaceManager-row:hover .jp-WorkspaceManager-rowDetail {
-  color: var(--jp-ui-font-color0);
-}
-
-.jp-WorkspaceManager-row > .jp-WorkspaceManager-age {
-  margin-left: auto;
 }
 
 /* the child rows of a language server item, under its icon */
 .jp-WorkspaceManager-row.jp-mod-child {
   padding-left: 38px;
-}
-
-/* A header's age is as wide as the two hover icons (2 x 24px, 2px gap), which take its place */
-.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age {
-  justify-content: flex-end;
-  min-width: 50px;
-}
-
-.jp-WorkspaceManager-cardHeader:hover
-  .jp-WorkspaceManager-hoverActions
-  + .jp-WorkspaceManager-age,
-.jp-WorkspaceManager-cardHeader:focus-within:not(:focus:not(:focus-visible))
-  .jp-WorkspaceManager-hoverActions
-  + .jp-WorkspaceManager-age {
-  display: none;
 }
 
 .jp-WorkspaceManager-empty,
@@ -607,15 +592,24 @@
   align-items: center;
   gap: 6px;
   padding: 4px 16px;
-  color: var(--jp-ui-font-color0);
 }
 
-.jp-WorkspaceManager-error::before {
-  content: '';
-  flex: 0 0 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--jp-error-color1);
+.jp-WorkspaceManager-note {
+  color: var(--jp-ui-font-color2);
+}
+
+/* an empty state (DQ-08) */
+.jp-WorkspaceManager-empty {
+  color: var(--jp-ui-font-color2);
+  font-size: var(--jp-ui-font-size0);
+  font-style: italic;
+}
+
+/* a failed reload is a banner (DQ-15): a 15 percent error wash inside a 35 percent error border */
+.jp-WorkspaceManager-error {
+  border: var(--jp-border-width) solid
+    color-mix(in srgb, var(--jp-error-color1) 35%, transparent);
+  background: color-mix(in srgb, var(--jp-error-color1) 15%, transparent);
 }
 
 .jp-WorkspaceManager-button {
@@ -630,57 +624,45 @@
   cursor: pointer;
 }
 
-/* the Shut down all of a section header: a short button that leaves the label room */
+/*
+ * The Shut down all of a section header: a surface button on the band (layout colour 1, a border colour 1
+ * border) at the design system's small size of 20 px; its -4 px margins keep the band at its own height
+ */
 .jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-button {
   flex: 0 0 auto;
-  height: 22px;
-  margin-left: auto;
+  height: 20px;
+  margin: -4px 0 -4px auto;
   padding: 0 8px;
+  border: var(--jp-border-width) solid var(--jp-border-color1);
+  background: var(--jp-layout-color1);
+  color: var(--jp-ui-font-color1);
 }
 
-/* without its fill, as colour 1 on the fill reads 3.6:1 in Galaxa Steel */
+/* a disabled button keeps its place and its look at the design system's disabled opacity */
 .jp-WorkspaceManager-button:disabled {
-  background: transparent;
-  color: var(--jp-ui-font-color1);
   cursor: default;
+  opacity: 0.4;
 }
 
 .jp-WorkspaceManager-button:hover:not(:disabled) {
   background: var(--jp-layout-color3);
 }
 
-/* Menus: swatches as the colourful tab extension draws them, the red bin */
+/* Menus: swatches as the colourful tab extension draws them, filled with the workspace colour; the red bin */
 .jp-WorkspaceManager-swatch {
+  fill: var(--wm-strip);
   stroke: var(--jp-layout-color4);
   stroke-width: 1;
 }
 
-.jp-WorkspaceManager-swatch.jp-mod-rose {
-  fill: var(--jp-workspace-manager-rose);
+/* A destructive entry (DQ-11): the error-coloured label and icon on the menu's own selection background */
+.jp-WorkspaceManager-menu .lm-Menu-item.jp-WorkspaceManager-danger {
+  color: var(--jp-error-color1);
 }
 
-.jp-WorkspaceManager-swatch.jp-mod-peach {
-  fill: var(--jp-workspace-manager-peach);
-}
-
-.jp-WorkspaceManager-swatch.jp-mod-lemon {
-  fill: var(--jp-workspace-manager-lemon);
-}
-
-.jp-WorkspaceManager-swatch.jp-mod-mint {
-  fill: var(--jp-workspace-manager-mint);
-}
-
-.jp-WorkspaceManager-swatch.jp-mod-sky {
-  fill: var(--jp-workspace-manager-sky);
-}
-
-.jp-WorkspaceManager-swatch.jp-mod-lavender {
-  fill: var(--jp-workspace-manager-lavender);
-}
-
-/* only the icon of Delete workspace is red (the bin, armed the warning sign); its label and background stay the menu's */
-.jp-WorkspaceManager-menu .lm-Menu-item[data-command='delete'] .jp-icon3[fill] {
+.jp-WorkspaceManager-menu
+  .lm-Menu-item.jp-WorkspaceManager-danger
+  .jp-icon3[fill] {
   fill: var(--jp-error-color1);
 }
 
@@ -724,26 +706,80 @@
   border-color: var(--jp-error-color1);
 }
 
-.jp-WorkspaceManager-rule,
-.jp-WorkspaceManager-counter {
-  color: var(--jp-ui-font-color1);
+/* the rule under the name is colour 2 while the name is valid (NEW-01) */
+.jp-WorkspaceManager-rule {
+  color: var(--jp-ui-font-color2);
 }
 
 .jp-WorkspaceManager-counter {
+  color: var(--jp-ui-font-color1);
   text-align: right;
 }
 
+/* the rule becomes a state line (DQ-15): layout colour 2, a 2 px error left border, colour 1 text */
 .jp-WorkspaceManager-rule.jp-mod-error {
+  padding: 6px 12px;
+  border-left: 2px solid var(--jp-error-color1);
+  background: var(--jp-layout-color2);
+  color: var(--jp-ui-font-color1);
+}
+
+/*
+ * Dialog footers (DQ-14): one filled primary action; Cancel a surface button; a destructive
+ * action unfilled in the error colour at the far left. The footer prefix carries each selector
+ * over the stock role colours and over the footer reset that sets margin-right 0.
+ */
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  .jp-Dialog-footerButtons {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  button.jp-Dialog-button {
+  margin-right: 0;
+}
+
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  button.jp-Dialog-button.jp-WorkspaceManager-primary {
+  padding: 0 18px;
+  border: var(--jp-border-width) solid var(--jp-brand-color1);
+  background: var(--jp-brand-color1);
+  color: var(--jp-ui-inverse-font-color0);
+  font-weight: 600;
+}
+
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  button.jp-Dialog-button.jp-WorkspaceManager-secondary {
+  border: var(--jp-border-width) solid var(--jp-border-color2);
+  background: color-mix(
+    in srgb,
+    var(--jp-ui-font-color0) 6%,
+    var(--jp-layout-color1)
+  );
   color: var(--jp-ui-font-color0);
 }
 
-.jp-WorkspaceManager-rule.jp-mod-error::before {
-  content: '';
-  flex: 0 0 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--jp-error-color1);
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  button.jp-Dialog-button.jp-WorkspaceManager-danger {
+  margin-right: auto;
+  border: var(--jp-border-width) solid var(--jp-error-color1);
+  background: transparent;
+  color: var(--jp-error-color1);
+}
+
+/* no rim while the pointer works the dialog; the keyboard gets one */
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  button.jp-Dialog-button.jp-WorkspaceManager-dialogButton:focus-visible {
+  outline: 1px solid var(--jp-brand-color1);
+  outline-offset: 1px;
+}
+
+.jp-Dialog-footer:has(.jp-WorkspaceManager-dialogButton)
+  button.jp-Dialog-button.jp-WorkspaceManager-dialogButton:focus:not(
+    :focus-visible
+  ) {
+  outline: none;
 }

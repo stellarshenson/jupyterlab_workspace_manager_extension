@@ -8,7 +8,7 @@
 [![Brought To You By KOLOMOLO](https://img.shields.io/badge/Brought%20To%20You%20By-KOLOMOLO-00ffff?style=flat)](https://kolomolo.com)
 [![Donate PayPal](https://img.shields.io/badge/Donate-PayPal-blue?style=flat)](https://www.paypal.com/donate/?hosted_button_id=B4KPBJDLLXTSA)
 
-This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: one section per workspace, one section open at a time.
+This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: a WORKSPACES section with one card per workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS sections listing everything that runs, each section opening and closing on its own.
 
 ![The workspace panel](docs/images/panel-full-window.png)
 
@@ -22,14 +22,14 @@ The panel groups them by workspace: what each project holds, what is running in 
 
 ## Features
 
-- **Workspace section** - the colour strip, the optional purpose, the age and the number of tabs, terminals and kernels the workspace holds
+- **Workspace section** - the colour strip, the name and the age, and the purpose with the number of tabs, terminals and kernels while the card is open
 - **Triangle** - opens or closes a section
 - **Header** - a click on the name of another workspace switches this window to it, and a click on this window's workspace opens its card or closes it
 - **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, move up, move down, delete
 - **Card order** - the cards keep one fixed order that switching workspaces does not change, a drag or Move up and Move down moves a card, and a new workspace goes last
 - **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last card of WORKSPACES
 - **Kernels, terminals and language servers** - three sections below the workspaces, always shown, for every running kernel and terminal, in a workspace or not, and the running language servers, each section with its count and a shut down all
-- **Kernel rows** - each KERNELS row shows the kernel type, the notebook or console, the state, the memory and the CPU use
+- **Kernel rows** - a KERNELS row shows the status dot, the name and the time; select it for the kernel type, the document, the memory and the CPU use
 - **Tooltips** - hover a tab, terminal, kernel or language server for its details on several lines
 - **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them
 - **New workspace** - the + button creates a workspace and asks for its name and an optional description

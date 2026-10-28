@@ -21,17 +21,20 @@ import {
 import { DeleteArm } from '../model/menu';
 import { COLOURS, type Colour } from '../model/palette';
 
-/** The menu labels of the palette colours. */
+/** The menu labels of the palette colours: the hue of each colour's theme token (DQ-01). */
 export const COLOUR_LABELS: Record<Colour, string> = {
   rose: 'Red',
   peach: 'Orange',
-  lemon: 'Yellow',
+  lemon: 'Amber',
   mint: 'Green',
   sky: 'Blue',
-  lavender: 'Purple'
+  lavender: 'Cyan'
 };
 
 const DELETE = 'delete';
+
+/** A destructive menu entry: the error-coloured label and icon (DQ-11). */
+const DANGER = 'jp-WorkspaceManager-danger';
 
 /** Closing the menu gives the focus back to the element that had it when the menu opened. */
 function restoreFocus(menu: Menu): void {
@@ -206,6 +209,7 @@ export function workspaceMenu(
   commands.addCommand(DELETE, {
     label: () => (arm.armed ? 'Confirm delete' : 'Delete workspace'),
     icon: () => (arm.armed ? warningIcon : deleteIcon),
+    className: () => `${DANGER}${arm.armed ? ' jp-mod-confirm' : ''}`,
     isEnabled: () => !current,
     execute: () => undefined
   });
@@ -219,16 +223,26 @@ export function workspaceMenu(
   return menu;
 }
 
-/** A menu of plain actions: a row's context menu. */
+/** A menu of plain actions: a row's context menu; `danger` marks a destructive entry (DQ-11). */
 export function actionMenu(
-  items: { label: string; icon: LabIcon; execute: () => void }[]
+  items: {
+    label: string;
+    icon: LabIcon;
+    execute: () => void;
+    danger?: boolean;
+  }[]
 ): Menu {
   const commands = new CommandRegistry();
   const menu = new MenuSvg({ commands });
   menu.addClass('jp-WorkspaceManager-menu');
   restoreFocus(menu);
-  items.forEach(({ label, icon, execute }, i) => {
-    commands.addCommand(`item-${i}`, { label, icon, execute });
+  items.forEach(({ label, icon, execute, danger }, i) => {
+    commands.addCommand(`item-${i}`, {
+      label,
+      icon,
+      execute,
+      className: danger ? DANGER : ''
+    });
     menu.addItem({ command: `item-${i}` });
   });
   menu.aboutToClose.connect(() => setTimeout(() => menu.dispose()));

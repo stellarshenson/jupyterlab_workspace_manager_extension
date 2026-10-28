@@ -1,50 +1,37 @@
 // the tsconfig only auto-includes jest types; pull in node's for fs/path
 /// <reference types="node" />
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 import { assignColours, COLOURS } from '../model/palette';
 
-/** The hue in degrees, the saturation and the lightness in percent. */
-function hexToHls(hex: string): { h: number; s: number; l: number } {
-  const value = parseInt(hex.slice(1), 16);
-  const r = ((value >> 16) & 0xff) / 255;
-  const g = ((value >> 8) & 0xff) / 255;
-  const b = (value & 0xff) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  const d = max - min;
-  if (d === 0) {
-    return { h: 0, s: 0, l: l * 100 };
-  }
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h: number;
-  if (max === r) {
-    h = (g - b) / d + (g < b ? 6 : 0);
-  } else if (max === g) {
-    h = (b - r) / d + 2;
-  } else {
-    h = (r - g) / d + 4;
-  }
-  return { h: h * 60, s: s * 100, l: l * 100 };
-}
+const ROOT = join(__dirname, '..', '..');
+const css = () => readFileSync(join(ROOT, 'style', 'base.css'), 'utf8');
 
-/** The shorter distance between two hues, in degrees. */
-function hueDistance(a: number, b: number): number {
-  const distance = Math.abs(a - b) % 360;
-  return distance > 180 ? 360 - distance : distance;
-}
+/** A hex, rgb() or hsl() colour. */
+const LITERAL = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i;
 
-/** The value of `--jp-workspace-manager-<name>` in a block of style/base.css. */
-function cssColour(block: string, name: string): string {
-  const match = block.match(
-    new RegExp(`--jp-workspace-manager-${name}: (#[0-9a-f]{6});`)
+/** The theme token of each workspace colour (DQ-01). */
+const TOKENS: Record<string, string> = {
+  rose: '--jp-error-color1',
+  peach: '--jp-warn-color1',
+  lemon: '--jp-warn-color2',
+  mint: '--jp-success-color1',
+  sky: '--jp-brand-color1',
+  lavender: '--jp-info-color1'
+};
+
+/** The .ts and .tsx files under `dir`, the tests left out. */
+function sources(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+    e.isDirectory()
+      ? e.name === '__tests__'
+        ? []
+        : sources(join(dir, e.name))
+      : /\.tsx?$/.test(e.name)
+        ? [join(dir, e.name)]
+        : []
   );
-  if (!match) {
-    throw new Error(`style/base.css has no --jp-workspace-manager-${name}`);
-  }
-  return match[1];
 }
 
 describe('palette', () => {
@@ -79,53 +66,37 @@ describe('palette', () => {
     expect(next.given).toEqual({ d: 'peach' });
   });
 
-  it('ACC-ACCORD-86-OWN-PALETTE: the stylesheet defines the six colours per theme and no colourful tab variable', () => {
-    const css = readFileSync(
-      join(__dirname, '..', '..', 'style', 'base.css'),
-      'utf8'
-    );
-    const [light, dark] = css.split("[data-jp-theme-light='false']");
-    expect(dark).toBeDefined();
-    for (const theme of [light, dark]) {
-      for (const colour of COLOURS) {
-        for (const name of [colour, `${colour}-active`]) {
-          expect(theme).toMatch(
-            new RegExp(`--jp-workspace-manager-${name}: #[0-9a-f]{6};`)
-          );
-        }
-      }
+  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its theme token and nothing else, for the strip and the swatch', () => {
+    const text = css();
+    for (const colour of COLOURS) {
+      const rule = text.match(
+        new RegExp(
+          `\\.jp-WorkspaceManager-card\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-swatch\\.jp-mod-${colour}\\s*\\{([^}]*)\\}`
+        )
+      );
+      expect(rule?.[1].trim()).toBe(`--wm-strip: var(${TOKENS[colour]});`);
     }
-    expect(css).not.toContain('--jp-colourful-tab-');
+    expect(text).not.toMatch(
+      /--jp-workspace-manager-(rose|peach|lemon|mint|sky|lavender)/
+    );
+    expect(text).not.toContain('--jp-colourful-tab-');
   });
 
-  it('ACC-ACCORD-188-STRIP-SATURATION: each strip colour keeps its hue and gains saturation in both themes', () => {
-    const css = readFileSync(
-      join(__dirname, '..', '..', 'style', 'base.css'),
-      'utf8'
+  it('ACC-PANEL-203-TOKENS-ONLY: the stylesheet and the TypeScript hold no literal colour and no light or dark branch', () => {
+    const files = [
+      join(ROOT, 'style', 'base.css'),
+      ...sources(join(ROOT, 'src'))
+    ];
+    expect(files.length).toBeGreaterThan(10);
+    const found = files.flatMap(f =>
+      readFileSync(f, 'utf8')
+        .split('\n')
+        .flatMap((line, i) =>
+          LITERAL.test(line) || line.includes('data-jp-theme-light')
+            ? [`${f.slice(ROOT.length + 1)}:${i + 1}: ${line.trim()}`]
+            : []
+        )
     );
-    const [light, dark] = css.split("[data-jp-theme-light='false']");
-    expect(dark).toBeDefined();
-    const blocks = { light, dark };
-    const previous = {
-      light: '#e39fb1 #d2ab82 #bab56d #87c086 #77bae0 #bfa9da'.split(' '),
-      dark: '#e8bbc6 #ddc2a7 #ccc8a6 #b3cdb1 #a5cce5 #cfc1e1'.split(' ')
-    };
-    const active = {
-      light: previous.light,
-      dark: '#3a2328 #3a3126 #3a3825 #253b2a #1d2a38 #30253a'.split(' ')
-    };
-    for (const theme of ['light', 'dark'] as const) {
-      COLOURS.forEach((colour, index) => {
-        const before = hexToHls(previous[theme][index]);
-        const after = hexToHls(cssColour(blocks[theme], colour));
-        expect(after.s - before.s).toBeGreaterThanOrEqual(15);
-        expect(after.s).toBeGreaterThanOrEqual(48);
-        expect(hueDistance(before.h, after.h)).toBeLessThanOrEqual(3);
-      });
-      const shades = COLOURS.map(colour =>
-        cssColour(blocks[theme], `${colour}-active`)
-      );
-      expect(shades).toEqual(active[theme]);
-    }
+    expect(found).toEqual([]);
   });
 });

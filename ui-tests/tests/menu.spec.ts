@@ -1,11 +1,11 @@
 import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   card,
   cardHeader,
-  colourOf,
   COLOUR_LABELS,
+  colourOf,
   COLOURS,
   deleteWorkspaces,
   fresh,
@@ -15,11 +15,14 @@ import {
   menuButton,
   menuItem,
   onlyWorkspaces,
+  openCard,
   openPanel,
   patchMeta,
   putWorkspace,
   refresh,
   rgb,
+  stripColour,
+  TOKENS,
   UNDER_LOAD
 } from './helpers';
 
@@ -37,9 +40,6 @@ const MENU = [
   'Move down',
   'Delete workspace'
 ];
-
-/** The index of Delete workspace among the items. */
-const BIN = MENU.indexOf('Delete workspace');
 
 const dialog = (page: Page) => page.locator('.jp-Dialog');
 
@@ -66,12 +66,7 @@ async function setUp(
 
 /** The colour of a card's strip as 0-255 channels. */
 async function strip(page: Page, id: string): Promise<number[]> {
-  return rgb(
-    page,
-    await card(page, id).evaluate(
-      n => getComputedStyle(n, '::before').backgroundColor
-    )
-  );
+  return rgb(page, await stripColour(card(page, id)));
 }
 
 async function openColours(page: Page, id: string): Promise<void> {
@@ -92,7 +87,7 @@ test('ACC-ACCORD-29-MENU: the ... button opens the workspace menu with its nine 
   }
 });
 
-test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icons, the swatch, the red bin only', async ({
+test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icons, the swatch, and the danger class on Delete workspace alone', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'icons', 'mint');
@@ -134,8 +129,18 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icon
       .evaluate(r => getComputedStyle(r).fill);
     expect(await rgb(page, swatch)).toEqual(await strip(page, other));
 
-    // only the bin takes the error colour; the label Delete workspace stays colour 0
+    // Delete workspace is the destructive entry (DQ-11): the danger class from its command;
+    // no other item's label or icon takes the error colour
     const error = JSON.stringify(await rgb(page, 'var(--jp-error-color1)'));
+    const labelOf = (item: Locator) =>
+      item
+        .locator('.lm-Menu-itemLabel')
+        .evaluate(l => getComputedStyle(l).color);
+    const fillOf = (item: Locator) =>
+      item
+        .locator('.lm-Menu-itemIcon .jp-icon3[fill]')
+        .first()
+        .evaluate(p => getComputedStyle(p).fill);
     const paints = await items(page).evaluateAll(nodes =>
       nodes.map(n =>
         Array.from(n.querySelectorAll('.lm-Menu-itemIcon svg *')).flatMap(e => [
@@ -150,25 +155,49 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icon
       red.push(channels.some(c => JSON.stringify(c) === error));
     }
     expect(red).toEqual(MENU.map(label => label === 'Delete workspace'));
-    const bin = await items(page)
-      .nth(BIN)
-      .locator('.lm-Menu-itemIcon .jp-icon3[fill]')
-      .first()
-      .evaluate(p => getComputedStyle(p).fill);
-    expect(JSON.stringify(await rgb(page, bin))).toBe(error);
-    const label = await items(page)
-      .nth(BIN)
-      .locator('.lm-Menu-itemLabel')
-      .evaluate(l => getComputedStyle(l).color);
-    expect(await rgb(page, label)).toEqual(
-      await rgb(page, 'var(--jp-ui-font-color0)')
+    const labels = await Promise.all(
+      MENU.map(label => labelOf(menuItem(page, label)))
     );
+    const labelColours = await Promise.all(labels.map(c => rgb(page, c)));
+    expect(labelColours.map(c => JSON.stringify(c) === error)).toEqual(
+      MENU.map(label => label === 'Delete workspace')
+    );
+    const binItem = menuItem(page, 'Delete workspace');
+    await expect(binItem).toHaveClass(/jp-WorkspaceManager-danger/);
+    expect(JSON.stringify(await rgb(page, await fillOf(binItem)))).toBe(error);
+    expect(JSON.stringify(await rgb(page, await labelOf(binItem)))).toBe(error);
+
+    // hovered and selected by the arrow keys: the same error colour, the menu's own selection background
+    const background = (item: Locator) =>
+      item.evaluate(n => getComputedStyle(n).backgroundColor);
+    await menuItem(page, 'Set description...').hover();
+    const active = await background(menuItem(page, 'Set description...'));
+    await binItem.hover();
+    await expect(binItem).toHaveClass(/lm-mod-active/);
+    expect(await background(binItem)).toBe(active);
+    expect(JSON.stringify(await rgb(page, await labelOf(binItem)))).toBe(error);
+    await page.keyboard.press('Escape');
+    await expect(items(page)).toHaveCount(0);
+
+    await menuButton(page, other).click();
+    const keyed = menuItem(page, 'Delete workspace');
+    // ArrowDown steps over the one item that does not apply to this card
+    let reached = false;
+    for (let i = 0; i < MENU.length && !reached; i++) {
+      await page.keyboard.press('ArrowDown');
+      reached = await keyed.evaluate(n =>
+        n.classList.contains('lm-mod-active')
+      );
+    }
+    expect(reached, 'ArrowDown reaches Delete workspace').toBe(true);
+    expect(await background(keyed)).toBe(active);
+    expect(JSON.stringify(await rgb(page, await labelOf(keyed)))).toBe(error);
   } finally {
     await deleteWorkspaces(page, [current, other]);
   }
 });
 
-test('ACC-ACCORD-150-COLOUR-SWATCH: the Colour submenu draws a 12px swatch with 2px corners and a layout colour 4 border before each colour', async ({
+test('ACC-ACCORD-150-COLOUR-SWATCH, MENU-04: the Colour submenu lists Red, Orange, Amber, Green, Blue, Cyan, each after a 12px swatch with 2px corners and a layout colour 4 border filled with its theme token', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'swatch');
@@ -196,8 +225,8 @@ test('ACC-ACCORD-150-COLOUR-SWATCH: the Colour submenu draws a 12px swatch with 
         });
       expect([s.size, s.radius, s.strokeWidth]).toEqual([[12, 12], '2', '1px']);
       expect(await rgb(page, s.stroke)).toEqual(border);
-      expect(await rgb(page, s.fill)).toEqual(
-        await rgb(page, `var(--jp-workspace-manager-${COLOURS[i]})`)
+      expect(await rgb(page, s.fill), COLOURS[i]).toEqual(
+        await rgb(page, `var(${TOKENS[i]})`)
       );
     }
   } finally {
@@ -215,7 +244,7 @@ test('ACC-ACCORD-102-COLOUR-CHECK: the Colour submenu marks the present colour',
       '.jp-WorkspaceManager-colourMenu .lm-Menu-item.lm-mod-toggled'
     );
     await expect(toggled).toHaveCount(1);
-    await expect(toggled.locator('.lm-Menu-itemLabel')).toHaveText('Yellow');
+    await expect(toggled.locator('.lm-Menu-itemLabel')).toHaveText('Amber');
     const mark = await toggled
       .locator('.lm-Menu-itemLabel')
       .evaluate(l => getComputedStyle(l, '::after').content);
@@ -230,7 +259,7 @@ test('ACC-ACCORD-30-SET-COLOUR: Colour sets the strip at once, and the colour su
 }) => {
   const { current, other } = await setUp(page, 'colour', 'sky');
   try {
-    const mint = await rgb(page, 'var(--jp-workspace-manager-mint)');
+    const mint = await rgb(page, 'var(--jp-success-color1)');
     expect(await strip(page, other)).not.toEqual(mint);
     await openColours(page, other);
     await menuItem(page, 'Green').click();
@@ -267,7 +296,7 @@ test('ACC-ACCORD-31-DELETE: two separate clicks delete the workspace', async ({
   }
 });
 
-test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace shows a red bin and, armed, a red warning icon in its place; at rest, active and armed its label and background are those of Set description...', async ({
+test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace and, armed, Confirm delete draw the error-coloured label and icon on the menu background, which stays that of Set description...', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'armed');
@@ -314,16 +343,16 @@ test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace shows a red bin and, armed, 
       const bin = 'ui-components:delete';
       const warning = 'jupyterlab_workspace_manager_extension:warning';
 
-      // at rest: a red bin, the reference's label colour and background
+      // at rest: the error-coloured label and bin, the reference's background
       expect(await red(), theme).toEqual(['Delete workspace']);
       expect(await paint('Delete workspace'), theme).toEqual({
         background: plain.background,
-        label: plain.label,
+        label: error,
         icon: bin,
         fill: error
       });
 
-      // active under the pointer: the reference's active label colour and background
+      // active under the pointer: the reference's active background, the error colour kept
       await menuItem(page, 'Set description...').hover();
       await expect(menuItem(page, 'Set description...')).toHaveClass(
         /lm-mod-active/
@@ -335,18 +364,23 @@ test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace shows a red bin and, armed, 
         /lm-mod-active/
       );
       expect(await paint('Delete workspace'), theme).toEqual({
-        ...active,
+        background: active.background,
+        label: error,
         icon: bin,
         fill: error
       });
 
-      // armed, still active: the warning sign takes the bin's place, the label and background stay
+      // armed, still active: the warning sign takes the bin's place, jp-mod-confirm marks the item
       await menuItem(page, 'Delete workspace').click();
       await expect(menuItem(page, 'Confirm delete')).toHaveClass(
         /lm-mod-active/
       );
+      await expect(menuItem(page, 'Confirm delete')).toHaveClass(
+        /jp-mod-confirm/
+      );
       expect(await paint('Confirm delete'), theme).toEqual({
-        ...active,
+        background: active.background,
+        label: error,
         icon: warning,
         fill: error
       });
@@ -354,7 +388,8 @@ test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace shows a red bin and, armed, 
       // armed, at rest: the pointer on the reference
       await menuItem(page, 'Set description...').hover();
       expect(await paint('Confirm delete'), theme).toEqual({
-        ...plain,
+        background: plain.background,
+        label: error,
         icon: warning,
         fill: error
       });
@@ -430,6 +465,8 @@ test('ACC-ACCORD-99-PURPOSE-DIALOG: Set description shows the purpose, focused; 
     await area.fill('Second purpose');
     await area.press('Enter');
     await expect(dialog(page)).toHaveCount(0);
+    // DQ-17: the purpose shows on the open card
+    await openCard(page, other);
     await expect(
       card(page, other).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('Second purpose');
@@ -470,6 +507,7 @@ test('ACC-ACCORD-19-SET-PURPOSE: Set description sets and clears the purpose; bo
     await openPanel(page);
     await refresh(page);
     await expect(card(page, other)).toBeVisible();
+    await openCard(page, other);
   };
   try {
     await fromMenu(page, other, 'Set description...');
@@ -477,6 +515,8 @@ test('ACC-ACCORD-19-SET-PURPOSE: Set description sets and clears the purpose; bo
     await dialog(page)
       .locator('.jp-Dialog-button', { hasText: 'Save' })
       .click();
+    // DQ-17: the purpose shows on the open card
+    await openCard(page, other);
     await expect(purpose).toHaveText('Firmware upload tests');
     await reload();
     await expect(purpose).toHaveText('Firmware upload tests');
