@@ -1,6 +1,6 @@
 {
     "name": "jupyterlab_workspace_manager_extension",
-    "version": "0.8.23",
+    "version": "0.8.24",
     "description": "Workspace-driven Running panel: workspaces as coloured accordion sections with their tabs, terminals and kernels",
     "keywords": [
         "jupyter",
