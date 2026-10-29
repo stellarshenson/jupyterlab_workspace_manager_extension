@@ -24,6 +24,8 @@ def jp_server_config(jp_server_config):
         ("PATCH", "meta/one", '{"hidden": true}'),
         ("GET", "presence?window=w", None),
         ("POST", "presence", '{"window": "w", "workspace": "one"}'),
+        ("GET", "switch?window=w", None),
+        ("POST", "switch", '{"workspace": "one"}'),
     ],
 )
 async def test_route_without_token_answers_403(http_server_client, jp_base_url, method, path, body):

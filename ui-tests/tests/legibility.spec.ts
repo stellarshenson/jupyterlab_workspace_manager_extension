@@ -44,6 +44,8 @@ interface IText {
   heading: boolean;
   /** an empty-state line */
   empty: boolean;
+  /** a row's time, status word or detail value */
+  meta: boolean;
   /** the class of the element that draws the text */
   where: string;
 }
@@ -63,6 +65,9 @@ function texts(page: Page): Promise<IText[]> {
           '.jp-WorkspaceManager-title, .jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
         ),
         empty: !!el.closest('.jp-WorkspaceManager-empty'),
+        meta: !!el.closest(
+          '.jp-WorkspaceManager-row .jp-WorkspaceManager-age, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail'
+        ),
         where: el.getAttribute('class') ?? el.tagName
       };
     };
@@ -185,7 +190,7 @@ async function textsOfOpenCards(
   return found;
 }
 
-test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a card name, a purpose, the section and group labels and a row name are colour 1; a time, a detail, a note, the counts, the carets and the empty lines are colour 2; recent emphasis is brand colour 1; no text is colour 3', async ({
+test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a card name, the section and group labels and a row name are colour 1; a purpose, a time, a detail, a note, the counts, the carets and the empty lines are colour 2; no text is colour 3', async ({
   page
 }) => {
   test.setTimeout(150000);
@@ -213,11 +218,10 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
     await openSection(page, 'terminals');
     for (const theme of [DARK, LIGHT]) {
       await page.theme.setTheme(theme);
-      const [colour1, colour2, colour3, brand1] = [
+      const [colour1, colour2, colour3] = [
         await rgba(page, 'var(--jp-ui-font-color1)'),
         await rgba(page, 'var(--jp-ui-font-color2)'),
-        await rgba(page, 'var(--jp-ui-font-color3)'),
-        await rgba(page, 'var(--jp-brand-color1)')
+        await rgba(page, 'var(--jp-ui-font-color3)')
       ];
       const colourOf = async (l: Locator, property = 'color') =>
         rgba(
@@ -229,7 +233,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         colour1
       );
 
-      // the aged card: its name colour 1, its time colour 2; open, its purpose colour 1 and its counts colour 2
+      // the aged card: its name colour 1, its time colour 2; open, its purpose colour 2 and its counts colour 2
       await openCard(page, aged);
       const header = cardHeader(page, aged);
       await expect(header.locator('.jp-WorkspaceManager-age')).toHaveText(
@@ -244,7 +248,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
           ),
           colour2
         ],
-        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), colour1],
+        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), colour2],
         [
           'section label',
           sectionHeader(page, 'workspaces').locator(
@@ -296,6 +300,8 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         ['detail', tab.locator('.jp-WorkspaceManager-rowDetail'), colour2]
       );
       await check();
+      // the design system's hover pair paints a hovered glyph colour 1: measure with the pointer off the triangle openCard clicked
+      await page.mouse.move(0, 0);
       // the carets, of a section and of a card
       for (const caret of [
         sectionHeader(page, 'workspaces').locator(
@@ -307,16 +313,13 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
           .soft(await colourOf(caret.first(), 'fill'), `${theme} caret`)
           .toEqual(colour2);
       }
-      // a terminal row: name and time in brand colour 1 while it was active under a minute ago, else colour 1 and colour 2
+      // a terminal row: its name is colour 1 and its time colour 2, whether or not it is recent (DQ-21)
       const terminal = page
         .locator(`${PANEL} [data-section="terminals"] .jp-WorkspaceManager-row`)
         .first();
-      const recent = (await terminal.getAttribute('class'))!.includes(
-        'jp-mod-recentlyActive'
-      );
       for (const [part, token] of [
-        ['.jp-WorkspaceManager-rowLabel', recent ? brand1 : colour1],
-        ['.jp-WorkspaceManager-age', recent ? brand1 : colour2]
+        ['.jp-WorkspaceManager-rowLabel', colour1],
+        ['.jp-WorkspaceManager-age', colour2]
       ] as const) {
         expect
           .soft(
@@ -336,7 +339,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
   }
 });
 
-test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section labels and counts, the group labels and the empty states at font size 0, every other text at size 1 or more; the empty-state lines are italic and colour 2, no other text is italic', async ({
+test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section labels and counts, the group labels, the empty states and the row time, status word and detail values at font size 0, every other text at size 1 or more; the empty-state lines are italic and colour 2, no other text is italic', async ({
   page
 }) => {
   const ids = await populate(page);
@@ -366,8 +369,12 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
         .fill('zzzz');
       found.push(...(await shown()));
       await page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`).fill('');
-      const small = found.filter(t => t.group || t.heading || t.empty);
+      const small = found.filter(
+        t => t.group || t.heading || t.empty || t.meta
+      );
       expect(found.filter(t => t.group).length).toBeGreaterThan(0);
+      // a row's time, status word and detail values are measured too
+      expect(found.filter(t => t.meta).length).toBeGreaterThan(0);
       // WORKBENCH, four section labels and four counts in each pass
       expect(found.filter(t => t.heading).length).toBeGreaterThanOrEqual(9);
       expect(
@@ -376,7 +383,9 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
       ).toEqual([]);
       expect(
         found
-          .filter(t => !t.group && !t.heading && !t.empty && t.size < size1)
+          .filter(
+            t => !t.group && !t.heading && !t.empty && !t.meta && t.size < size1
+          )
           .map(t => `${t.text}: ${t.size}`),
         theme
       ).toEqual([]);
@@ -407,21 +416,21 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
   }
 });
 
-test('ACC-ACCORD-132-NAME-SIZE: a workspace name is set in font size 2, semibold', async ({
+test('ACC-ACCORD-132-NAME-SIZE: a workspace name is set in font size 1 at normal weight', async ({
   page
 }) => {
   const current = fresh('name');
   try {
     await gotoWorkspace(page, current);
     await openPanel(page);
-    const size2 = await fontSize(page, '--jp-ui-font-size2');
+    const size1 = await fontSize(page, '--jp-ui-font-size1');
     const name = card(page, current).locator('.jp-WorkspaceManager-name');
     await expect(name).toHaveText(current);
     const style = await name.evaluate(n => {
       const s = getComputedStyle(n);
       return [parseFloat(s.fontSize), s.fontWeight];
     });
-    expect(style).toEqual([size2, '600']);
+    expect(style).toEqual([size1, '400']);
   } finally {
     await deleteWorkspaces(page, [current]);
   }

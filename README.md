@@ -33,7 +33,7 @@ The panel groups them by workspace: what each project holds, what is running in 
 - **Tooltips** - hover a tab, terminal, kernel or language server for its details on several lines
 - **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them
 - **New workspace** - the + button creates a workspace and asks for its name and an optional description
-- **Command line** - the `jupyterlab-workspace` tool drives the same workspaces, terminals and kernels from a shell
+- **Command line** - the `jupyterlab-workspace` tool drives the same workspaces, terminals and kernels from a shell, switches a window to a workspace and activates a tab
 
 ## Requirements
 
@@ -49,7 +49,7 @@ pip install jupyterlab-workspace-manager-extension
 
 ## Command line
 
-`jupyterlab-workspace` manages a running lab from a shell: `workspaces list`, `add`, `open`, `describe`, `remove` and `clean`, and `terminals` and `kernels`, each with `list` and `kill`.
+`jupyterlab-workspace` manages a running lab from a shell: `workspaces list`, `add`, `open`, `describe`, `remove`, `clean` and `switch`, `tabs list` and `tabs activate`, `windows list`, and `terminals` and `kernels`, each with `list` and `kill`.
 
 Run `jupyterlab-workspace --help` for the commands, the environment variables that name the lab, and the exit codes.
 

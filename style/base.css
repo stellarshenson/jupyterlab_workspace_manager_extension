@@ -367,16 +367,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--jp-ui-font-size2);
-  font-weight: 600;
 }
 
-/* As many lines as the purpose needs: the card grows with it */
+/* As many lines as the purpose needs: the card grows with it; the purpose is meta text (DQ-21) */
 .jp-WorkspaceManager-purpose {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
   white-space: normal;
+  color: var(--jp-ui-font-color2);
 }
 
 .jp-WorkspaceManager-counts,
@@ -405,13 +404,7 @@
   white-space: nowrap;
 }
 
-/* Under 60 s the name and the time in brand colour 1; over 7 days the name alone at 0.65 (DQ-09) */
-.jp-mod-recentlyActive .jp-WorkspaceManager-name,
-.jp-mod-recentlyActive .jp-WorkspaceManager-rowLabel,
-.jp-mod-recentlyActive .jp-WorkspaceManager-age {
-  color: var(--jp-brand-color1);
-}
-
+/* Over 7 days the name alone at 0.65; recency is otherwise the time label's (DQ-09, DQ-21) */
 .jp-mod-stale .jp-WorkspaceManager-name,
 .jp-mod-stale .jp-WorkspaceManager-rowLabel {
   opacity: 0.65;
@@ -561,6 +554,13 @@
   font-family: var(--jp-code-font-family);
 }
 
+/* The row's time, status word and detail lines are meta text at size 0; the card header keeps size 1 (DQ-21) */
+.jp-WorkspaceManager-row .jp-WorkspaceManager-age,
+.jp-WorkspaceManager-row .jp-WorkspaceManager-state,
+.jp-WorkspaceManager-rowDetail {
+  font-size: var(--jp-ui-font-size0);
+}
+
 /* The detail lines of the selected row, under the name: the parts marked to shrink give way first (KERN-02) */
 .jp-WorkspaceManager-rowDetail {
   display: flex;
@@ -587,6 +587,11 @@
 /* shrink shares are proportional to the width, so a factor of 1e5 keeps the file name whole until these are cut */
 .jp-WorkspaceManager-rowDetail > .jp-mod-shrink {
   flex-shrink: 100000;
+}
+
+/* The kernel type gives way first (KERN-02): three fifths of its line at most, so at a 300 px panel it is cut while the memory and CPU figures keep their room */
+.jp-WorkspaceManager-type {
+  max-width: 60%;
 }
 
 /* a folder is cut at its start and runs on into its file name; left-to-right marks keep its / in place in the right-to-left box */
@@ -706,6 +711,47 @@
   border-left: 2px solid var(--jp-error-color1);
   background: var(--jp-layout-color2);
   color: var(--jp-ui-font-color1);
+}
+
+/* The clean-up confirmation (DQ-22): the question, then every workspace with its contents and outcome */
+.jp-WorkspaceManager-cleanup {
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.jp-WorkspaceManager-cleanupSummary {
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-cleanupRow {
+  padding: 6px 0;
+  border-top: var(--jp-border-width) solid var(--jp-border-color1);
+}
+
+.jp-WorkspaceManager-cleanupRow:first-of-type {
+  margin-top: 8px;
+}
+
+.jp-WorkspaceManager-cleanupLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.jp-WorkspaceManager-cleanupName {
+  font-weight: 600;
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-cleanupOutcome,
+.jp-WorkspaceManager-cleanupHolds,
+.jp-WorkspaceManager-cleanupNote {
+  color: var(--jp-ui-font-color2);
+  font-size: var(--jp-ui-font-size0);
 }
 
 /*

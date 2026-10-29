@@ -10,6 +10,9 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 module.exports = {
   ...baseConfig,
+  // the specs share one server: a switch broadcast moves the page another spec is driving
+  workers: 1,
+  fullyParallel: false,
   use: { ...baseConfig.use, baseURL: BASE_URL },
   webServer: {
     command: 'jlpm start',

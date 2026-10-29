@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""jupyterlab-workspace - manage the workspaces, terminals and kernels of a running JupyterLab.
+"""jupyterlab-workspace - manage the workspaces, tabs, terminals and kernels of a running JupyterLab.
 
 Finds the lab the way references/reaching-a-running-lab.md prescribes: the
 JUPYTER_SERVER_URL, JUPYTERHUB_SERVICE_PREFIX or JUPYTER_PORT variable that is
@@ -33,11 +33,18 @@ WORKSPACES = '/lab/api/workspaces'
 META = '/' + NAMESPACE + '/meta'
 PRESENCE = '/' + NAMESPACE + '/presence'
 TERMINALS = '/' + NAMESPACE + '/terminals'
+KERNELS = '/' + NAMESPACE + '/kernels'
+SWITCH = '/' + NAMESPACE + '/switch'
 COLOURS = ('rose', 'peach', 'lemon', 'mint', 'sky', 'lavender')
 
 
 class CLIError(Exception):
     """A refusal or a failed request; main reports it on stderr and exits 1."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        # the HTTP status of a failed request, so a caller can treat a 404 as absence
+        self.code = code
 
 
 def _server_list():
@@ -194,7 +201,15 @@ def _request(base_url, token, method, path, payload=None):
         with _OPENER.open(request, timeout=REQUEST_TIMEOUT_S) as reply:
             body = reply.read()
     except urllib.error.HTTPError as error:
-        raise CLIError(f'{method} {path} failed: {error.code} {error.reason}') from None
+        message = f'{method} {path} failed: {error.code} {error.reason}'
+        try:
+            body = json.loads(error.read() or b'')
+        except (ValueError, OSError, AttributeError):
+            body = None
+        detail = (body.get('message') or body.get('reason')) if isinstance(body, dict) else None
+        if isinstance(detail, str) and detail:
+            message = f'{message}: {detail}'
+        raise CLIError(message, error.code) from None
     except OSError as error:
         raise CLIError(f'{method} {path} failed: {error}') from None
     if not body:
@@ -359,6 +374,18 @@ def _shown_elsewhere(base, token):
     return {_name(workspace) for workspace in reply.get('workspaces') or []}
 
 
+def _switch(base, token, workspace=None, tab=None, window=None):
+    """Record a switch request the panel windows read once on their next poll."""
+    request = {}
+    if workspace is not None:
+        request['workspace'] = workspace
+    if tab is not None:
+        request['tab'] = tab
+    if window is not None:
+        request['window'] = window
+    _request(base, token, 'POST', SWITCH, request)
+
+
 def _cmd_workspaces_remove(args, base, token):
     name = _name(args.name)
     if name in _shown_elsewhere(base, token):
@@ -402,6 +429,25 @@ def _cmd_workspaces_clean(args, base, token):
         raise CLIError('nothing was removed; run again with --yes')
 
 
+def _cmd_workspaces_switch(args, base, token):
+    name = _name(args.name)
+    if not any(_name((workspace.get('metadata') or {}).get('id', '')) == name for workspace in _workspaces(base, token)):
+        raise CLIError(f'workspace {name} does not exist')
+    _switch(base, token, name, window=args.window)
+    if args.window:
+        print(f'requested switch to workspace {name} in window {args.window}')
+    else:
+        print(f'requested switch to workspace {name}')
+
+
+def _cmd_windows_list(args, base, token):
+    rows = (_request(base, token, 'GET', PRESENCE) or {}).get('windows') or []
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    _table(('WINDOW', 'WORKSPACE'), [(row['window'], row['workspace']) for row in rows])
+
+
 def _terminals(base, token):
     return _request(base, token, 'GET', TERMINALS) or []
 
@@ -439,18 +485,52 @@ def _cmd_terminals_kill(args, base, token):
     print(f'killed terminal {name}')
 
 
+def _kernel_usage(base, token):
+    """Memory and CPU per kernel from the extension's route; none when the server extension is absent."""
+    try:
+        return _request(base, token, 'GET', KERNELS) or {}
+    except CLIError as error:
+        if error.code != 404:
+            raise
+        return {}
+
+
+def _memory(value):
+    """Resident memory as the panel shows it: MB under 1 GB, GB from there; a dash when unreadable."""
+    if type(value) not in (int, float):
+        return '-'
+    mb = value / 2 ** 20
+    return f'{int(mb + 0.5)} MB' if mb < 1024 else f'{mb / 1024:.1f} GB'
+
+
+def _cpu(value):
+    """CPU percent of one core, whole, as the panel shows it; a dash when unreadable."""
+    return f'{int(value + 0.5)}%' if type(value) in (int, float) else '-'
+
+
 def _kernel_rows(base, token):
     kernels = _request(base, token, 'GET', '/api/kernels') or []
     sessions = _request(base, token, 'GET', '/api/sessions') or []
+    usage = _kernel_usage(base, token)
     paths = {}
     for session in sessions:
         kernel = session.get('kernel') or {}
         if kernel.get('id'):
             paths[kernel['id']] = session.get('path', '')
-    return [
-        {'id': kernel.get('id', ''), 'name': kernel.get('name', ''), 'path': paths.get(kernel.get('id'), '')}
-        for kernel in kernels
-    ]
+    rows = []
+    for kernel in kernels:
+        kernel_id = kernel.get('id', '')
+        held = usage.get(kernel_id) or {}
+        rows.append(
+            {
+                'id': kernel_id,
+                'name': kernel.get('name', ''),
+                'path': paths.get(kernel_id, ''),
+                'memory': held.get('memory'),
+                'cpu': held.get('cpu'),
+            }
+        )
+    return rows
 
 
 def _cmd_kernels_list(args, base, token):
@@ -458,7 +538,10 @@ def _cmd_kernels_list(args, base, token):
     if args.json:
         print(json.dumps(rows, indent=2))
         return
-    _table(('ID', 'NAME', 'SESSION'), [(row['id'], row['name'], row['path']) for row in rows])
+    _table(
+        ('ID', 'NAME', 'SESSION', 'MEMORY', 'CPU'),
+        [(row['id'], row['name'], row['path'], _memory(row['memory']), _cpu(row['cpu'])) for row in rows],
+    )
 
 
 def _cmd_kernels_kill(args, base, token):
@@ -476,6 +559,61 @@ def _cmd_kernels_kill(args, base, token):
         print(f'killed kernel {kernel_id}')
     if args.all and not args.yes:
         raise CLIError('nothing was killed; run again with --yes')
+
+
+def _tab_rows(workspace):
+    """The document tabs a saved workspace holds, in the order its file saves them; terminals are not tabs."""
+    data = workspace.get('data') or {}
+    rows = []
+    for key in _layout_keys(workspace):
+        if key.startswith('terminal:'):
+            continue
+        saved = (data.get(key) or {}).get('data') or {}
+        rows.append({'key': key, 'path': saved.get('path')})
+    return rows
+
+
+def _cmd_tabs_list(args, base, token):
+    name = _name(args.name)
+    workspace = next(
+        (item for item in _workspaces(base, token) if _name((item.get('metadata') or {}).get('id', '')) == name),
+        None,
+    )
+    if workspace is None:
+        raise CLIError(f'workspace {name} does not exist')
+    rows = _tab_rows(workspace)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    _table(('KEY', 'PATH'), [(row['key'], row['path'] or '') for row in rows])
+
+
+def _cmd_tabs_activate(args, base, token):
+    workspaces = [
+        (_name((item.get('metadata') or {}).get('id', '')), [row['path'] for row in _tab_rows(item) if row['path']])
+        for item in _workspaces(base, token)
+    ]
+    if args.workspace is not None:
+        name = _name(args.workspace)
+        paths = next((paths for workspace, paths in workspaces if workspace == name), None)
+        if paths is None:
+            raise CLIError(f'workspace {name} does not exist')
+        if args.path not in paths:
+            raise CLIError(
+                f'no tab of workspace {name} shows {args.path}; paths saved in it: {", ".join(paths) or "none"}; '
+                "the tab must be open in a window's current workspace"
+            )
+        _switch(base, token, name, tab=args.path)
+        print(f'requested activation of tab {args.path} in workspace {name}')
+        return
+    if not any(args.path in paths for _, paths in workspaces):
+        saved_paths = [f'{workspace}: {path}' for workspace, paths in workspaces for path in paths]
+        raise CLIError(
+            f'no tab shows {args.path}; paths saved in the workspaces: {", ".join(saved_paths) or "none"}; '
+            "the tab must be open in a window's current workspace"
+        )
+    _switch(base, token, tab=args.path)
+    print(f'requested activation of tab {args.path}')
 
 
 ENVIRONMENT = """environment:
@@ -500,7 +638,7 @@ def _examples(text):
 def _parser():
     parser = argparse.ArgumentParser(
         prog='jupyterlab-workspace',
-        description='Manage the workspaces, terminals and kernels of a running JupyterLab.',
+        description='Manage the workspaces, tabs, terminals and kernels of a running JupyterLab.',
         epilog=ENVIRONMENT,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -605,6 +743,21 @@ def _parser():
     p.add_argument('--yes', action='store_true', help='delete them; without this the command lists and refuses')
     p.set_defaults(handler=_cmd_workspaces_clean, parser=p)
 
+    p = ws.add_parser(
+        'switch',
+        help='switch a window to a workspace',
+        description='Ask every browser window that shows the panel to switch to the named workspace, or '
+        'only the window --window names. An unknown name or window is refused and nothing is sent.',
+        epilog=_examples(
+            '  jupyterlab-workspace workspaces switch fb-review\n'
+            '  jupyterlab-workspace workspaces switch fb-review --window jupyterlab-workspace-manager:0f3c9a1e-4b8d-4f2a-9c6e-1d5b7a8e2f40'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument('name', help='the workspace name')
+    p.add_argument('--window', help='the window id, as windows list prints it: switch that window only')
+    p.set_defaults(handler=_cmd_workspaces_switch)
+
     terminals = groups.add_parser(
         'terminals',
         help='list or kill terminals',
@@ -649,9 +802,9 @@ def _parser():
 
     p = ks.add_parser(
         'list',
-        help='print every kernel with its id, name and notebook',
-        description='Print one line per kernel: id, kernelspec name and the notebook or console '
-        'its session serves. --json prints the same facts as data.',
+        help='print every kernel with its id, name, notebook, memory and CPU',
+        description='Print one line per kernel: id, kernelspec name, the notebook or console its '
+        'session serves, resident memory and CPU percent. --json prints the same facts as data.',
         epilog=_examples('  jupyterlab-workspace kernels list\n  jupyterlab-workspace kernels list --json'),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -672,6 +825,67 @@ def _parser():
     p.add_argument('--all', action='store_true', help='kill every kernel; needs --yes')
     p.add_argument('--yes', action='store_true', help='kill them; without this --all lists and refuses')
     p.set_defaults(handler=_cmd_kernels_kill, parser=p)
+
+    tabs = groups.add_parser(
+        'tabs',
+        help='list or activate the tabs of a workspace',
+        description='Read the tabs a workspace file saves, in the order it saves them, or activate one '
+        'in a browser window.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ts = tabs.add_subparsers(dest='command', required=True)
+
+    p = ts.add_parser(
+        'list',
+        help='print every tab of a workspace in its saved order',
+        description='Print one line per tab of the named workspace, in the order the workspace file '
+        'saves them: the layout key and the document path the tab shows. --json prints the same rows.',
+        epilog=_examples(
+            '  jupyterlab-workspace tabs list fb-review\n  jupyterlab-workspace tabs list fb-review --json'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument('name', help='the workspace name')
+    p.add_argument('--json', action='store_true', help='print JSON instead of the table')
+    p.set_defaults(handler=_cmd_tabs_list)
+
+    p = ts.add_parser(
+        'activate',
+        help='activate the tab showing a path in an open window',
+        description='Ask every browser window that shows the panel to activate the tab showing the path '
+        'in its current workspace; --workspace names a workspace and every window not on it switches to '
+        'it first, except a window another window shows that workspace on, which refuses as Open '
+        'workspace does. A path no saved workspace holds a tab for is refused and nothing is sent. '
+        'A path saved in a workspace no window shows is requested but activates nothing.',
+        epilog=_examples(
+            '  jupyterlab-workspace tabs activate a.ipynb\n'
+            '  jupyterlab-workspace tabs activate a.ipynb --workspace fb-review'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument('path', help='the document path the tab shows')
+    p.add_argument('--workspace', help='switch this workspace first')
+    p.set_defaults(handler=_cmd_tabs_activate)
+
+    windows = groups.add_parser(
+        'windows',
+        help='list the browser windows that show the panel',
+        description='Print the windows that reported a workspace in the last 90 s and the workspace each '
+        'shows; their ids are what workspaces switch --window accepts.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    wl = windows.add_subparsers(dest='command', required=True)
+
+    p = wl.add_parser(
+        'list',
+        help='print every live window id and its workspace',
+        description='Print one line per window that reported a workspace in the last 90 s: the window id '
+        'and the workspace it shows. --json prints the same rows.',
+        epilog=_examples('  jupyterlab-workspace windows list\n  jupyterlab-workspace windows list --json'),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument('--json', action='store_true', help='print JSON instead of the table')
+    p.set_defaults(handler=_cmd_windows_list)
 
     return parser
 

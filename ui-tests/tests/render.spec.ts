@@ -384,7 +384,7 @@ test.describe('the seeded scenario', () => {
   // the scenario starts kernels by REST; Galata would list only its page's own
   test.use({ kernels: null, sessions: null });
 
-  test("SCENARIO, WS-21 ACC-LISTS-81-ONCE, ROW-01 ACC-LISTS-154-TAB-SHRINK, ACC-PANEL-202-TEXT-COLOURS: the panel at 300 px and wide, in Light and Galaxa Steel dark, a KERNELS row selected; each tab listed once; rows at least 24 px with a 16 px icon, name in colour 1 and time in colour 2 (brand colour 1 under a minute), the selected row's detail in colour 2, age inside the row", async ({
+  test("SCENARIO, WS-21 ACC-LISTS-81-ONCE, ROW-01 ACC-LISTS-154-TAB-SHRINK, ACC-PANEL-202-TEXT-COLOURS: the panel at 300 px and wide, in Light and Galaxa Steel dark, a KERNELS row selected; each tab listed once; rows at least 24 px with a 16 px icon, name in colour 1 and time in colour 2 at every age, the selected row's detail in colour 2, age inside the row", async ({
     page,
     tmpPath
   }) => {
@@ -437,10 +437,9 @@ test.describe('the seeded scenario', () => {
       ).not.toContainEqual(expect.stringMatching(/terminal/i));
 
       // ROW-01 in this window's card and in the TERMINALS section, at 300 px
-      const [colour1, colour2, brand1] = [
+      const [colour1, colour2] = [
         await rgba(page, 'var(--jp-ui-font-color1)'),
-        await rgba(page, 'var(--jp-ui-font-color2)'),
-        await rgba(page, 'var(--jp-brand-color1)')
+        await rgba(page, 'var(--jp-ui-font-color2)')
       ];
       const anatomy = async () =>
         page.locator(PANEL).evaluate(panel =>
@@ -459,7 +458,6 @@ test.describe('the seeded scenario', () => {
               const time = r.querySelector('.jp-WorkspaceManager-age');
               return {
                 text: r.textContent ?? '',
-                recent: r.classList.contains('jp-mod-recentlyActive'),
                 tall: box.height >= 24,
                 icon: icon
                   ? [Math.round(icon.width), Math.round(icon.height)]
@@ -486,11 +484,11 @@ test.describe('the seeded scenario', () => {
           expect.soft(r.icon, `${r.text} icon`).toEqual([16, 16]);
           expect
             .soft(await rgba(page, r.label), `${r.text} label colour`)
-            .toEqual(r.recent ? brand1 : colour1);
+            .toEqual(colour1);
           if (r.time !== null) {
             expect
               .soft(await rgba(page, r.time), `${r.text} time colour`)
-              .toEqual(r.recent ? brand1 : colour2);
+              .toEqual(colour2);
           }
           if (r.detail !== null) {
             expect
@@ -945,7 +943,11 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
         const label = h.querySelector('.jp-WorkspaceManager-sectionLabel')!;
         return {
           otherButtons: Array.from(h.querySelectorAll('button'))
-            .filter(b => b.getAttribute('aria-label') !== 'Shut down all')
+            .filter(
+              b =>
+                b.getAttribute('aria-label') !== 'Shut down all' &&
+                b.getAttribute('aria-label') !== 'Clean up workspaces'
+            )
             .map(b => b.getAttribute('aria-label') ?? b.className),
           caretTag: caret.tagName.toLowerCase(),
           caretHidden: caret.getAttribute('aria-hidden'),
@@ -1242,7 +1244,7 @@ async function aged(page: Page, ages: Record<string, number>): Promise<void> {
 
 const HOUR = 3600 * 1000;
 
-test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-18-PURPOSE, ACC-ACCORD-101-PURPOSE-TEXT, ACC-PANEL-181-PURPOSE-WRAP: the name of a card 3 h old is colour 1 and ends in an ellipsis; a closed card shows no purpose; open, the purpose is regular, size 1, colour 1, upright, never cut, markup shown as text; a card without a purpose shows no purpose text', async ({
+test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-18-PURPOSE, ACC-ACCORD-101-PURPOSE-TEXT, ACC-PANEL-181-PURPOSE-WRAP: the name of a card 3 h old is colour 1 and ends in an ellipsis; a closed card shows no purpose; open, the purpose is regular, size 1, colour 2, upright, never cut, markup shown as text; a card without a purpose shows no purpose text', async ({
   page
 }) => {
   const alerts: string[] = [];
@@ -1268,8 +1270,9 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
     await openCard(page, ids[1]);
     await expect(purpose).toHaveText(markup);
     await expect(card(page, ids[1]).locator('img')).toHaveCount(0);
-    const [colour1, size1] = [
+    const [colour1, colour2, size1] = [
       await rgba(page, 'var(--jp-ui-font-color1)'),
+      await rgba(page, 'var(--jp-ui-font-color2)'),
       await page.locator(PANEL).evaluate(panel => {
         const probe = document.createElement('span');
         probe.style.fontSize = 'var(--jp-ui-font-size1)';
@@ -1290,7 +1293,7 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
       size: size1,
       italic: 'normal',
       overflow: 'clip',
-      colour: colour1
+      colour: colour2
     });
     const name = card(page, ids[1]).locator('.jp-WorkspaceManager-name');
     await expect(
@@ -1308,7 +1311,7 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
   }
 });
 
-test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the name and the age read now in brand colour 1 with jp-mod-recentlyActive and no dot; at 3 h the age reads 3h ago in colour 2; over 7 days the name alone is at opacity 0.65 with jp-mod-stale', async ({
+test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads now and the header carries jp-mod-recentlyActive with no dot and no colour change; at 3 h the age reads 3h ago in colour 2; over 7 days the name alone is at opacity 0.65 with jp-mod-stale', async ({
   page
 }) => {
   const current = fresh('recency');
@@ -1330,8 +1333,7 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the name and t
       );
     const name = (id: string) =>
       cardHeader(page, id).locator('.jp-WorkspaceManager-name');
-    const [brand1, colour1, colour2] = [
-      await rgba(page, 'var(--jp-brand-color1)'),
+    const [colour1, colour2] = [
       await rgba(page, 'var(--jp-ui-font-color1)'),
       await rgba(page, 'var(--jp-ui-font-color2)')
     ];
@@ -1352,8 +1354,8 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the name and t
     expect(await look(recent)).toEqual({
       age: 'now',
       header: ['jp-mod-recentlyActive'],
-      name: brand1,
-      time: brand1,
+      name: colour1,
+      time: colour2,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1875,7 +1877,7 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
   }
 });
 
-test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD, ACC-ACCORD-130-NOW-DOT: a terminal row reads terminal <n> and now in brand colour 1; selected, its detail line shows the shell at the prompt and nothing with no readable process', async ({
+test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD, ACC-ACCORD-130-NOW-DOT: a terminal row reads terminal <n> and now, its name in colour 1 and its time in colour 2; selected, its detail line shows the shell at the prompt and nothing with no readable process', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -1903,13 +1905,15 @@ test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-U
     const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
     await expect(row).toHaveText(`terminal ${terminal}now`);
     await expect(row).toHaveClass(/jp-mod-recentlyActive/);
-    const brand1 = await rgba(page, 'var(--jp-brand-color1)');
-    for (const part of [
-      '.jp-WorkspaceManager-rowLabel',
-      '.jp-WorkspaceManager-age'
-    ]) {
+    for (const [part, token] of [
+      [
+        '.jp-WorkspaceManager-rowLabel',
+        await rgba(page, 'var(--jp-ui-font-color1)')
+      ],
+      ['.jp-WorkspaceManager-age', await rgba(page, 'var(--jp-ui-font-color2)')]
+    ] as const) {
       expect(await rgba(page, await style(row.locator(part), 'color'))).toEqual(
-        brand1
+        token
       );
     }
     await row.focus();

@@ -1,6 +1,6 @@
 ---
 name: jupyterlab-workspace-manager-extension
-description: Manages the workspaces, terminals and kernels of a running JupyterLab through the `jupyterlab-workspace` CLI of jupyterlab_workspace_manager_extension. Use when listing, creating, opening, describing, cleaning or removing workspaces, listing or killing terminals and kernels, or when the ask names `jupyterlab-workspace` or "jupyterlab workspace cli".
+description: Manages the workspaces, tabs, terminals and kernels of a running JupyterLab through the `jupyterlab-workspace` CLI of jupyterlab_workspace_manager_extension. Use when listing, creating, opening, describing, cleaning or removing workspaces, switching a window to a workspace, activating a tab, listing or killing terminals and kernels, or when the ask names `jupyterlab-workspace` or "jupyterlab workspace cli".
 ---
 
 # jupyterlab-workspace

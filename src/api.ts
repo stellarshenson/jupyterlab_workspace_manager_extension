@@ -15,6 +15,12 @@ export interface IResources {
   [id: string]: { memory: number | null; cpu: number | null };
 }
 
+/** A switch request the CLI posted: a workspace to show, a tab to activate, or both. */
+export interface ISwitch {
+  workspace: string | null;
+  tab: string | null;
+}
+
 /** What one reload reads from the server; `last` is the colour the rotation gave last. */
 export type ILoaded = Pick<
   IModelInput,
@@ -116,16 +122,16 @@ export function patchMeta(
   });
 }
 
-/** The workspaces other browser windows showed in the last 90 s. */
+/** The workspaces other browser windows showed in the last 90 s; null when the server extension is absent. */
 export async function elsewhere(
   settings: ServerConnection.ISettings,
   window: string
-): Promise<string[]> {
+): Promise<string[] | null> {
   const reply = await requestAPI<{ workspaces: string[] }>(
     `presence?window=${encodeURIComponent(window)}`,
     settings
-  ).catch(ifAbsent(() => ({ workspaces: [] })));
-  return reply.workspaces;
+  ).catch(ifAbsent(() => null));
+  return reply?.workspaces ?? null;
 }
 
 /** Report this window's workspace; a report replaces the window's previous one. */
@@ -138,6 +144,49 @@ export async function report(
     method: 'POST',
     body: JSON.stringify({ window, workspace })
   });
+}
+
+/**
+ * Claim this window's move to a workspace and report it in one operation;
+ * false when another live window reports the workspace. A failed request is
+ * thrown and the window stays.
+ */
+export async function claim(
+  settings: ServerConnection.ISettings,
+  window: string,
+  workspace: string
+): Promise<boolean> {
+  try {
+    await requestAPI('presence', settings, {
+      method: 'POST',
+      body: JSON.stringify({ window, workspace, claim: true })
+    });
+  } catch (reason) {
+    if (
+      reason instanceof ServerConnection.ResponseError &&
+      reason.response.status === 409
+    ) {
+      return false;
+    }
+    throw reason;
+  }
+  return true;
+}
+
+/**
+ * The switch requests not yet delivered to this window; the read marks them
+ * delivered, so each is applied once. A request with no window id comes to
+ * every window that reads.
+ */
+export async function switches(
+  settings: ServerConnection.ISettings,
+  window: string
+): Promise<ISwitch[]> {
+  const reply = await requestAPI<{ requests: ISwitch[] }>(
+    `switch?window=${encodeURIComponent(window)}`,
+    settings
+  ).catch(ifAbsent<{ requests: ISwitch[] }>(() => ({ requests: [] })));
+  return reply?.requests ?? [];
 }
 
 export const workspaces = (settings: ServerConnection.ISettings) =>

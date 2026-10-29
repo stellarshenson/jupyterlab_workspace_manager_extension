@@ -267,6 +267,107 @@ the sidebar panel, its header and its loads
   - log: 2026-10-28T23:21:43Z @kj added
   - log: 2026-10-28T23:26:47Z @kj closed
   - log: 2026-10-29T00:09:17Z @kj root-cause updated "2026-10-28T23:21:43Z @kj the base.css iconButton rules mapped the rest glyph --jp-inverse-layout-color3 and the --jp-layout-color3 hover background, but no rule changed the glyph on hover" -> "the icon button's rest glyph is the theme's .jp-icon3 colour, the hover rule changed only the background, and no rule changed the glyph on hover"
+- [x] `DEF-PANEL-41-SWITCH-HIDDEN` **A hidden window never reads a switch request** - MAJOR; The switch poll ran only while the panel was shown, so a CLI switch to a window whose browser tab was in the background waited until that window was shown; the 2 s promise failed for the ordinary case of a background window.
+  - evidence: Jest ACC-PANEL-9-POLL-HIDDEN (a hidden panel keeps reading switch requests) failed on the pre-change panel.tsx in tmp/workflows/sections/logs/red-final1-jest.log and passed in tmp/workflows/sections/logs/make-test-final1.log (Jest 92 of 92, pytest 129)
+  - repro: Make a window show the panel, put the browser tab in the background, run jupyterlab-workspace workspaces switch NAME --window ID, wait 10 s: the window does not move.
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-29T05:31:17Z @kj onAfterShow started the switch poll and onAfterHide stopped it, so a hidden window never read the channel.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+- [x] `DEF-PANEL-42-SWITCH-REFUSED` **A broadcast switch moves a window onto a workspace another window shows** - MAJOR; A switch request with no window id was applied by every window, including one already showing that workspace and one another window shows it on; JupyterLab bounced the second window. The panel now refuses as Open workspace does.
+  - evidence: Jest 'a switch to a workspace another window shows is refused and stores no pending tab' failed on the pre-change panel.tsx in tmp/workflows/sections/logs/red-final1-jest.log and passed in tmp/workflows/sections/logs/make-test-final1.log; the Galata broadcast refusal test passed in tmp/workflows/sections/logs/galata-final1c.log (14 of 14, --retries=0)
+  - repro: Open two windows on different workspaces, show workspace A in the first, run jupyterlab-workspace workspaces switch A, wait 3 s: both windows navigate to A.
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-29T05:31:17Z @kj _apply acted on the request without the _refused check that Open workspace makes.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+- [x] `DEF-PANEL-43-SWITCH-HELP` **tabs activate help says the window switches first** - MINOR; The tabs activate description said the window switches to the workspace first, which is false for a broadcast when the window already shows it, or when another window shows it and the request is refused. The description now names the broadcast and the refusal.
+  - evidence: cli.py:836 names the broadcast and the refusal; the ACC-CLI-179-HELP-AGENT help tests passed in tmp/workflows/sections/logs/make-test-final1.log (pytest 129 passed)
+  - repro: Run jupyterlab-workspace tabs activate --help and read the --workspace description: it promises a switch first in every case.
+  - test-tags: UNIT
+  - root-cause: 2026-10-29T05:31:17Z @kj the description was written for the single-window case before the broadcast channel existed.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+  - log: 2026-10-29T05:31:36Z @kj edited evidence "cli.py:836 names the broadcast and the refusal; the ACC-CLI-179 help tests passed in tmp/workflows/sections/logs/make-test-final1.log (pytest 129 passed)" -> "cli.py:836 names the broadcast and the refusal; the ACC-CLI-179-HELP-AGENT help tests passed in tmp/workflows/sections/logs/make-test-final1.log (pytest 129 passed)"
+- [x] `DEF-PANEL-44-CLEAN-CREATED` **Clean-up deletes a workspace created while the confirmation is open** - MAJOR; The clean-up deleted every workspace in the list the dialog showed, so a workspace created after that list was read, while the confirmation was open, was deleted too. The delete set is now the confirmed rows that still exist and that no open window shows.
+  - evidence: Jest ACC-ACCORD-223-CLEAN-ACTION 'a workspace created while the confirmation is open is not deleted' failed on the pre-change panel.tsx in tmp/workflows/sections/logs/red-final1-jest.log and passed in tmp/workflows/sections/logs/make-test-final1.log (Jest 92 of 92)
+  - repro: Open the clean-up confirmation and add a workspace before confirming: the new workspace is deleted.
+  - test-tags: UNIT
+  - root-cause: 2026-10-29T05:31:17Z @kj _cleanUp reloaded after the confirmation and deleted from the fresh list instead of the rows the user confirmed.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+  - log: 2026-10-29T05:31:36Z @kj edited evidence "Jest ACC-ACCORD-223 'a workspace created while the confirmation is open is not deleted' failed on the pre-change panel.tsx in tmp/workflows/sections/logs/red-final1-jest.log and passed in tmp/workflows/sections/logs/make-test-final1.log (Jest 92 of 92)" -> "Jest ACC-ACCORD-223-CLEAN-ACTION 'a workspace created while the confirmation is open is not deleted' failed on the pre-change panel.tsx in tmp/workflows/sections/logs/red-final1-jest.log and passed in tmp/workflows/sections/logs/make-test-final1.log (Jest 92 of 92)"
+- [x] `DEF-PANEL-45-META-SIZE` **Row meta renders at size 1 instead of size 0** - MINOR; A row's time, status word and detail values rendered at --jp-ui-font-size1, while DQ-21 sets row meta at size 0 and keeps only the card header age and counts at size 1. One rule now sets the three row meta classes at size 0.
+  - evidence: Galata ACC-PANEL-74-TEXT-SIZE (row meta at size 0) failed on the bundle without the rule in tmp/workflows/sections/logs/galata-final1-red-size.log and passed in tmp/workflows/sections/logs/galata-final1c.log (14 of 14, --retries=0)
+  - repro: Open the panel and read the computed font size of a row's age, status word and detail values: each resolves to --jp-ui-font-size1.
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-29T05:31:17Z @kj no rule set the row meta size, so the values inherited the card body size.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+- [x] `DEF-PANEL-48-SWITCH-STALE` **A broadcast switch moves every window onto one workspace** - MAJOR; a broadcast switch is read by every window before any window reports, so all switch onto the target; cause: the refusal guard reads a presence report up to 30 s old; fix: the window reports the target before its page leaves; `src/panel/panel.tsx`
+  - evidence: panel.spec.ts ACC-CLI-219-SWITCH-WORKSPACE asserts a POST presence before _url and passed in the deterministic make test of tmp/workflows/sections/logs/make-test-final5-code.log (Jest 94 of 94 twice, pytest 142, auth gate, exit 0); switch.spec.ts 5 passed on port 50693
+  - repro: two windows open on different workspaces, workspaces switch NAME: both land on NAME
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-29T06:13:22Z @kj added
+  - log: 2026-10-29T06:26:38Z @kj closed
+  - log: 2026-10-29T07:15:35Z @kj regressed as DEF-PANEL-48-SWITCH-STALE-1
+  - log: 2026-10-29T08:14:16Z @kj edited evidence "panel.spec.ts ACC-CLI-219-SWITCH-WORKSPACE asserts a POST presence before _url; make test 92 jest + 134 pytest passed; switch.spec.ts 5 passed on port 50693" -> "panel.spec.ts ACC-CLI-219-SWITCH-WORKSPACE asserts a POST presence before _url and passed in the deterministic make test of tmp/workflows/sections/logs/make-test-final5-code.log (Jest 94 of 94 twice, pytest 142, auth gate, exit 0); switch.spec.ts 5 passed on port 50693"; reason: the 92 of 92 run was the lucky one; the final5 run is deterministic
+- [x] `DEF-PANEL-48-SWITCH-STALE-1` **A broadcast switch moves every window onto one workspace** - MAJOR; a broadcast switch is read by every window before any window reports, so all switch onto the target; cause: the presence check and the report are two requests, so two windows both read before either writes; fix: PresenceHandler.post claim checks the live reports and stores in one request; `src/panel/panel.tsx`, `jupyterlab_workspace_manager_extension/routes.py`
+  - test-tags: UNIT, FUNCTIONAL
+  - repro: two windows open on different workspaces, workspaces switch NAME: both land on NAME
+  - evidence: PresenceHandler.post claim is one atomic server operation (409 and no store when another live window reports the workspace); ui-tests/tests/switch.spec.ts:321 (two eligible windows, exactly one moves, the other refuses) passed 6 of 6 in tmp/workflows/sections/logs/galata-final3.log and answered [204, 204] with both windows moving on the pre-change client in tmp/workflows/sections/logs/galata-final3-red2.log; claim/409/bad-claim pytest tests and the Jest refusal test passed in tmp/workflows/sections/logs/make-test-final3.log
+  - log: 2026-10-29T07:15:35Z @kj regression of DEF-PANEL-48-SWITCH-STALE; reason: the report-before-leave fix is not atomic: two windows both read presence before either reports, so a broadcast still lands both; review 3 confirms it with a two-window test
+  - log: 2026-10-29T07:15:38Z @kj closed; reason: the plan's atomic claim is the proof; the Galata two-window test and pytest tests assert it
+  - log: 2026-10-29T07:15:48Z @kj edited text "a broadcast switch is read by every window before any window reports, so all switch onto the target; cause: the refusal guard reads a presence report up to 30 s old; fix: the window reports the target before its page leaves; `src/panel/panel.tsx`" -> "a broadcast switch is read by every window before any window reports, so all switch onto the target; cause: the presence check and the report are two requests, so two windows both read before either writes; fix: PresenceHandler.post claim checks the live reports and stores in one request; `src/panel/panel.tsx`, `jupyterlab_workspace_manager_extension/routes.py`"; repro added "two windows open on different workspaces, workspaces switch NAME: both land on NAME"; test-tags added "UNIT, FUNCTIONAL"; reason: the regression body must name the real cause and fix, and the item needs its repro and tags for the gate
+- [x] `DEF-PANEL-53-CLAIM-FAILED` **A failed presence request grants the switch claim** - MEDIUM; a presence POST failing for any reason other than the 409 refusal returns true, so the window navigates as if the claim were granted; cause: claim()'s catch has no rethrow after the 409 arm; fix: rethrow every other rejection; `src/api.ts`
+  - evidence: Jest ACC-CLI-219-SWITCH-WORKSPACE 'a failed presence request leaves the window where it is, stores no pending tab and shows no refusal dialog' failed on the pre-change api.ts in code-final5-red.log (_url called once) and passed in make-test-final5-code.log (Jest 94 of 94 twice, pytest 142, exit 0)
+  - repro: answer 500 to the presence POST, send a switch request to the window: it moves to the workspace and stores the pending tab
+  - test-tags: UNIT
+  - log: 2026-10-29T08:01:47Z @kj added
+  - log: 2026-10-29T08:14:10Z @kj closed; reason: logs live in tmp/workflows/sections/logs
+- [x] `DEF-PANEL-54-CLEAN-SHUTDOWN` **A terminal that ended mid-clean-up stops the rest of the clean-up** - MEDIUM; one terminal shutdown rejection ends the clean-up's Promise.all, so kernels, language servers and tabs keep running; cause: both batches await Promise.all with no per-item catch; fix: catch each shutdown's rejection so both batches finish; `src/panel/panel.tsx`
+  - evidence: Jest ACC-ACCORD-223-CLEAN-ACTION 'a terminal that ended mid-clean-up does not stop the kernel, language-server and tab shutdowns' failed on the pre-change panel.tsx in code-final5-red.log (kernels.shutdown 0 calls) and passed in make-test-final5-code.log (Jest 94 of 94 twice, pytest 142, exit 0)
+  - repro: open the clean-up dialog, end terminal 7 before confirming, confirm: its 404 stops the kernel, language-server and tab shutdowns
+  - test-tags: UNIT
+  - log: 2026-10-29T08:01:48Z @kj added
+  - log: 2026-10-29T08:14:13Z @kj closed; reason: logs live in tmp/workflows/sections/logs
+- [x] `DEF-PANEL-56-ABSENT-BROOM` **broom deletes workspaces another window shows without the server extension** - MAJOR; with the server extension absent the presence read 404s, so the broom deleted a workspace another window shows; cause: elsewhere fell back to an empty list; fix: null for the 404, the broom refuses before the dialog; `src/api.ts`, `src/panel/panel.tsx`
+  - evidence: panel.spec.ts DEF-PANEL-56-ABSENT-BROOM failed on the pre-change api.ts/panel.tsx/dialogs.ts in code-final6-red.log (received the normal clean-up dialog) and passed in make-test-final6.log (jest 96 passed); galata-final6.log 8 passed
+  - root-cause: 2026-10-29T09:53:13Z @kj the absent extension's 404 fell back to [], so the broom saw no shown-elsewhere workspaces; now the 404 gives null and the broom refuses before the dialog
+  - repro: server extension absent, two windows show different workspaces, press the broom
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-10-29T09:44:32Z @kj added
+  - log: 2026-10-29T09:53:16Z @kj closed: fixed: elsewhere returns null on the 404 and the broom refuses before the dialog
+- [x] `DEF-PANEL-58-ABSENT-MENU` **card menu Delete deletes a workspace another window shows without the server extension** - MINOR; with the server extension absent, the card menu Delete destroys a workspace another window shows while the broom refuses; cause: _refused treats the null presence of the absent extension as not shown; fix: a destructive flag makes null refuse; `src/panel/panel.tsx`
+  - evidence: panel.spec.ts DEF-PANEL-58-ABSENT-MENU failed on the pre-change panel.tsx in code-final7-red.log (DELETE /lab/api/workspaces/auto-6 issued, no refusal dialog for Close all tabs and Close tab) and its four cases passed in make-test-final7.log (jest 100 passed, pytest 145 passed); jest-final7-load.log reran 100 passed at load; galata-final7.log 8 passed
+  - repro: with the server extension absent, open the card menu of a workspace another window shows and choose Delete workspace twice
+  - test-tags: UNIT
+  - root-cause: 2026-10-29T10:16:20Z @kj elsewhere returns null for the absent extension, _refused treats null as not shown, so Delete, Close all tabs and Close tab act on a workspace another window shows
+  - log: 2026-10-29T10:16:20Z @kj added
+  - log: 2026-10-29T10:22:25Z @kj closed: fixed: an absent server now refuses Delete, Close all tabs and Close tab, while Open workspace still proceeds
+- [x] `DEF-PANEL-59-ABSENT-MSG` **absent-server refusal claims the workspace is open in another window** - MINOR; with the server extension absent the destructive card-menu actions refuse with `<action> is refused: workspace <id> is open in another browser window`, a fact the panel cannot know; cause `_refuse` had one title and body; fix `_refuse` takes `absent` and names the missing server extension; `src/panel/panel.tsx`
+  - evidence: panel.spec.ts DEF-PANEL-58-ABSENT-MENU asserts the absent-server sentence for Close all tabs, Close tab and Delete; red on the pre-change panel.tsx in tmp/workflows/sections/logs/code-final8-red.log (3 failed), green in make-test-final8.log (Jest 100, pytest 145) and code-final8-green.log (4 passed)
+  - repro: server extension absent, choose Close all tabs, Close tab or Delete on a card: the dialog claims the workspace is open in another browser window
+  - test-tags: UNIT
+  - root-cause: 2026-10-29T10:44:59Z @kj `_refuse` used the same title and body for every refusal; a destructive caller also refuses when `elsewhere` returns null, where no window is known to show the workspace, so the message asserted a fact the panel lacked
+  - log: 2026-10-29T10:44:59Z @kj added
+  - log: 2026-10-29T10:45:03Z @kj closed: fixed: the refusal names the missing server extension when presence is unknown
+- [x] `DEF-PANEL-60-KERNEL-CUT` **kernel type not cut at a 300 px panel** - MINOR; at a 300 px panel the kernel type shows whole and is not cut as KERN-02 and ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW and ACC-LISTS-154-TAB-SHRINK say; `src/panel/panel.tsx`
+  - evidence: kernels.spec.ts:295 passes on the rebuilt rig (galata-gatefix 104 passed); gatefix-red failed on the pre-change build; make test exit 0 - Jest 100, pytest 145, auth gate
+  - repro: open the panel at 300 px on a kernel with memory and CPU figures; the type reads whole
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-29T12:03:20Z @kj DQ-21's size0 rule on .jp-WorkspaceManager-rowDetail left 10 px slack on the 235 px line, so the 150 px type fit whole
+  - log: 2026-10-29T12:03:20Z @kj added
+  - log: 2026-10-29T12:03:22Z @kj closed: fixed: type span capped at 60% of its line by .jp-WorkspaceManager-type
+  - log: 2026-10-29T12:03:25Z @kj edited text "at a 300 px panel the kernel type shows whole and is not cut as KERN-02 and ACC-KERNEL-196, ACC-KERNEL-48-ROW and ACC-LISTS-154 say; `src/panel/panel.tsx`" -> "MINOR; at a 300 px panel the kernel type shows whole and is not cut as KERN-02 and ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW and ACC-LISTS-154-TAB-SHRINK say; `src/panel/panel.tsx`"
+- [x] `DEF-PANEL-61-TYPE-CAP` **60% type cap also cuts a card kernel row** - MINOR; a workspace card's kernel row cuts the type at 60% of its one-part detail line, leaving 40% of the line empty; cause .jp-WorkspaceManager-type capped the type in every kernel row; fix TYPE only on a KERNELS section row, a card row carries SHRINK alone; `src/panel/panel.tsx`
+  - evidence: panel.spec.ts ACC-KERNEL-196-KERNEL-DETAILS card assertion failed on the pre-change panel.tsx in fix7-red.log (received 'jp-mod-shrink jp-WorkspaceManager-type'), section TYPE assertion green there; make-test-fix7.log Jest 100 passed, pytest 145 passed; kernels.spec.ts and content.spec.ts 23 passed --retries=0 in galata-fix7.log
+  - repro: open a workspace card with a running kernel, select its kernel row; the type ends in an ellipsis while 40% of the line stays empty
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-29T13:24:52Z @kj the .jp-WorkspaceManager-type max-width 60% applies to the card kernel row's one-part detail line, which has no memory or CPU to share with, so the type is cut with 40% of the line unused
+  - log: 2026-10-29T13:24:52Z @kj added
+  - log: 2026-10-29T13:24:55Z @kj closed: fixed: the type class applies only to a listed KERNELS row; a card kernel row's type carries SHRINK alone
+  - log: 2026-10-29T13:25:02Z @kj edited evidence "panel.spec.ts ACC-KERNEL-196 card assertion failed on the pre-change panel.tsx in fix7-red.log (received 'jp-mod-shrink jp-WorkspaceManager-type'), section TYPE assertion green there; make-test-fix7.log Jest 100 passed, pytest 145 passed; kernels.spec.ts and content.spec.ts 23 passed --retries=0 in galata-fix7.log" -> "panel.spec.ts ACC-KERNEL-196-KERNEL-DETAILS card assertion failed on the pre-change panel.tsx in fix7-red.log (received 'jp-mod-shrink jp-WorkspaceManager-type'), section TYPE assertion green there; make-test-fix7.log Jest 100 passed, pytest 145 passed; kernels.spec.ts and content.spec.ts 23 passed --retries=0 in galata-fix7.log"
 
 ## Functional tests `GALATA`
 
@@ -343,6 +444,44 @@ routes of the server extension
   - root-cause: 2026-10-24T16:05:31Z @kj the records file is written into a folder that may not exist yet, and GET prunes every record whose workspace file is missing
   - log: 2026-10-24T16:05:31Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
   - log: 2026-10-24T23:10:13Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+- [x] `DEF-SERVER-46-SWITCH-DELETED` **A queued switch request reopens a deleted workspace** - MEDIUM; SwitchHandler.get delivered a request whose workspace file was deleted after the request was posted, so a window navigated to a workspace that no longer exists. Delivery now skips such a request without marking it read, so a file that returns can still be reached.
+  - evidence: pytest test_a_deleted_workspace_is_not_delivered failed on the pre-change routes.py in tmp/workflows/sections/logs/red-final1-pytest.log and passed in tmp/workflows/sections/logs/make-test-final1.log (pytest 129 passed)
+  - repro: Post a switch request for workspace one, delete workspace one, GET the switch route with an unread window id: the request is returned.
+  - test-tags: UNIT
+  - root-cause: 2026-10-29T05:31:17Z @kj the read filtered by delivered window ids only; nothing checked that the workspace file still exists.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+- [x] `DEF-SERVER-47-SWITCH-TTL` **A switch request expires before a background tab reads it** - MEDIUM; A request unread for 30 s was dropped, but a hidden browser tab reads the channel at its timer interval of about one minute, so a request to a background window could expire unread. The request now lives 90 s.
+  - evidence: pytest test_a_request_waits_ninety_seconds failed on the pre-change routes.py in tmp/workflows/sections/logs/red-final1-pytest.log and passed in tmp/workflows/sections/logs/make-test-final1.log (pytest 129 passed)
+  - repro: Post a switch request, wait 31 s, GET the switch route with an unread window id: no request is returned.
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-29T05:31:17Z @kj SWITCH_SECONDS was 30, shorter than the one-minute interval a throttled hidden tab gives the poll.
+  - log: 2026-10-29T05:31:17Z @kj added
+  - log: 2026-10-29T05:31:28Z @kj closed: fixed
+- [x] `DEF-SERVER-55-CLAIM-RACE` **A presence report in flight across a claim erases the claim** - MEDIUM; a periodic presence report in flight across a claim lands after it and overwrites the claimed workspace, so a second window claims the same workspace; measured about 0.05% of switches; cause: PresenceHandler.post stores every report unconditionally; fix: the record claim timestamp blocks a plain report for 5 s (CLAIM_HOLD_SECONDS); `jupyterlab_workspace_manager_extension/routes.py`
+  - evidence: pytest test_presence.py::test_a_plain_report_cannot_erase_a_claim failed on the pre-change routes.py in code-final5-red.log (report read back ['V'] where ['X'] expected) and passed in make-test-final5-code.log (pytest 142 passed); test_a_claim_holds_its_workspace_for_five_seconds covers the window's end
+  - repro: hold a window's periodic presence POST, claim a workspace from that window, release the held POST: a second window's claim of the same workspace is granted
+  - test-tags: UNIT
+  - log: 2026-10-29T08:01:51Z @kj added
+  - log: 2026-10-29T08:14:13Z @kj closed; reason: logs live in tmp/workflows/sections/logs
+  - log: 2026-10-29T09:44:19Z @kj regressed as DEF-SERVER-55-CLAIM-RACE-1
+  - log: 2026-10-29T09:44:30Z @kj edited text "a periodic presence report in flight across a claim lands after it and overwrites the claimed workspace, so a second window claims the same workspace; measured about 0.05% of switches; cause: PresenceHandler.post stores every report unconditionally; fix: the record's claim timestamp blocks a plain report for 90 s; `jupyterlab_workspace_manager_extension/routes.py`" -> "MEDIUM; a periodic presence report in flight across a claim lands after it and overwrites the claimed workspace, so a second window claims the same workspace; measured about 0.05% of switches; cause: PresenceHandler.post stores every report unconditionally; fix: the record claim timestamp blocks a plain report for 5 s (CLAIM_HOLD_SECONDS); `jupyterlab_workspace_manager_extension/routes.py`"; reason: keeps the measured rate and names the new constant
+  - log: 2026-10-29T10:22:20Z @kj edited evidence "pytest test_presence.py::test_a_plain_report_cannot_erase_a_claim failed on the pre-change routes.py in code-final5-red.log (report read back ['V'] where ['X'] expected) and passed in make-test-final5-code.log (pytest 142 passed); test_a_claim_lasts_its_ninety_second_window covers the window's end" -> "pytest test_presence.py::test_a_plain_report_cannot_erase_a_claim failed on the pre-change routes.py in code-final5-red.log (report read back ['V'] where ['X'] expected) and passed in make-test-final5-code.log (pytest 142 passed); test_a_claim_holds_its_workspace_for_five_seconds covers the window's end"; reason: the sixth cycle renamed the test; the surviving name is test_a_claim_holds_its_workspace_for_five_seconds
+- [x] `DEF-SERVER-55-CLAIM-RACE-1` **A presence report in flight across a claim erases the claim** - MAJOR; the 90 s claim hold kept the claim workspace for the whole presence lifetime, so the workspace the claiming window actually showed was invisible and the broom could delete it; cause: one constant served both the claim hold and presence; fix: CLAIM_HOLD_SECONDS 5; `jupyterlab_workspace_manager_extension/routes.py`
+  - repro: claim X from w1, wait 6 s, report V from w1, read presence from w2: X is still listed for 90 s and V is invisible
+  - evidence: test_a_claim_holds_its_workspace_for_five_seconds failed on the pre-change routes.py in code-final6-red.log (read back ['X'] where ['V'] expected) and passed in make-test-final6.log (pytest 145 passed); test_a_plain_report_cannot_erase_a_claim stays green
+  - test-tags: UNIT
+  - log: 2026-10-29T09:44:19Z @kj regression of DEF-SERVER-55-CLAIM-RACE: regressed: the 90 s claim hold also blinded the window's presence, so the broom could delete the workspace that window shows; hold cut to 5 s
+  - log: 2026-10-29T09:44:26Z @kj edited text "a periodic presence report in flight across a claim lands after it and overwrites the claimed workspace, so a second window claims the same workspace; measured about 0.05% of switches; cause: PresenceHandler.post stores every report unconditionally; fix: the record's claim timestamp blocks a plain report for 90 s; `jupyterlab_workspace_manager_extension/routes.py`" -> "MAJOR; the 90 s claim hold kept the claim workspace for the whole presence lifetime, so the workspace the claiming window actually showed was invisible and the broom could delete it; cause: one constant served both the claim hold and presence; fix: CLAIM_HOLD_SECONDS 5; `jupyterlab_workspace_manager_extension/routes.py`"; severity "MEDIUM" -> "MAJOR"; test-tags added "UNIT"
+  - log: 2026-10-29T09:53:17Z @kj closed: fixed: CLAIM_HOLD_SECONDS 5 ends the hold while the 90 s presence read stays; a claim still blocks a plain report inside 5 s
+  - log: 2026-10-29T09:53:23Z @kj edited repro added "claim X from w1, wait 6 s, report V from w1, read presence from w2: X is still listed for 90 s and V is invisible"
+- [x] `DEF-SERVER-57-SWITCH-REPLAY` **broadcast switch replays in windows opened after the command** - MAJOR; a broadcast switch read in a browser window opened after the command, replaying it; cause: the request stored no targets and the read matched every window; fix: targets of the live windows at the post; `jupyterlab_workspace_manager_extension/routes.py`
+  - evidence: test_a_broadcast_reaches_only_the_windows_live_at_the_command failed on the pre-change routes.py in code-final6-red.log (read returned the request where [] expected) and passed in make-test-final6.log (pytest 145 passed)
+  - root-cause: 2026-10-29T09:53:13Z @kj the request stored no targets, so the read matched every window, including one opened after the post; now the post stores the live windows as targets
+  - repro: report w1, post a broadcast switch, open w2 and read
+  - test-tags: INTEGRATION
+  - log: 2026-10-29T09:44:32Z @kj added
+  - log: 2026-10-29T09:53:16Z @kj closed: fixed: the post stores the live windows as targets and the read checks them
 
 ## Release gates `GATES`
 
@@ -373,4 +512,37 @@ CI gates: the docs link check and the release check wheel metadata
   - root-cause: 2026-10-29T00:09:13Z @kj the DQ-20 band rules were added after the hover rule, so the lower-specificity selector follows the higher one and no-descending-specificity fails
   - log: 2026-10-29T00:09:13Z @kj added
   - log: 2026-10-29T00:09:33Z @kj closed: fixed: the DQ-20 block moved above the hover rule; the 14 px glyph size has one authority
+
+## Command line `CLI`
+
+The jupyterlab-workspace command line and its agent skill
+
+- log: 2026-10-29T06:13:36Z @kj category created
+
+- [x] `DEF-CLI-49-WINDOW-ID` **workspaces switch --window takes an id no surface prints** - MAJOR; `--window` takes an id no surface prints, and an id no window reported is accepted with success then expires; cause: the switch route checks only the workspace and no command prints window ids; fix: presence returns windows, windows list prints them, the route refuses an unknown window; `routes.py`, `cli.py`
+  - evidence: test_switch.py test_an_unknown_window_is_refused and test_presence_lists_live_windows pass; test_cli.py windows list test passes; switch.spec.ts --window test passed
+  - repro: open one window, workspaces switch NAME --window with any 36-char string: exit 0, success printed
+  - test-tags: UNIT, INTEGRATION
+  - log: 2026-10-29T06:13:36Z @kj added
+  - log: 2026-10-29T06:26:40Z @kj closed
+- [x] `DEF-CLI-50-TAB-PATH` **tabs list prints a path the workspace does not save** - MAJOR; `tabs list` prints a layout-key suffix as a path the file saved none of, and `tabs activate` accepts it with success but activates nothing; cause: validation trusts the invented path; fix: a pathless widget keeps a null path and activate refuses it; `cli.py`
+  - evidence: test_cli.py test_tabs_list_prints_an_empty_path_for_a_widget_that_saved_none and test_tabs_activate_refuses_a_key_with_no_saved_path pass in make test
+  - repro: tabs list a workspace holding a pathless widget, copy the PATH printed, tabs activate it: exit 0, no tab activates
+  - test-tags: UNIT
+  - log: 2026-10-29T06:13:37Z @kj added
+  - log: 2026-10-29T06:26:40Z @kj closed
+- [x] `DEF-CLI-51-HTTP-MESSAGE` **a failed request drops the server's message** - MEDIUM; every HTTP error prints only 'METHOD path failed: code reason', so the body's message (an unknown window or workspace, a refusal) never reaches the user; cause: the shared _request HTTPError branch never reads the response body; fix: append the body's message (else reason) to the same line and keep the status code
+  - evidence: test_a_failed_request_carries_the_servers_message asserts the 404 body message on the CLIError line and the unchanged text for a non-JSON body, in tmp/workflows/sections/logs/make-test-final3.log (139 pytest passed); the same assertion failed on the pre-change cli.py in scratchpad red3-pytest.log
+  - repro: workspaces switch NAME --window with a stale id: prints 'POST .../switch failed: 404 Not Found' and never says 'unknown window ...'
+  - test-tags: UNIT
+  - root-cause: 2026-10-29T07:16:08Z @kj the HTTPError was raised with a bare message and its body was never read
+  - log: 2026-10-29T07:16:08Z @kj added; reason: review 3's plan fixes this in the shared helper
+  - log: 2026-10-29T07:16:11Z @kj closed; reason: the new test proves the message reaches the line and the token stays out
+- [x] `DEF-CLI-52-SWITCH-HELP` **workspaces switch help promises every open window switches** - MINOR; the help said the command switches every open window to a workspace; after the atomic claim exactly one window moves and the others refuse, so the help now says it switches a window to a workspace, and the description names the refusal
+  - evidence: cli.py:748 says 'switch a window to a workspace' and the description beside it names the broadcast and the refusal; the help tests and the full suite passed in tmp/workflows/sections/logs/make-test-final3.log (92 jest, 139 pytest)
+  - repro: jupyterlab-workspace workspaces switch --help: the command line promised every open window switches
+  - test-tags: UNIT
+  - log: 2026-10-29T07:16:11Z @kj added; reason: review 3's plan corrects the help line
+  - log: 2026-10-29T07:16:14Z @kj closed; reason: the line is the whole fix and the suite stays green
+  - log: 2026-10-29T07:16:17Z @kj edited evidence "cli.py:740 says 'switch a window to a workspace' and the description beside it names the broadcast and the refusal; the help tests and the full suite passed in tmp/workflows/sections/logs/make-test-final3.log (92 jest, 139 pytest)" -> "cli.py:748 says 'switch a window to a workspace' and the description beside it names the broadcast and the refusal; the help tests and the full suite passed in tmp/workflows/sections/logs/make-test-final3.log (92 jest, 139 pytest)"; reason: the plan's line number was 740; the current file has it at 748
 

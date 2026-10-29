@@ -1,6 +1,7 @@
 import { Dialog, showDialog } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 
+import { cleanSummary, type ICleanRow } from '../model/cleanup';
 import {
   cleanPurpose,
   NAME_RULE,
@@ -206,6 +207,65 @@ export async function descriptionDialog(
   dialog.addClass('jp-WorkspaceManager-dialog');
   const result = await dialog.launch();
   return result.button.accept ? result.value : null;
+}
+
+/** The clean-up confirmation body (DQ-22): the question line, the note, then one block per workspace. */
+class CleanupBody extends Widget {
+  constructor(rows: ICleanRow[]) {
+    super();
+    this.addClass('jp-WorkspaceManager-cleanup');
+    this.node.appendChild(
+      element('div', 'jp-WorkspaceManager-cleanupSummary', cleanSummary(rows))
+    );
+    this.node.appendChild(
+      element(
+        'div',
+        'jp-WorkspaceManager-cleanupNote',
+        'Language servers restart on demand'
+      )
+    );
+    const holds = (label: string, values: string[]) =>
+      element(
+        'div',
+        'jp-WorkspaceManager-cleanupHolds',
+        `${label}: ${values.length ? values.join(', ') : 'none'}`
+      );
+    for (const row of rows) {
+      const block = element('div', 'jp-WorkspaceManager-cleanupRow');
+      const line = element('div', 'jp-WorkspaceManager-cleanupLine');
+      line.append(
+        element('span', 'jp-WorkspaceManager-cleanupName', row.id),
+        element('span', 'jp-WorkspaceManager-cleanupOutcome', row.outcome)
+      );
+      block.append(
+        line,
+        holds('Tabs', row.tabs),
+        holds('Terminals', row.terminals),
+        holds('Kernels', row.kernels)
+      );
+      this.node.appendChild(block);
+    }
+  }
+}
+
+/** Ask before clean-up; true when the user confirms it. */
+export async function cleanUpDialog(rows: ICleanRow[]): Promise<boolean> {
+  const cancel = Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` });
+  const dialog = new Dialog({
+    title: 'Clean up workspaces',
+    body: new CleanupBody(rows),
+    buttons: [
+      Dialog.warnButton({
+        label: 'Clean up',
+        className: `${BUTTON} ${DANGER}`
+      }),
+      cancel
+    ]
+  });
+  // apputils names only a string body, so the Widget body names its node
+  dialog.node.setAttribute('aria-label', 'Clean up workspaces');
+  const result = await dialog.launch();
+  return result.button.accept;
 }
 
 /**

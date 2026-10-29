@@ -31,7 +31,16 @@ import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 
-import { elsewhere, type ILoaded, load, patchMeta, workspaces } from '../api';
+import {
+  claim,
+  elsewhere,
+  type ILoaded,
+  type ISwitch,
+  load,
+  patchMeta,
+  switches,
+  workspaces
+} from '../api';
 import {
   closeTabsIcon,
   eyeIcon,
@@ -40,6 +49,7 @@ import {
   terminalGlyph
 } from '../icons';
 import { age, type IAge } from '../model/age';
+import { cleanable, cleanRows } from '../model/cleanup';
 import { filterSections, type ICard } from '../model/filter';
 import {
   buildModel,
@@ -59,13 +69,23 @@ import {
 import { newRecord } from '../model/new';
 import { givePositions, moved } from '../model/order';
 import { assignColours, type Colour, nextColour } from '../model/palette';
-import { confirm, descriptionDialog, newWorkspaceDialog } from './dialogs';
+import {
+  confirm,
+  cleanUpDialog,
+  descriptionDialog,
+  newWorkspaceDialog
+} from './dialogs';
 import { actionMenu, workspaceMenu } from './menus';
 
 /** The section of the panel that lists the running language servers. */
 const LANGUAGE_SERVERS = 'Language servers';
 const POLL_MS = 10000;
+/** The CLI switch channel is read every second: a workspace request must switch the window within 2 s. */
+const SWITCH_MS = 1000;
 const SPIN_MS = 500;
+/** A tab to activate after the reload a workspace switch makes; the server keeps its request 90 s too. */
+const PENDING_TAB = 'jupyterlab_workspace_manager_extension:pending-tab';
+const PENDING_MS = 30000;
 /** The lists before the first reload: a list that fails at once stays empty. */
 const EMPTY: ILoaded = {
   workspaces: [],
@@ -96,6 +116,43 @@ function closedSections(): Set<string> {
 const keyOf = (section: ISection) => `w:${section.id}`;
 const dirname = (path = '') =>
   path.slice(0, Math.max(0, path.lastIndexOf('/')));
+
+/**
+ * The tab a switch request named, kept across the reload that switches
+ * workspace; null when absent or older than 30 s.
+ */
+function pendingTab(): { workspace: string; path: string } | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PENDING_TAB) ?? 'null');
+    if (
+      saved &&
+      typeof saved.workspace === 'string' &&
+      typeof saved.path === 'string' &&
+      typeof saved.created === 'number' &&
+      Math.abs(Date.now() - saved.created) <= PENDING_MS
+    ) {
+      return saved;
+    }
+  } catch {
+    // no storage: the switch still happens, its tab is not activated
+  }
+  return null;
+}
+
+function keepPendingTab(tab: { workspace: string; path: string } | null): void {
+  try {
+    if (tab) {
+      sessionStorage.setItem(
+        PENDING_TAB,
+        JSON.stringify({ ...tab, created: Date.now() })
+      );
+    } else {
+      sessionStorage.removeItem(PENDING_TAB);
+    }
+  } catch {
+    // see pendingTab
+  }
+}
 
 export namespace WorkspacePanel {
   export interface IOptions {
@@ -202,6 +259,7 @@ export class WorkspacePanel
       return;
     }
     this._stopPolling();
+    this._stopSwitch();
     this._root.unmount();
     super.dispose();
   }
@@ -266,6 +324,8 @@ export class WorkspacePanel
 
   protected onAfterAttach(msg: Message): void {
     super.onAfterAttach(msg);
+    // the switch poll runs whether the panel shows or not: a request must reach a hidden window
+    this._startSwitch();
     if (this.isVisible) {
       this._startPolling();
     }
@@ -304,16 +364,40 @@ export class WorkspacePanel
     this._timer = 0;
   }
 
+  /** The switch poll ignores visibility; its first read loads the model a hidden panel never loads. */
+  private _startSwitch(): void {
+    if (this._switchTimer) {
+      return;
+    }
+    if (!this._data) {
+      void this._reload();
+    }
+    this._switchTimer = window.setInterval(
+      () => void this._pollSwitch(),
+      SWITCH_MS
+    );
+  }
+
+  private _stopSwitch(): void {
+    clearInterval(this._switchTimer);
+    this._switchTimer = 0;
+  }
+
   /** One reload at a time; a failed list keeps its last content under one line. */
   private _reload(): Promise<void> {
     if (!this._loading) {
       const changes = this._changes;
-      this._loading = load(this._settings)
-        .then(({ failed, ...data }) => {
+      this._loading = Promise.all([
+        load(this._settings),
+        // a failed or absent presence read keeps the workspaces the last one named
+        elsewhere(this._settings, this._window).catch(() => this._kept)
+      ])
+        .then(([{ failed, ...data }, kept]) => {
           // an action that ended during this load is newer than its data
           if (changes !== this._changes) {
             return;
           }
+          this._kept = kept ?? this._kept;
           this._data = { ...(this._data ?? EMPTY), ...data };
           this._last = data.last ?? this._last;
           this._error = failed.length
@@ -335,6 +419,79 @@ export class WorkspacePanel
         });
     }
     return this._loading;
+  }
+
+  /**
+   * Read the switch requests for this window and apply them; one read at a
+   * time, and none before the first load, so a tab request has a model to act on.
+   */
+  private _pollSwitch(): Promise<void> {
+    if (this._switching) {
+      return this._switching;
+    }
+    if (!this._data || this.isDisposed) {
+      return Promise.resolve();
+    }
+    this._switching = switches(this._settings, this._window)
+      .then(async requests => {
+        this._applyPending();
+        for (const request of requests) {
+          await this._apply(request);
+        }
+      })
+      .catch(() => undefined)
+      .then(() => {
+        this._switching = null;
+      });
+    return this._switching;
+  }
+
+  /** A workspace request switches this window as its card click does; a tab request activates that tab. */
+  private async _apply({ workspace, tab }: ISwitch): Promise<void> {
+    if (workspace && workspace !== this._current) {
+      // the claim is the report: one server operation refuses a second window on the workspace
+      if (!(await claim(this._settings, this._window, workspace))) {
+        this._refuse(workspace, 'Switch to workspace');
+        return;
+      }
+      // the tab path must survive the reload the switch makes
+      keepPendingTab(tab ? { workspace, path: tab } : null);
+      document.location.href = this._url(workspace);
+      return;
+    }
+    if (tab) {
+      this._activate(tab);
+    }
+  }
+
+  /** Activate the tab saved before this window switched, once its workspace shows it. */
+  private _applyPending(): void {
+    const saved = pendingTab();
+    if (!saved) {
+      return;
+    }
+    if (saved.workspace !== this._current) {
+      keepPendingTab(null);
+      return;
+    }
+    if (this._activate(saved.path)) {
+      keepPendingTab(null);
+    }
+  }
+
+  /** Activate the tab showing `path` in this window's workspace and select its row; whether it found one. */
+  private _activate(path: string): boolean {
+    const section = this._model()?.sections.find(s => s.current);
+    const tab = section?.tabs.find(t => t.path === path);
+    const widget = tab && this._live.get(tab.key)?.[0];
+    if (!section || !tab || !widget) {
+      return false;
+    }
+    this._open = keyOf(section);
+    this._selected = `${keyOf(section)}/${tab.key}`;
+    this._app.shell.activateById(widget.id);
+    this._render();
+    return true;
   }
 
   /** A workspace without a stored colour takes the next one of the rotation. */
@@ -569,7 +726,8 @@ export class WorkspacePanel
                     {hidden} hidden {hidden === 1 ? 'workspace' : 'workspaces'}
                   </div>
                 )}
-              </>
+              </>,
+              'workspaces'
             )}
             {this._renderSection(
               'kernels',
@@ -662,16 +820,16 @@ export class WorkspacePanel
   }
 
   /**
-   * One section: the header carries the label, the count and, for the
-   * sections below WORKSPACES, a Shut down all; an open section shows its body,
-   * which scrolls on its own, and one of those three with nothing in it says so.
+   * One section: the header carries the label, the count and its broom - Work
+   * spaces cleans up, the three below shut down all; an open section shows its
+   * body, which scrolls on its own, and one of those three with nothing in it says so.
    */
   private _renderSection(
     key: string,
     label: string,
     n: number,
     body: React.ReactNode,
-    shutdown?: 'servers' | 'terminals' | 'kernels'
+    shutdown?: 'servers' | 'terminals' | 'kernels' | 'workspaces'
   ): React.ReactElement {
     const open = !this._closedSections.has(key);
     return (
@@ -708,19 +866,29 @@ export class WorkspacePanel
           <span className="jp-WorkspaceManager-sectionLabel">{label}</span>
           <span className="jp-WorkspaceManager-sectionCount">({n})</span>
           {shutdown &&
-            iconButton(
-              cleaningIcon,
-              'Shut down all',
-              () => void this._shutDownSection(shutdown),
-              !n,
-              undefined,
-              undefined,
-              true // pointerFocus
-            )}
+            (shutdown === 'workspaces'
+              ? iconButton(
+                  cleaningIcon,
+                  'Clean up workspaces',
+                  () => void this._cleanUp(),
+                  this._nothingToClean(),
+                  undefined,
+                  undefined,
+                  true // pointerFocus
+                )
+              : iconButton(
+                  cleaningIcon,
+                  'Shut down all',
+                  () => void this._shutDownSection(shutdown),
+                  !n,
+                  undefined,
+                  undefined,
+                  true // pointerFocus
+                ))}
         </div>
         {open && (
           <div className="jp-WorkspaceManager-sectionBody">
-            {shutdown && !n ? (
+            {shutdown && shutdown !== 'workspaces' && !n ? (
               <div className="jp-WorkspaceManager-empty">
                 No {label.toLowerCase()}
               </div>
@@ -995,7 +1163,7 @@ export class WorkspacePanel
       // the path on a line of its own: the kernel type and the folder give way, the file name last (KERN-02)
       detail: [
         [
-          [k.label, SHRINK],
+          [k.label, listed ? TYPE : SHRINK],
           ...(listed
             ? ([
                 [formatMemory(figures?.memory), ''],
@@ -1140,6 +1308,82 @@ export class WorkspacePanel
     });
   }
 
+  /** The WORKSPACES broom: delete the other workspaces and empty this one, asking once (DQ-22). */
+  private async _cleanUp(): Promise<void> {
+    const model = this._model();
+    if (!model) {
+      return;
+    }
+    // fresh: a window may have shown a workspace since the last poll
+    const kept = await elsewhere(this._settings, this._window).catch(
+      () => this._kept
+    );
+    if (kept === null) {
+      void showErrorMessage(
+        'Clean up workspaces',
+        'Clean up needs the server extension: it cannot tell which workspaces another window shows.'
+      );
+      return;
+    }
+    // the rows the dialog shows are the delete set: a workspace created after it is never deleted
+    const rows = cleanRows(model.sections, kept);
+    if (!(await cleanUpDialog(rows))) {
+      return;
+    }
+    await this._act(async () => {
+      // what stands now: a workspace may have been deleted while the dialog was open
+      const { failed, ...data } = await load(this._settings);
+      if (failed.length) {
+        throw new Error(
+          `Nothing was cleaned up. Reload failed: ${failed.join(', ')}`
+        );
+      }
+      // a workspace another window opened during the dialog is kept too; an absent server
+      // keeps the first list's workspaces
+      const fresh = await elsewhere(this._settings, this._window).catch(
+        () => kept
+      );
+      const shown = fresh ?? kept;
+      const now = this._model({ ...EMPTY, ...data })!;
+      const there = new Set(now.sections.map(section => section.id));
+      // only the confirmed deletions, still there and shown by no window now; one it marked kept stays
+      for (const row of rows) {
+        if (
+          row.outcome === 'deleted' &&
+          there.has(row.id) &&
+          !shown.includes(row.id)
+        ) {
+          await workspaces(this._settings).remove(row.id);
+        }
+      }
+      // this window's workspace stays and is emptied: its processes end, then its tabs close
+      // (processes first: a tab closed after its kernel shutdown ends it again, and that 404 would show)
+      const current = now.sections.find(section => section.current);
+      await Promise.all(
+        (current?.terminals ?? []).map(t =>
+          this._app.serviceManager.terminals
+            .shutdown(t.name)
+            .catch(() => undefined)
+        )
+      );
+      await Promise.all(
+        (current?.kernels ?? []).map(k =>
+          this._app.serviceManager.kernels.shutdown(k.id).catch(() => undefined)
+        )
+      );
+      await this._languageServers()?.shutdownAll();
+      await this._app.commands.execute('application:close-all');
+    });
+  }
+
+  /** Whether clean-up would change nothing: no workspace to delete, this one empty, no language server. */
+  private _nothingToClean(): boolean {
+    return (
+      !cleanable(cleanRows(this._model()?.sections ?? [], this._kept)) &&
+      !running(this._languageServers()).length
+    );
+  }
+
   private _openMenu(section: ISection, anchor: HTMLElement): void {
     const id = section.id;
     const shown = this._shown();
@@ -1160,15 +1404,31 @@ export class WorkspacePanel
     menu.open(rect.left, rect.bottom);
   }
 
-  /** Refuse an action on a workspace that another browser window shows. */
-  private async _refused(id: string, action: string): Promise<boolean> {
-    if (!(await elsewhere(this._settings, this._window)).includes(id)) {
+  /** Show the refusal of an action on a workspace that another browser window shows, or of a destructive action while presence is unknown. */
+  private _refuse(id: string, action: string, absent = false): void {
+    void showErrorMessage(
+      absent ? 'Workspace manager' : 'Workspace open in another window',
+      absent
+        ? `${action} is refused: the server extension is not available, so the panel cannot tell which workspaces another window shows.`
+        : `${action} is refused: workspace ${id} is open in another browser window. Close it there first.`
+    );
+  }
+
+  /**
+   * Refuse an action on a workspace that another browser window shows; with the server
+   * extension absent presence is unknown, so a destructive action refuses and Open proceeds.
+   */
+  private async _refused(
+    id: string,
+    action: string,
+    destructive = false
+  ): Promise<boolean> {
+    const shown = await elsewhere(this._settings, this._window);
+    // a null answer is the absent server, which cannot tell which window shows what
+    if (shown === null ? !destructive : !shown.includes(id)) {
       return false;
     }
-    void showErrorMessage(
-      'Workspace open in another window',
-      `${action} is refused: workspace ${id} is open in another browser window. Close it there first.`
-    );
+    this._refuse(id, action, shown === null);
     return true;
   }
 
@@ -1262,7 +1522,10 @@ export class WorkspacePanel
   private async _closeAll(section: ISection): Promise<void> {
     const id = section.id;
     await this._act(async () => {
-      if (!section.current && (await this._refused(id, 'Close all tabs'))) {
+      if (
+        !section.current &&
+        (await this._refused(id, 'Close all tabs', true))
+      ) {
         return;
       }
       const n = section.terminals.length;
@@ -1310,7 +1573,7 @@ export class WorkspacePanel
     }
     const id = section.id;
     await this._act(async () => {
-      if (await this._refused(id, 'Close tab')) {
+      if (await this._refused(id, 'Close tab', true)) {
         return;
       }
       const store = workspaces(this._settings);
@@ -1325,7 +1588,10 @@ export class WorkspacePanel
   private async _delete(section: ISection): Promise<void> {
     const id = section.id;
     await this._act(async () => {
-      if (section.current || (await this._refused(id, 'Delete workspace'))) {
+      if (
+        section.current ||
+        (await this._refused(id, 'Delete workspace', true))
+      ) {
         return;
       }
       await workspaces(this._settings).remove(id);
@@ -1504,6 +1770,9 @@ export class WorkspacePanel
   /** user actions ended so far; a load started before the last one is discarded */
   private _changes = 0;
   private _timer = 0;
+  private _switchTimer = 0;
+  /** the switch read in flight: one at a time */
+  private _switching: Promise<void> | null = null;
   private _tabsTimer = 0;
   /** the views of each open tab key; two views of one document share a key */
   private _live = new Map<string, Widget[]>();
@@ -1513,6 +1782,8 @@ export class WorkspacePanel
   private _colours: { [id: string]: Colour } = {};
   /** the colour given last, as the server keeps it for every window */
   private _last: Colour | null = null;
+  /** the workspaces other windows showed in the last 90 s: clean-up keeps them (DQ-22) */
+  private _kept: string[] = [];
   /** positions this page gave to workspaces whose record has none */
   private _positions: { [id: string]: number } = {};
   /** the workspace whose card is dragged, and the line where it lands */
@@ -1664,6 +1935,7 @@ function moveFocus(from: HTMLElement, step: number): void {
 /** The classes of a detail part: an identifier in the code font (DQ-18), a part that gives way first, a folder of a path cut at its start. */
 const CODE = 'jp-WorkspaceManager-code';
 const SHRINK = 'jp-mod-shrink';
+const TYPE = `${SHRINK} jp-WorkspaceManager-type`;
 const FOLDER = `${CODE} ${SHRINK} jp-WorkspaceManager-folder`;
 
 /**

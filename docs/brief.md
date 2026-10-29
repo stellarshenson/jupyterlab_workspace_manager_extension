@@ -42,7 +42,7 @@ The Star Colonel's requirements, in his order.
 ### Look
 
 - Modern look, built on the design system of the `jupyterlab-extension` skill
-- A new sidebar icon in place of the Running panel's icon (circle with a square, `docs/design/assets/running-icon-current.png`); the design proposes candidates. Added by the Star Colonel on 2026-10-23
+- A new sidebar icon in place of the Running panel's icon (the circle with a square); the design proposes candidates. Added by the Star Colonel on 2026-10-23
 
 ## Design before implementation
 
@@ -50,7 +50,7 @@ The Star Colonel wants a design proposal before any implementation.
 
 1. Take screenshots of the current "Running Terminals and Kernels" panel in the running lab with the `my-browser` skill
 2. Model the new panel in SVG
-3. Write the design proposal as HTML in `docs/design/`, built from the screenshots and the SVG models. It presents a few design alternatives (Star Colonel, 2026-10-23: "figure out few alternatives for the design")
+3. Write the design proposal as one self-contained HTML file, `docs/design/workspace-manager-design.html`, with the SVG models inline. It presents a few design alternatives (Star Colonel, 2026-10-23: "figure out few alternatives for the design")
 4. Stop and report. Acceptance criteria and implementation wait for the Star Colonel's approval of the design
 
 ## Questions the design must answer

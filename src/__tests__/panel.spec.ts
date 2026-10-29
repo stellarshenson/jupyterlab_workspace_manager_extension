@@ -60,6 +60,12 @@ interface IServer {
   recordsFailing?: boolean;
   /** answer 500 on /api/kernels; `once` answers 500 to the next request only */
   failing?: boolean | 'once';
+  /** the switch requests this window's next read delivers */
+  switches?: { workspace: string | null; tab: string | null }[];
+  /** the workspaces other windows show in the presence route */
+  presence?: string[];
+  /** answer 500 on the extension's `presence` route */
+  presenceFailing?: boolean;
 }
 
 /** A fake Jupyter server behind `settings.fetch`; it logs every request. */
@@ -82,6 +88,33 @@ function fakeServer(server: IServer) {
     if (path.includes(NS)) {
       if (server.absent) {
         return reply(404, { message: 'Not Found' });
+      }
+      if (path.endsWith('/switch')) {
+        // the route drops a request whose workspace file is gone and does not mark it delivered
+        const all = server.switches ?? [];
+        const requests = all.filter(
+          s =>
+            !s.workspace ||
+            server.workspaces.some(w => w.metadata.id === s.workspace)
+        );
+        server.switches = all.filter(s => !requests.includes(s));
+        return reply(200, { requests });
+      }
+      if (path.endsWith('/presence')) {
+        if (method === 'POST') {
+          if (server.presenceFailing) {
+            return reply(500, { message: 'Unhandled error' });
+          }
+          // a claim is refused for a workspace another window shows
+          const claim = JSON.parse(body);
+          return claim.claim &&
+            (server.presence ?? []).includes(claim.workspace)
+            ? reply(409, {
+                message: `workspace ${claim.workspace} is open in another window`
+              })
+            : reply(204, undefined);
+        }
+        return reply(200, { workspaces: server.presence ?? [] });
       }
       if (path.endsWith('/meta')) {
         return server.recordsFailing
@@ -340,6 +373,11 @@ const shutDownAll = (panel: Widget, key: string) =>
   Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
     b => b.getAttribute('aria-label') === 'Shut down all'
   )!;
+/** The broom of the WORKSPACES band. */
+const cleanButton = (panel: Widget) =>
+  Array.from(
+    sectionHeader(panel, 'workspaces').querySelectorAll('button')
+  ).find(b => b.getAttribute('aria-label') === 'Clean up workspaces')!;
 const refreshButton = (panel: Widget) =>
   $(panel, 'button[aria-label="Refresh"]') as HTMLButtonElement;
 
@@ -470,6 +508,371 @@ describe('panel', () => {
     await dangerDialog();
     await settle();
     expect(shutdownAll).toHaveBeenCalledTimes(1);
+  });
+
+  /** The clean-up example of DQ-22: this window's workspace holds two tabs, two terminals and a kernel, iconprobe2 is deleted and auto-6 is kept by another window. */
+  function cleanup(): IServer {
+    return {
+      workspaces: [
+        workspace('default', 1),
+        workspace('iconprobe2', 30, ['notebook:notebooks/probe.ipynb']),
+        workspace('auto-6', 60 * 24 * 3, ['terminal:1'])
+      ],
+      records: {},
+      terminals: [
+        { name: '7', last_activity: iso(0), process: 'vim' },
+        { name: '11', last_activity: iso(0), process: 'htop' },
+        { name: '1', last_activity: iso(0), process: 'claude' }
+      ],
+      kernels: [
+        {
+          id: 'k1',
+          name: 'python3',
+          last_activity: iso(5),
+          execution_state: 'idle',
+          connections: 0
+        }
+      ],
+      sessions: [
+        {
+          id: 's1',
+          name: 'design.ipynb',
+          path: 'notebooks/design.ipynb',
+          type: 'notebook',
+          kernel: { id: 'k1', name: 'python3' }
+        }
+      ],
+      presence: ['auto-6']
+    };
+  }
+
+  /** The live tabs of this window for `cleanup`: a document, a notebook with its kernel and two terminals. */
+  function cleanupWidgets(): Widget[] {
+    const doc = new Widget();
+    (doc as any).context = { path: 'docs/README.md' };
+    doc.title.label = 'README.md';
+    const notebook = new Widget();
+    notebook.title.label = 'design.ipynb';
+    (notebook as any).context = { path: 'notebooks/design.ipynb' };
+    (notebook as any).hasClass = (name: string) => name === 'jp-NotebookPanel';
+    const terminal = (name: string) => {
+      const tab = new Widget();
+      (tab as any).content = {
+        hasClass: (name: string) => name === 'jp-Terminal',
+        session: { name }
+      };
+      return tab;
+    };
+    return [doc, notebook, terminal('7'), terminal('11')];
+  }
+
+  it('ACC-ACCORD-221-CLEAN-BUTTON: the WORKSPACES band ends with Clean up workspaces, disabled while nothing would change and enabled by another workspace, a tab or a language server', async () => {
+    const alone = (): IServer => ({
+      workspaces: [workspace('default', 1)],
+      records: {},
+      terminals: [],
+      kernels: [],
+      sessions: []
+    });
+    const empty = await mount(alone());
+    const button = cleanButton(empty.panel);
+    expect(button.getAttribute('aria-label')).toBe('Clean up workspaces');
+    expect(button.disabled).toBe(true);
+
+    // a workspace to delete
+    const second = await mount({
+      ...alone(),
+      workspaces: [workspace('default', 1), workspace('other', 2)]
+    });
+    expect(cleanButton(second.panel).disabled).toBe(false);
+
+    // a tab this window's workspace holds
+    const doc = new Widget();
+    (doc as any).context = { path: 'docs/README.md' };
+    doc.title.label = 'README.md';
+    const third = await mount(alone(), { live: [doc] });
+    expect(cleanButton(third.panel).disabled).toBe(false);
+
+    // a running language server
+    const managers = new RunningSessionManagers();
+    managers.add(manager('Language servers', ['pylsp (python)']));
+    const fourth = await mount(alone(), { managers });
+    expect(cleanButton(fourth.panel).disabled).toBe(false);
+  });
+
+  it('ACC-ACCORD-222-CLEAN-DIALOG: the broom asks with a dialog titled Clean up workspaces that counts the workspaces and names each one, what it holds and its outcome, Clean up at the far left and Cancel at the right', async () => {
+    const { panel, fake } = await mount(cleanup(), { live: cleanupWidgets() });
+    cleanButton(panel).click();
+    await waitForDialog();
+
+    const dialog = document.querySelector('.jp-Dialog')!;
+    expect(dialog.querySelector('.jp-Dialog-header')!.textContent).toBe(
+      'Clean up workspaces'
+    );
+    expect(
+      dialog.querySelector('.jp-WorkspaceManager-cleanupSummary')!.textContent
+    ).toBe(
+      'Clean up 3 workspaces? 1 is deleted, default is emptied, and auto-6 is kept because another window shows it.'
+    );
+    const rows = new Map(
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-cleanupRow')
+      ).map(row => [
+        row.querySelector('.jp-WorkspaceManager-cleanupName')!.textContent!,
+        {
+          outcome: row.querySelector('.jp-WorkspaceManager-cleanupOutcome')!
+            .textContent,
+          holds: Array.from(
+            row.querySelectorAll<HTMLElement>(
+              '.jp-WorkspaceManager-cleanupHolds'
+            )
+          ).map(hold => hold.textContent)
+        }
+      ])
+    );
+    expect(rows.get('default')).toEqual({
+      outcome: 'emptied',
+      holds: [
+        'Tabs: docs/README.md, notebooks/design.ipynb',
+        'Terminals: terminal 7, terminal 11',
+        `Kernels: ${PYTHON} (design.ipynb)`
+      ]
+    });
+    expect(rows.get('iconprobe2')).toEqual({
+      outcome: 'deleted',
+      holds: ['Tabs: notebooks/probe.ipynb', 'Terminals: none', 'Kernels: none']
+    });
+    expect(rows.get('auto-6')).toEqual({
+      outcome: 'kept',
+      holds: ['Tabs: none', 'Terminals: terminal 1', 'Kernels: none']
+    });
+    // one line after the rows says the language servers restart on demand
+    const notes = Array.from(
+      dialog.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-cleanupNote'),
+      note => note.textContent
+    );
+    expect(notes).toEqual(['Language servers restart on demand']);
+
+    const buttons = Array.from(
+      dialog.querySelectorAll<HTMLElement>('.jp-Dialog-button')
+    );
+    expect(buttons.map(b => b.textContent)).toEqual(['Clean up', 'Cancel']);
+    expect(buttons[0].classList).toContain('jp-WorkspaceManager-danger');
+    expect(buttons[1].classList).toContain('jp-WorkspaceManager-secondary');
+
+    // nothing happens without the confirmation
+    await dismissDialog();
+    await settle();
+    expect(
+      fake.log.filter(l => l.startsWith('DELETE /lab/api/workspaces/'))
+    ).toEqual([]);
+
+    // the line is unconditional: a confirmation with no kept workspace says it too
+    const unkept = cleanup();
+    unkept.presence = [];
+    const second = await mount(unkept, { live: cleanupWidgets() });
+    cleanButton(second.panel).click();
+    await waitForDialog();
+    expect(
+      document.querySelector<HTMLElement>('.jp-WorkspaceManager-cleanupNote')
+        ?.textContent
+    ).toBe('Language servers restart on demand');
+    await dismissDialog();
+    await settle();
+  });
+
+  it('ACC-ACCORD-222-CLEAN-NAME: the clean-up dialog carries an accessible name, which apputils gives only a string body', async () => {
+    const { panel } = await mount(cleanup(), { live: cleanupWidgets() });
+    cleanButton(panel).click();
+    await waitForDialog();
+
+    expect(
+      document.querySelector('.jp-Dialog')!.getAttribute('aria-label')
+    ).toBe('Clean up workspaces');
+
+    await dismissDialog();
+    await settle();
+  });
+
+  it('DEF-PANEL-56-ABSENT-BROOM: without the server extension the broom refuses before the dialog and deletes nothing', async () => {
+    const server = { ...standard(), absent: true };
+    const { panel, log } = await mount(server);
+    expect(card(panel, 'w:auto-6')).toBeTruthy();
+
+    cleanButton(panel).click();
+    await waitForDialog();
+    expect(dialogText()).toContain(
+      'Clean up needs the server extension: it cannot tell which workspaces another window shows.'
+    );
+
+    await dismissDialog();
+    await settle();
+    expect(
+      log.filter(l => l.startsWith('DELETE /lab/api/workspaces/'))
+    ).toEqual([]);
+    expect(card(panel, 'w:auto-6')).toBeTruthy();
+  });
+
+  it('DEF-PANEL-58-ABSENT-MENU: without the server extension Close all tabs refuses', async () => {
+    const { panel } = await mount({ ...standard(), absent: true });
+    header(panel, 'w:auto-6')
+      .querySelector<HTMLElement>('button[aria-label="Close all tabs"]')!
+      .click();
+    await waitForDialog();
+    expect(dialogText()).toContain(
+      'Close all tabs is refused: the server extension is not available, so the panel cannot tell which workspaces another window shows.'
+    );
+    await dismissDialog();
+    await settle();
+  });
+
+  it('DEF-PANEL-58-ABSENT-MENU: without the server extension Close tab refuses', async () => {
+    const { panel } = await mount({ ...standard(), absent: true });
+    triangle(panel, 'w:auto-6').click();
+    await settle();
+    const row = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.textContent!.includes('README.md'))!;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    chooseMenuItem(0); // Close tab
+    await waitForDialog();
+    expect(dialogText()).toContain(
+      'Close tab is refused: the server extension is not available, so the panel cannot tell which workspaces another window shows.'
+    );
+    await dismissDialog();
+    await settle();
+  });
+
+  it('DEF-PANEL-58-ABSENT-MENU: without the server extension Delete issues no delete', async () => {
+    const { panel, log } = await mount({ ...standard(), absent: true });
+    log.length = 0;
+    card(panel, 'w:auto-6')
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
+      .click();
+    // Open workspace, Open in new browser tab, Close all tabs, Set description...,
+    // Colour, Hide workspace, Move down, Delete workspace
+    chooseMenuItem(7);
+    // the first Enter arms Confirm delete, the second deletes
+    const menu = document.querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-menu'
+    )!;
+    const enter = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(enter, 'keyCode', { value: 13 });
+    menu.dispatchEvent(enter);
+    await settle();
+    expect(
+      log.filter(l => l.startsWith('DELETE /lab/api/workspaces/'))
+    ).toEqual([]);
+    expect(card(panel, 'w:auto-6')).toBeTruthy();
+    await waitForDialog();
+    expect(dialogText()).toContain(
+      'Delete workspace is refused: the server extension is not available, so the panel cannot tell which workspaces another window shows.'
+    );
+    await dismissDialog();
+    await settle();
+  });
+
+  it('DEF-PANEL-58-ABSENT-MENU: without the server extension Open workspace still opens the workspace', async () => {
+    const { panel } = await mount({ ...standard(), absent: true });
+    const url = jest
+      .spyOn(panel as any, '_url')
+      .mockImplementation(() => '#opened-auto-6');
+    card(panel, 'w:auto-6')
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
+      .click();
+    chooseMenuItem(0); // Open workspace
+    await settle();
+    expect(url).toHaveBeenCalledWith('auto-6');
+  });
+
+  it('ACC-ACCORD-223-CLEAN-ACTION: the confirmation deletes every other workspace and empties this one, closing its tabs and shutting down its terminals, kernels and language servers', async () => {
+    const managers = new RunningSessionManagers();
+    const shutdownAll = jest.fn();
+    managers.add({
+      ...manager('Language servers', ['pylsp (python)']),
+      shutdownAll
+    });
+    const { panel, app, fake } = await mount(cleanup(), {
+      live: cleanupWidgets(),
+      managers
+    });
+    const closeAll = jest.fn();
+    app.commands.addCommand('application:close-all', {
+      execute: closeAll
+    });
+
+    cleanButton(panel).click();
+    await waitForDialog();
+    await dangerDialog();
+    await settle();
+
+    // every workspace but this one and the one another window shows
+    expect(
+      fake.log.filter(l => l.startsWith('DELETE /lab/api/workspaces/'))
+    ).toEqual(['DELETE /lab/api/workspaces/iconprobe2']);
+    expect(closeAll).toHaveBeenCalledTimes(1);
+    expect(
+      app.serviceManager.terminals.shutdown.mock.calls.map((c: any[]) => c[0])
+    ).toEqual(['7', '11']);
+    expect(app.serviceManager.kernels.shutdown).toHaveBeenCalledWith('k1');
+    expect(shutdownAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACC-ACCORD-223-CLEAN-ACTION: a terminal that ended mid-clean-up does not stop the kernel, language-server and tab shutdowns', async () => {
+    const managers = new RunningSessionManagers();
+    const shutdownAll = jest.fn();
+    managers.add({
+      ...manager('Language servers', ['pylsp (python)']),
+      shutdownAll
+    });
+    const { panel, app } = await mount(cleanup(), {
+      live: cleanupWidgets(),
+      managers
+    });
+    const closeAll = jest.fn();
+    app.commands.addCommand('application:close-all', { execute: closeAll });
+    // terminal 7 ended while the dialog was open: the server answers its shutdown with 404
+    app.serviceManager.terminals.shutdown.mockImplementation(
+      async (name: string) => {
+        if (name === '7') {
+          throw new Error('Terminal not found');
+        }
+      }
+    );
+
+    cleanButton(panel).click();
+    await waitForDialog();
+    await dangerDialog();
+    await settle();
+
+    expect(app.serviceManager.kernels.shutdown).toHaveBeenCalledWith('k1');
+    expect(shutdownAll).toHaveBeenCalledTimes(1);
+    expect(closeAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACC-ACCORD-223-CLEAN-ACTION: a workspace created while the confirmation is open is not deleted', async () => {
+    const server = cleanup();
+    const { panel, fake, app } = await mount(server, {
+      live: cleanupWidgets()
+    });
+    // the clean-up ends by closing this window's tabs
+    app.commands.addCommand('application:close-all', { execute: jest.fn() });
+
+    cleanButton(panel).click();
+    await waitForDialog();
+    // another window creates a workspace while the dialog waits for its answer
+    server.workspaces.push(workspace('created-since', 1));
+    await dangerDialog();
+    await settle();
+
+    expect(
+      fake.log.filter(l => l.startsWith('DELETE /lab/api/workspaces/'))
+    ).toEqual(['DELETE /lab/api/workspaces/iconprobe2']);
   });
 
   it('ACC-PANEL-207-BUTTON-ARROWS: ArrowDown and ArrowUp pressed on a row button move the focus between rows; Enter and Space on the button stay with it and do not open the row', async () => {
@@ -1001,6 +1404,125 @@ describe('panel', () => {
     expect(menu?.isConnected).toBe(true);
   });
 
+  it('ACC-CLI-220-SWITCH-TAB: a switch request activates the tab showing its path in this window and selects its row', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const live = new Widget();
+    (live as any).context = { path: 'docs/README.md' };
+    live.title.label = 'README.md';
+    const server = standard();
+    const { panel, app } = await mount(server, { live: [live] });
+
+    server.switches = [{ workspace: null, tab: 'docs/README.md' }];
+    jest.advanceTimersByTime(1000);
+    await settle();
+
+    expect(app.shell.activateById).toHaveBeenCalledWith(live.id);
+    expect(
+      $$(panel, '.jp-WorkspaceManager-row.jp-mod-selected').map(
+        r => r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+      )
+    ).toEqual(['README.md']);
+    // the card of this window shows, holding the selected row
+    expect(card(panel, 'w:default').classList).toContain('jp-mod-open');
+  });
+
+  it('ACC-CLI-219-SWITCH-WORKSPACE: a plain switch for a workspace newer than the last reload is applied once, and a second read consumes nothing', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    const { panel, fake } = await mount(server);
+    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    sessionStorage.removeItem(pending);
+    // created after the panel's last reload: the panel's model does not list it
+    server.workspaces.push(workspace('created-since', 1));
+    // a hash keeps jsdom in the page: the test reads the switch, not the navigation
+    let atUrl = -1;
+    const url = jest.spyOn(panel as any, '_url').mockImplementation(() => {
+      atUrl = fake.log.length;
+      return '#switched-created-since';
+    });
+
+    server.switches = [{ workspace: 'created-since', tab: null }];
+    jest.advanceTimersByTime(1000);
+    await settle();
+
+    expect(url).toHaveBeenCalledTimes(1);
+    expect(url).toHaveBeenCalledWith('created-since');
+    // the window published the target before its page left
+    const posted = fake.log.indexOf(`POST /${NS}/presence`);
+    expect(posted).toBeGreaterThanOrEqual(0);
+    expect(posted).toBeLessThan(atUrl);
+    // a plain switch stores no pending tab
+    expect(sessionStorage.getItem(pending)).toBeNull();
+
+    // the server marked the request delivered: the next read returns nothing and nothing moves again
+    jest.advanceTimersByTime(1000);
+    await settle();
+    expect(url).toHaveBeenCalledTimes(1);
+    expect(fake.log.filter(l => l.endsWith('/switch'))).toHaveLength(2);
+  });
+
+  it('ACC-CLI-219-SWITCH-WORKSPACE: a request naming a deleted workspace is dropped by the server and not delivered', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    const { panel } = await mount(server);
+    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    sessionStorage.removeItem(pending);
+    const url = jest.spyOn(panel as any, '_url');
+
+    server.switches = [{ workspace: 'deleted-since', tab: 'docs/README.md' }];
+    jest.advanceTimersByTime(1000);
+    await settle();
+
+    expect(url).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(pending)).toBeNull();
+    // not delivered and not marked read: the request still waits for a workspace of that name
+    expect(server.switches).toEqual([
+      { workspace: 'deleted-since', tab: 'docs/README.md' }
+    ]);
+  });
+
+  it('ACC-CLI-219-SWITCH-WORKSPACE: a switch to a workspace another window shows is refused and stores no pending tab', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    server.presence = ['auto-6'];
+    const { panel, app } = await mount(server);
+    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    sessionStorage.removeItem(pending);
+    const url = jest.spyOn(panel as any, '_url');
+
+    server.switches = [{ workspace: 'auto-6', tab: 'docs/README.md' }];
+    jest.advanceTimersByTime(1000);
+    await settle();
+
+    expect(url).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(pending)).toBeNull();
+    expect(app.shell.activateById).not.toHaveBeenCalled();
+    try {
+      expect(dialogBody()).toContain('is open in another browser window');
+      expect(dialogBody()).toContain('workspace auto-6');
+    } finally {
+      await dismissDialog();
+    }
+  });
+
+  it('ACC-CLI-219-SWITCH-WORKSPACE: a failed presence request leaves the window where it is, stores no pending tab and shows no refusal dialog', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    server.presenceFailing = true;
+    const { panel } = await mount(server);
+    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    sessionStorage.removeItem(pending);
+    const url = jest.spyOn(panel as any, '_url');
+
+    server.switches = [{ workspace: 'auto-6', tab: 'docs/README.md' }];
+    jest.advanceTimersByTime(1000);
+    await settle();
+
+    expect(url).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(pending)).toBeNull();
+    expect(document.querySelector('.jp-Dialog')).toBeNull();
+  });
+
   it('ACC-HIDDEN-53-UNHIDE: a reload that started before Show workspace again does not hide the card again', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
@@ -1031,7 +1553,7 @@ describe('panel', () => {
     expect(hidden()).toBe(false);
   });
 
-  it('ACC-PANEL-9-POLL-HIDDEN: a hidden panel does not reload; shown, it reloads once', async () => {
+  it('ACC-PANEL-9-POLL-HIDDEN: a hidden panel stops its 10 s reload but keeps reading switch requests; shown, it reloads once', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const { panel, log, reloads } = await mount(standard());
     expect(reloads()).toBe(1);
@@ -1039,7 +1561,9 @@ describe('panel', () => {
     log.length = 0;
     jest.advanceTimersByTime(60000);
     await settle();
-    expect(log).toEqual([]);
+    // the switch poll ignores visibility; the 10 s reload does not
+    expect(log.filter(l => !l.endsWith('/switch'))).toEqual([]);
+    expect(log.some(l => l.endsWith('/switch'))).toBe(true);
     panel.show();
     await settle();
     expect(reloads()).toBe(1);
@@ -1414,6 +1938,9 @@ describe('panel', () => {
         d => d.textContent
       )
     ).toEqual([`${PYTHON}150 MB13%`, 'work/a.ipynb']);
+    expect(
+      row.querySelector('.jp-WorkspaceManager-rowDetail > span')!.className
+    ).toBe('jp-mod-shrink jp-WorkspaceManager-type');
     expect(shown()).toEqual([
       ['a.ipynb', PYTHON, '150 MB', '13%', 'work/', 'a.ipynb'],
       ['k2', PYTHON, '-', '-']
@@ -1438,6 +1965,17 @@ describe('panel', () => {
       )
     ).find(r => r.title.startsWith(PYTHON))!;
     expect(cardRow.textContent).toBe('a.ipynbidle5m ago');
+    cardRow.focus();
+    const selectedCardRow = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title.startsWith(PYTHON))!;
+    const cardType = selectedCardRow.querySelector(
+      '.jp-WorkspaceManager-rowDetail > span'
+    )!;
+    expect(cardType.className).toBe('jp-mod-shrink');
+    expect(cardType.textContent).toBe(PYTHON);
   });
 
   it('ACC-LISTS-37-TWO-WORKSPACES, ACC-KERNEL-196-KERNEL-DETAILS: no terminal or kernel row, in a section or a card, shows an also in mark, and no hover text names another workspace', async () => {

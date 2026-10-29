@@ -1,6 +1,7 @@
 """The jupyterlab-workspace CLI: lab selection, every command, every refusal and the shipped skill."""
 import argparse
 import datetime
+import io
 import json
 import os
 import subprocess
@@ -70,14 +71,20 @@ def session(path, kernel='k1', kind='notebook'):
 class FakeLab:
     """The HTTP layer of a running lab, held in memory; every call is recorded."""
 
-    def __init__(self, workspaces=(), records=None, presence=(), terminals=(), kernels=(), sessions=()):
+    def __init__(self, workspaces=(), records=None, presence=(), windows=(), terminals=(), kernels=(), sessions=(), usage=None):
         self.workspaces = json.loads(json.dumps(list(workspaces)))
         self.records = json.loads(json.dumps(records or {}))
         self.presence = list(presence)
+        # the live presence reports: {window, workspace} each
+        self.windows = json.loads(json.dumps(list(windows)))
         self.terminals = json.loads(json.dumps(list(terminals)))
         self.kernels = json.loads(json.dumps(list(kernels)))
         self.sessions = json.loads(json.dumps(list(sessions)))
+        # the extension's kernels route; None when the server extension is absent, so it answers 404
+        self.usage = json.loads(json.dumps(usage)) if usage is not None else None
         self.calls = []
+        # the switch requests the CLI posted, as the panel would read them
+        self.switches = []
 
     def request(self, base_url, token, method, path, payload=None):
         self.calls.append(
@@ -104,7 +111,10 @@ class FakeLab:
             self.records[name] = {**self.records.get(name, {}), **payload}
             return self.records[name]
         if path.startswith('/jupyterlab-workspace-manager-extension/presence') and method == 'GET':
-            return {'workspaces': list(self.presence)}
+            return {'workspaces': list(self.presence), 'windows': json.loads(json.dumps(self.windows))}
+        if path == '/jupyterlab-workspace-manager-extension/switch' and method == 'POST':
+            self.switches.append(payload)
+            return None
         if path == '/jupyterlab-workspace-manager-extension/terminals' and method == 'GET':
             return [
                 {'name': item['name'], 'process': item.get('process'), 'last_activity': item.get('last_activity', '')}
@@ -116,6 +126,10 @@ class FakeLab:
             name = urllib.parse.unquote(tail)
             self.terminals = [item for item in self.terminals if item['name'] != name]
             return None
+        if path == '/jupyterlab-workspace-manager-extension/kernels' and method == 'GET':
+            if self.usage is None:
+                raise cli.CLIError(f'GET {path} failed: 404 Not Found', 404)
+            return json.loads(json.dumps(self.usage))
         if path == '/api/kernels' and method == 'GET':
             return json.loads(json.dumps(self.kernels))
         if path.startswith('/api/kernels/') and method == 'DELETE':
@@ -306,6 +320,35 @@ def test_a_failed_request_does_not_print_the_token(monkeypatch):
         cli._request('http://127.0.0.1:8888', 'sentinel-token', 'GET', '/api/kernels')
     assert 'sentinel-token' not in str(failed.value)
     assert '/api/kernels' in str(failed.value)
+
+
+def test_a_failed_request_carries_the_servers_message(monkeypatch):
+    """ACC-CLI-219: an HTTP error's JSON body reaches the CLI, and the status and token rules hold."""
+    named = urllib.error.HTTPError(
+        'http://127.0.0.1:8888',
+        404,
+        'Not Found',
+        {},
+        io.BytesIO(b'{"message": "unknown window 0f3c9a1e"}'),
+    )
+    monkeypatch.setattr(cli, '_OPENER', Opener(error=named))
+    with pytest.raises(cli.CLIError) as failed:
+        cli._request('http://127.0.0.1:8888', 'sentinel-token', 'GET', '/api/kernels')
+    assert str(failed.value) == 'GET /api/kernels failed: 404 Not Found: unknown window 0f3c9a1e'
+    assert failed.value.code == 404
+    assert 'sentinel-token' not in str(failed.value)
+
+    plain = urllib.error.HTTPError(
+        'http://127.0.0.1:8888',
+        500,
+        'Internal Server Error',
+        {},
+        io.BytesIO(b'not json'),
+    )
+    monkeypatch.setattr(cli, '_OPENER', Opener(error=plain))
+    with pytest.raises(cli.CLIError) as failed:
+        cli._request('http://127.0.0.1:8888', 'sentinel-token', 'GET', '/api/kernels')
+    assert str(failed.value) == 'GET /api/kernels failed: 500 Internal Server Error'
 
 
 # --- ACC-CLI-171-LIST-OUT: workspaces list ---------------------------------
@@ -654,19 +697,19 @@ def kernel_lab():
 
 
 def test_kernels_list_prints_id_name_and_notebook(lab, capsys):
-    """ACC-CLI-178: list carries the session path of each kernel, in the table and in JSON."""
+    """ACC-CLI-178 / ACC-CLI-217: list carries the session path of each kernel; the usage route's 404 leaves dashes."""
     lab.__dict__.update(kernel_lab().__dict__)
     assert run('kernels', 'list') == 0
     stdout = out(capsys)[0]
     assert stdout.splitlines() == [
-        'ID\tNAME\tSESSION',
-        'k1\tpython3\tnotes.ipynb',
-        'k2\tir\t',
+        'ID\tNAME\tSESSION\tMEMORY\tCPU',
+        'k1\tpython3\tnotes.ipynb\t-\t-',
+        'k2\tir\t\t-\t-',
     ]
     assert run('kernels', 'list', '--json') == 0
     assert json.loads(out(capsys)[0]) == [
-        {'id': 'k1', 'name': 'python3', 'path': 'notes.ipynb'},
-        {'id': 'k2', 'name': 'ir', 'path': ''},
+        {'id': 'k1', 'name': 'python3', 'path': 'notes.ipynb', 'memory': None, 'cpu': None},
+        {'id': 'k2', 'name': 'ir', 'path': '', 'memory': None, 'cpu': None},
     ]
 
 
@@ -695,6 +738,238 @@ def test_kernels_kill_needs_an_id_or_all(lab):
     with pytest.raises(SystemExit) as usage:
         run('kernels', 'kill')
     assert usage.value.code == 2
+
+
+# --- ACC-CLI-217-KERNEL-USAGE: memory and CPU from the extension's route ---
+
+
+def test_kernels_list_reports_memory_and_cpu(lab, capsys):
+    """ACC-CLI-217: the route's memory and CPU reach the row beside name and session, a dash when unreadable."""
+    lab.__dict__.update(kernel_lab().__dict__)
+    lab.usage = {'k1': {'memory': 314572800, 'cpu': 42.5}, 'k2': {'memory': None, 'cpu': None}}
+
+    assert run('kernels', 'list') == 0
+    assert out(capsys)[0].splitlines() == [
+        'ID\tNAME\tSESSION\tMEMORY\tCPU',
+        'k1\tpython3\tnotes.ipynb\t300 MB\t43%',
+        'k2\tir\t\t-\t-',
+    ]
+
+    assert run('kernels', 'list', '--json') == 0
+    assert [(row['memory'], row['cpu']) for row in json.loads(out(capsys)[0])] == [
+        (314572800, 42.5),
+        (None, None),
+    ]
+
+
+# --- ACC-CLI-218-TABS-LIST: the tabs of one workspace ----------------------
+
+
+def tabs_workspace(name):
+    """A workspace file holding three tabs: two in the main area, one in the down area."""
+    data = {
+        'layout-restorer:data': {
+            'main': {
+                'dock': {
+                    'type': 'split-area',
+                    'children': [
+                        {'type': 'tab-area', 'widgets': ['notebook:a.ipynb']},
+                        {'type': 'tab-area', 'widgets': ['editor:b.md']},
+                    ],
+                }
+            },
+            'down': {'widgets': ['console:c']},
+        },
+        'notebook:a.ipynb': {'data': {'path': 'a.ipynb'}},
+        'editor:b.md': {'data': {'path': 'b.md'}},
+        'console:c': {'data': {'path': 'c'}},
+    }
+    return {'data': data, 'metadata': {'id': '/' + name, 'last_modified': stamp()}}
+
+
+def pathless_workspace(name):
+    """A workspace whose widget the file saved without a path, as the setting editor saves itself."""
+    data = {
+        'layout-restorer:data': {'main': {'dock': {'type': 'tab-area', 'widgets': ['setting-editor:setting-editor']}}},
+        'setting-editor:setting-editor': {'data': {}},
+    }
+    return {'data': data, 'metadata': {'id': '/' + name, 'last_modified': stamp()}}
+
+
+def tabs_lab():
+    return FakeLab(workspaces=[tabs_workspace('three'), workspace('empty'), pathless_workspace('pathless')])
+
+
+def test_tabs_list_prints_one_line_per_tab_in_saved_order(lab, capsys):
+    """ACC-CLI-218: one line per tab in the order the file saves them, each with the document path it shows."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'list', 'three') == 0
+    assert out(capsys)[0].splitlines() == [
+        'KEY\tPATH',
+        'notebook:a.ipynb\ta.ipynb',
+        'editor:b.md\tb.md',
+        'console:c\tc',
+    ]
+
+    assert run('tabs', 'list', 'three', '--json') == 0
+    assert json.loads(out(capsys)[0]) == [
+        {'key': 'notebook:a.ipynb', 'path': 'a.ipynb'},
+        {'key': 'editor:b.md', 'path': 'b.md'},
+        {'key': 'console:c', 'path': 'c'},
+    ]
+
+
+def test_tabs_list_of_an_empty_workspace_prints_no_tabs_and_exits_zero(lab, capsys):
+    """ACC-CLI-218: a workspace with no tabs prints no tab rows and exits 0."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'list', 'empty') == 0
+    assert out(capsys)[0].splitlines()[1:] == []
+
+    assert run('tabs', 'list', 'empty', '--json') == 0
+    assert json.loads(out(capsys)[0]) == []
+
+
+def test_tabs_list_unknown_workspace_refuses(lab, capsys):
+    """ACC-CLI-218: a name that is not a workspace exits 1 and names it."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'list', 'typo') == 1
+    assert 'typo' in out(capsys)[1]
+
+
+def test_tabs_list_prints_an_empty_path_for_a_widget_that_saved_none(lab, capsys):
+    """ACC-CLI-218: a widget the file saved without a path prints its key with an empty PATH cell and null in --json."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'list', 'pathless') == 0
+    assert out(capsys)[0].splitlines() == [
+        'KEY\tPATH',
+        'setting-editor:setting-editor\t',
+    ]
+
+    assert run('tabs', 'list', 'pathless', '--json') == 0
+    assert json.loads(out(capsys)[0]) == [{'key': 'setting-editor:setting-editor', 'path': None}]
+
+
+# --- ACC-CLI-219-SWITCH-WORKSPACE and ACC-CLI-220-SWITCH-TAB: the switch channel ---
+
+
+def test_workspaces_switch_asks_every_window(lab, capsys):
+    """ACC-CLI-219: switch posts a workspace request for every window and names the workspace."""
+    assert run('workspaces', 'switch', 'beta') == 0
+    assert lab.switches == [{'workspace': 'beta'}]
+    assert 'beta' in out(capsys)[0]
+
+
+def test_workspaces_switch_window_restricts_the_request(lab, capsys):
+    """ACC-CLI-219: --window carries the window id, so only that window acts."""
+    assert run('workspaces', 'switch', 'beta', '--window', 'w1') == 0
+    assert lab.switches == [{'workspace': 'beta', 'window': 'w1'}]
+
+
+def test_workspaces_switch_help_names_the_window_format(monkeypatch, capsys):
+    """ACC-CLI-219: the example's window id carries the prefix the panel reports, which the server requires."""
+    with pytest.raises(SystemExit) as helped:
+        run('workspaces', 'switch', '--help')
+    assert helped.value.code == 0
+    help_text = ' '.join(capsys.readouterr().out.split())
+    assert 'jupyterlab-workspace-manager:' in help_text
+
+
+def test_workspaces_switch_unknown_name_is_refused_and_sends_nothing(lab, capsys):
+    """ACC-CLI-219: a name that is not a workspace exits 1 and nothing is posted."""
+    assert run('workspaces', 'switch', 'typo') == 1
+    assert 'typo' in out(capsys)[1]
+    assert lab.switches == []
+
+
+def test_windows_list_prints_each_window_and_its_workspace(lab, capsys):
+    """ACC-CLI-225: windows list prints each live window id and workspace; --json prints the same rows."""
+    lab.windows = [
+        {'window': 'w1', 'workspace': 'alpha'},
+        {'window': 'w2', 'workspace': 'beta'},
+    ]
+
+    assert run('windows', 'list') == 0
+    assert out(capsys)[0].splitlines() == [
+        'WINDOW\tWORKSPACE',
+        'w1\talpha',
+        'w2\tbeta',
+    ]
+
+    assert run('windows', 'list', '--json') == 0
+    assert json.loads(out(capsys)[0]) == lab.windows
+
+
+def test_tabs_activate_asks_the_current_workspace(lab, capsys):
+    """ACC-CLI-220: without --workspace the request carries the path only, so each window acts in its current workspace."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'activate', 'b.md') == 0
+    assert lab.switches == [{'tab': 'b.md'}]
+    assert 'b.md' in out(capsys)[0]
+
+
+def test_tabs_activate_workspace_switches_first(lab, capsys):
+    """ACC-CLI-220: --workspace names the workspace in the request, so the window switches before it activates."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'activate', 'b.md', '--workspace', 'three') == 0
+    assert lab.switches == [{'workspace': 'three', 'tab': 'b.md'}]
+
+
+def test_tabs_activate_of_a_missing_tab_names_the_open_paths(lab, capsys):
+    """ACC-CLI-220: a path the named workspace has no tab for exits 1, names its open paths, and sends nothing."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'activate', 'missing.ipynb', '--workspace', 'three') == 1
+    stderr = out(capsys)[1]
+    assert 'missing.ipynb' in stderr
+    for path in ('a.ipynb', 'b.md', 'c'):
+        assert path in stderr
+    assert lab.switches == []
+
+
+def test_tabs_activate_of_a_missing_tab_names_every_open_path(lab, capsys):
+    """ACC-CLI-220: without --workspace the path is checked against every workspace; none holding it is a refusal."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'activate', 'missing.ipynb') == 1
+    stderr = out(capsys)[1]
+    assert 'missing.ipynb' in stderr
+    for path in ('a.ipynb', 'b.md', 'c'):
+        assert path in stderr
+    assert lab.switches == []
+
+
+def test_tabs_activate_unknown_workspace_is_refused(lab, capsys):
+    """ACC-CLI-220: --workspace that is not a workspace exits 1 and sends nothing."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'activate', 'a.ipynb', '--workspace', 'typo') == 1
+    assert 'typo' in out(capsys)[1]
+    assert lab.switches == []
+
+
+def test_tabs_activate_refuses_a_key_with_no_saved_path(lab, capsys):
+    """ACC-CLI-220: a key tabs list prints with an empty PATH is refused and nothing is sent."""
+    lab.__dict__.update(tabs_lab().__dict__)
+
+    assert run('tabs', 'activate', 'setting-editor') == 1
+    assert 'setting-editor' in out(capsys)[1]
+    assert lab.switches == []
+
+
+def test_tabs_activate_help_states_the_window_limit(monkeypatch, capsys):
+    """ACC-CLI-220: the help says a path in a workspace no window shows is requested but activates nothing."""
+    monkeypatch.setenv('PYTHON_COLORS', '0')
+    with pytest.raises(SystemExit) as helped:
+        run('tabs', 'activate', '--help')
+    assert helped.value.code == 0
+    help_text = ' '.join(capsys.readouterr().out.split()).lower()
+    assert 'saved in a workspace no window shows is requested but activates nothing' in help_text
 
 
 # --- ACC-CLI-179-HELP-AGENT: help complete for an agent --------------------
@@ -745,10 +1020,14 @@ def test_every_leaf_help_carries_its_examples_and_every_flag_its_help():
         ('workspaces', 'describe'),
         ('workspaces', 'remove'),
         ('workspaces', 'clean'),
+        ('workspaces', 'switch'),
         ('terminals', 'list'),
         ('terminals', 'kill'),
         ('kernels', 'list'),
         ('kernels', 'kill'),
+        ('tabs', 'list'),
+        ('tabs', 'activate'),
+        ('windows', 'list'),
     }
     found = set()
     for path, parser in leaves(cli._parser()):
@@ -778,9 +1057,11 @@ def test_group_help_lists_each_leaf_with_a_line(capsys, monkeypatch):
     assert top.value.code == 0
     top_help = capsys.readouterr().out
     for group, commands in {
-        'workspaces': ['list', 'add', 'open', 'describe', 'remove', 'clean'],
+        'workspaces': ['list', 'add', 'open', 'describe', 'remove', 'clean', 'switch'],
         'terminals': ['list', 'kill'],
         'kernels': ['list', 'kill'],
+        'tabs': ['list', 'activate'],
+        'windows': ['list'],
     }.items():
         assert described(top_help, group), group
         with pytest.raises(SystemExit) as helped:

@@ -2,6 +2,28 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.26] - 2026-10-29
+
+### Added
+
+- `workspaces switch NAME` and `tabs activate PATH` reach a running window through an authenticated switch route, `--window` targets one window, and `windows list` prints the windows showing the panel
+- `tabs list NAME` prints a workspace's document tabs in saved order
+- `kernels list` shows each kernel's memory and CPU
+- The WORKSPACES band carries a clean-up broom that deletes every other workspace and empties this one, behind a confirmation that lists each workspace's tabs, terminals and kernels and whether it is deleted, emptied or kept
+
+### Changed
+
+- Row names are neutral per DQ-21: the UI font size at normal weight in the first font colour, the purpose in the second, and recency carried by the time label alone
+- The design is one self-contained `docs/design/workspace-manager-design.html`, and the README figure is retaken from the current build
+
+### Fixed
+
+- A claimed window's presence is held for 5 seconds instead of the 90 second presence lifetime
+- With the server extension absent, the broom and the destructive card actions refuse and say the extension is unavailable, instead of reading an unknown presence as no other window
+- A switch request reaches only the windows live when it was posted, and pending requests are applied in created order
+- The kernel type is capped only on a KERNELS-section row, so a card kernel row cuts only when the type overflows
+- `DEF-PANEL-60` and `DEF-PANEL-61` closed on tests proved red first
+
 ## [0.8.24] - 2026-10-29
 
 ### Added

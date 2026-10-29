@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import uuid
 from contextlib import suppress
 from pathlib import Path
 from time import time
@@ -23,6 +24,13 @@ COLOURS = ("rose", "peach", "lemon", "mint", "sky", "lavender")
 PURPOSE_MAX = 100
 # A window reports every 30 s; its report counts for 90 s, so one lost report is tolerated
 PRESENCE_SECONDS = 90
+# A claim blocks a plain report this long: long enough for a report already in flight, short enough
+# that the window's move reaches the other windows' presence at once
+CLAIM_HOLD_SECONDS = 5
+# CLI switch requests for the panel windows, beside the records; a window reads one once, and one
+# unread for 90 s belonged to a window that died (the panel polls every 1 s, a hidden tab once a minute)
+SWITCH_FILE = "workspace-manager-switch.json"
+SWITCH_SECONDS = 90
 # JupyterLab saves a new workspace about a second after its window loads; a record kept this long
 # without a file belongs to a workspace that was never saved
 UNSAVED_SECONDS = 90
@@ -212,23 +220,132 @@ def reports(serverapp, log):
 class PresenceHandler(APIHandler):
     @tornado.web.authenticated
     def get(self):
-        """The workspaces that windows other than ?window= reported in the last 90 s."""
+        """The workspaces other windows reported in the last 90 s, and every live window with its workspace."""
         window = self.get_query_argument("window", "")
         _, windows = reports(self.serverapp, self.log)
         workspaces = {report["workspace"] for other, report in windows.items() if other != window}
-        self.finish(json.dumps({"workspaces": sorted(workspaces)}))
+        self.finish(
+            json.dumps(
+                {
+                    "workspaces": sorted(workspaces),
+                    "windows": [
+                        {"window": other, "workspace": report["workspace"]}
+                        for other, report in sorted(windows.items())
+                    ],
+                }
+            )
+        )
 
     @tornado.web.authenticated
     def post(self):
-        """A window reports its workspace; the report replaces that window's previous one."""
+        """A window reports its workspace; the report replaces that window's previous one.
+
+        A claim is also refused when another live window reports the same workspace,
+        and a plain report cannot replace a claim until the claim's 5 s hold ends.
+        """
         report = self.get_json_body()
-        if not isinstance(report, dict) or not all(
-            isinstance(report.get(key), str) and report[key] for key in ("window", "workspace")
+        if (
+            not isinstance(report, dict)
+            or not all(
+                isinstance(report.get(key), str) and report[key] for key in ("window", "workspace")
+            )
+            or not isinstance(report.get("claim", False), bool)
         ):
-            raise tornado.web.HTTPError(400, "body: {window, workspace} as non-empty strings")
+            raise tornado.web.HTTPError(
+                400, "body: {window, workspace} as non-empty strings, claim as a boolean when given"
+            )
         path, windows = reports(self.serverapp, self.log)
-        windows[report["window"]] = {"workspace": report["workspace"], "reported": time()}
+        claim = report.get("claim", False)
+        if claim and any(
+            other != report["window"] and other_report["workspace"] == report["workspace"]
+            for other, other_report in windows.items()
+        ):
+            raise tornado.web.HTTPError(409, f"workspace {report['workspace']} is open in another window")
+        now = time()
+        record = windows.get(report["window"])
+        if not claim and record and abs(now - record.get("claimed", 0)) <= CLAIM_HOLD_SECONDS:
+            # a plain report crossing a claim keeps the claim's workspace; the window stays live
+            record["reported"] = now
+        else:
+            windows[report["window"]] = {
+                "workspace": report["workspace"],
+                "reported": now,
+                **({"claimed": now} if claim else {}),
+            }
         save_records(path, windows)
+        self.set_status(204)
+        self.finish()
+
+
+def switch_requests(serverapp, log):
+    """The switch file's path, its live requests by request id, and whether expiry dropped any."""
+    path = records_path(serverapp).with_name(SWITCH_FILE)
+    stored = load_records(path, log)
+    now = time()
+    # abs: a clock set back must not keep an unread request longer
+    live = {
+        request_id: request
+        for request_id, request in stored.items()
+        if isinstance(request.get("created"), (int, float)) and abs(now - request["created"]) <= SWITCH_SECONDS
+    }
+    return path, live, live != stored
+
+
+class SwitchHandler(APIHandler):
+    @tornado.web.authenticated
+    def get(self):
+        """The requests not yet delivered to ?window=, which this read marks delivered."""
+        window = self.get_query_argument("window", "")
+        if not window:
+            raise tornado.web.HTTPError(400, "window: a non-empty window id")
+        path, requests, expired = switch_requests(self.serverapp, self.log)
+        mine = [
+            request
+            for request in requests.values()
+            if request.get("window") in (None, window)
+            and (not request.get("targets") or window in request["targets"])
+            and window not in request.get("delivered", [])
+            # the workspace file is the authority: a deleted workspace is not reopened, and the
+            # request is skipped, not marked read, so a file that returns can still be reached
+            and (not request.get("workspace") or saved(path, request["workspace"]))
+        ]
+        # the client applies the requests in read order, so the earliest command lands first
+        mine.sort(key=lambda request: request.get("created", 0))
+        for request in mine:
+            request["delivered"] = request.get("delivered", []) + [window]
+        if mine or expired:
+            save_records(path, requests)
+        self.finish(
+            json.dumps(
+                {"requests": [{"workspace": request.get("workspace"), "tab": request.get("tab")} for request in mine]}
+            )
+        )
+
+    @tornado.web.authenticated
+    def post(self):
+        """Record a switch request for every window, or for the window the body names."""
+        request = self.get_json_body()
+        fields = ("workspace", "tab", "window")
+        if (
+            not isinstance(request, dict)
+            or not any(isinstance(request.get(key), str) and request[key] for key in ("workspace", "tab"))
+            or not all(isinstance(request[key], str) and request[key] for key in fields if key in request)
+        ):
+            raise tornado.web.HTTPError(400, "body: workspace or tab, and a window when given, as non-empty strings")
+        if "workspace" in request and not saved(records_path(self.serverapp), request["workspace"]):
+            raise tornado.web.HTTPError(404, f"unknown workspace {request['workspace']}")
+        live = reports(self.serverapp, self.log)[1]
+        if "window" in request and request["window"] not in live:
+            raise tornado.web.HTTPError(404, f"unknown window {request['window']}")
+        path, requests, _ = switch_requests(self.serverapp, self.log)
+        requests[uuid.uuid4().hex] = {
+            **{key: request[key] for key in fields if key in request},
+            # a broadcast reaches the windows live now; one opened later must not replay it
+            "targets": [request["window"]] if "window" in request else list(live),
+            "created": time(),
+            "delivered": [],
+        }
+        save_records(path, requests)
         self.set_status(204)
         self.finish()
 
@@ -246,6 +363,7 @@ def setup_route_handlers(web_app):
         (route("meta"), MetaHandler),
         (route("meta", "([^/]+)"), MetaRecordHandler),
         (route("presence"), PresenceHandler),
+        (route("switch"), SwitchHandler),
     ]
 
     web_app.add_handlers(host_pattern, handlers)

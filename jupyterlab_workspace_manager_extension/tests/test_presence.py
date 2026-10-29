@@ -14,6 +14,11 @@ async def report(jp_fetch, window, workspace):
     assert response.code == 204
 
 
+async def claim(jp_fetch, window, workspace):
+    body = json.dumps({"window": window, "workspace": workspace, "claim": True})
+    return await jp_fetch(NAMESPACE, "presence", method="POST", body=body)
+
+
 async def open_elsewhere(jp_fetch, window):
     response = await jp_fetch(NAMESPACE, "presence", params={"window": window})
     return json.loads(response.body)["workspaces"]
@@ -44,7 +49,61 @@ async def test_report_replaces_the_previous_one(jp_fetch, clock):
     assert await open_elsewhere(jp_fetch, "client-2") == ["Y"]
 
 
-@pytest.mark.parametrize("body", ["[]", '{"window": "w"}', '{"window": "", "workspace": "X"}'])
+async def test_a_claim_stores_the_report(jp_fetch):
+    """ACC-CLI-219: a claim no other live window contests stores the report as a plain report does."""
+    response = await claim(jp_fetch, "client-1", "X")
+
+    assert response.code == 204
+    assert await open_elsewhere(jp_fetch, "client-2") == ["X"]
+
+
+async def test_a_claim_for_a_workspace_another_window_shows_is_refused(jp_fetch):
+    """ACC-CLI-219: a claim for a workspace a live window reports answers 409 and stores nothing."""
+    await report(jp_fetch, "client-2", "X")
+
+    with pytest.raises(tornado.httpclient.HTTPClientError) as refused:
+        await claim(jp_fetch, "client-1", "X")
+    assert refused.value.code == 409
+
+    response = await jp_fetch(NAMESPACE, "presence", params={"window": "client-3"})
+    assert json.loads(response.body)["windows"] == [{"window": "client-2", "workspace": "X"}]
+
+
+async def test_a_plain_report_cannot_erase_a_claim(jp_fetch):
+    """DEF-SERVER-55-CLAIM-RACE: a report that crosses a claim keeps the claim, so a second window is refused."""
+    await claim(jp_fetch, "client-1", "X")
+
+    await report(jp_fetch, "client-1", "V")
+
+    assert await open_elsewhere(jp_fetch, "client-2") == ["X"]
+    with pytest.raises(tornado.httpclient.HTTPClientError) as refused:
+        await claim(jp_fetch, "client-2", "X")
+    assert refused.value.code == 409
+
+
+async def test_a_claim_holds_its_workspace_for_five_seconds(jp_fetch, clock):
+    """DEF-SERVER-55-CLAIM-RACE-1: after its 5 s hold a claim no longer blocks a plain report, so presence follows the move."""
+    await claim(jp_fetch, "client-1", "X")
+    clock[0] += 6
+
+    await report(jp_fetch, "client-1", "V")
+
+    assert await open_elsewhere(jp_fetch, "client-2") == ["V"]
+
+
+async def test_a_plain_report_stores_a_shared_workspace(jp_fetch):
+    """ACC-CLI-219: the routine report stays unconditional; two windows may report one workspace."""
+    await report(jp_fetch, "client-1", "X")
+    await report(jp_fetch, "client-2", "X")
+
+    response = await jp_fetch(NAMESPACE, "presence", params={"window": "client-3"})
+    assert json.loads(response.body)["workspaces"] == ["X"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["[]", '{"window": "w"}', '{"window": "", "workspace": "X"}', '{"window": "w", "workspace": "X", "claim": "yes"}'],
+)
 async def test_bad_report_refused(jp_fetch, body):
     with pytest.raises(tornado.httpclient.HTTPClientError) as refused:
         await jp_fetch(NAMESPACE, "presence", method="POST", body=body)

@@ -921,13 +921,12 @@ test('ACC-ACCORD-25-CLOSE-CURRENT: Close all tabs of this window closes every ma
   const current = fresh('closecur');
   let terminal = '';
   const open = (path: string) =>
-    page.evaluate(
-      path =>
-        (window as any).jupyterapp.commands.execute('docmanager:open', {
-          path
-        }),
-      path
-    );
+    page.evaluate(async path => {
+      // the widget the command returns is not sent back: Playwright cannot serialize it
+      await (window as any).jupyterapp.commands.execute('docmanager:open', {
+        path
+      });
+    }, path);
   const widgets = () =>
     page.evaluate(() =>
       Array.from((window as any).jupyterapp.shell.widgets('main')).map(
