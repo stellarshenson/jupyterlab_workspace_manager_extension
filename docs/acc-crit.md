@@ -1883,6 +1883,22 @@ the jupyterlab-workspace CLI that manages workspaces, terminals and kernels of a
   - log: 2026-10-25T02:44:51Z @kj edited test "pytest test_cli.py: test_the_skill_exists_with_its_frontmatter_and_stays_short proves the file, its name, its description and the 30-line limit; test_the_skill_ships_through_the_wheel_shared_data_table proves the shared-data mapping" -> "pytest test_cli.py: test_the_skill_file_exists_and_ships asserts the skill file, its name and description frontmatter, the 30-line limit and the pyproject shared-data mapping"; reason: verify r1 of the CLI build: the hint named test_meta.py
   - log: 2026-10-25T02:44:54Z @kj edited test "pytest test_cli.py: test_the_skill_file_exists_and_ships asserts the skill file, its name and description frontmatter, the 30-line limit and the pyproject shared-data mapping" -> "pytest test_cli.py: test_the_skill_exists_with_its_frontmatter_and_stays_short and test_the_skill_ships_through_the_wheel_shared_data_table assert the file, its name and description, the 30-line limit and the pyproject shared-data mapping"; reason: verify r1: the hint named a function that does not exist
   - log: 2026-10-25T02:50:34Z @kj closed; reason: CLI build and verify, 2026-10-25
+- [ ] `ACC-CLI-217-KERNEL-USAGE` **CLI reports kernel memory and CPU** - MEDIUM; kernels list shows each kernel's resident memory and CPU percent beside its name and session, and --json carries memory and cpu as numbers, null where the process cannot be read; the values are the ones the extension's own kernels route gives the panel
+  - test: extend the CLI row-builder unit test with a stubbed route, one kernel readable and one not
+  - test-tags: UNIT
+  - log: 2026-10-28T23:59:42Z @kj added
+- [ ] `ACC-CLI-218-TABS-LIST` **CLI lists the tabs of a workspace** - MEDIUM; tabs list NAME prints one line per tab in the order the workspace file saves them, with the document path the tab shows, and --json prints the same rows; a workspace with no tabs prints no tabs and exits 0
+  - test: unit test over a workspace-file fixture holding three tabs, and one empty workspace
+  - test-tags: UNIT
+  - log: 2026-10-28T23:59:42Z @kj added
+- [ ] `ACC-CLI-219-SWITCH-WORKSPACE` **CLI switches an open window to a workspace** - HIGH; workspaces switch NAME makes every window showing the panel switch to that workspace within 2 seconds, --window ID restricts it to that window, and an unknown name is refused with nothing sent; workspaces open keeps printing the URL
+  - test: Galata test runs the CLI inside the lab, then asserts the window switched to the named workspace
+  - test-tags: FUNCTIONAL, E2E
+  - log: 2026-10-28T23:59:43Z @kj added
+- [ ] `ACC-CLI-220-SWITCH-TAB` **CLI activates a tab in an open window** - MEDIUM; tabs activate PATH activates the tab showing that path in the window's current workspace, --workspace NAME switches first, and a path with no such tab is refused with the open paths named
+  - test: Galata test runs the CLI inside the lab, then asserts which tab is active
+  - test-tags: FUNCTIONAL, E2E
+  - log: 2026-10-28T23:59:43Z @kj added
 
 ## Documentation `DOCS`
 
@@ -1908,11 +1924,14 @@ the README and the images it shows
   - log: 2026-10-28T10:06:20Z @kj reopened: reopened for the Star Colonel's 2026-10-28 design-system decisions DQ-02, DQ-03 and DQ-17; closes again when stage B proves it; evidence retired: docs/images/panel-full-window.png retaken 2026-10-26 in the Galata rig after the section layout change, 2880x1800, 279356 bytes, viewed: WORKBENCH title, WORKSPACES (3) open with three cards and model-training open, and KERNELS (2), TERMINALS (1) and LANGUAGE SERVERS (2) as flat full-width titles with Shut down all
   - log: 2026-10-28T14:44:17Z @kj stage B batch 3 left it open: the screenshot is retaken after batches 4 and 5 land
   - log: 2026-10-28T21:05:49Z @kj closed
+  - log: 2026-10-29T00:31:34Z @kj README figure retaken from the installed 0.8.24 build, 2880x1800, 254595 bytes; the KERNELS, TERMINALS and LANGUAGE SERVERS bands now show the broom
 - [x] `ACC-DOCS-189-IMAGE-PATH` **README image is a relative path** - LOW; the README figure points at docs/images/panel-full-window.png relative to the repository root, and no raw.githubusercontent URL names an image
-  - evidence: README.md line 13 is ![The workspace panel](docs/images/panel-full-window.png); readme.spec.ts ACC-DOCS-189-IMAGE-PATH asserts the relative target, no raw.githubusercontent image and the PNG signature; make test exit 0
+  - evidence: README.md line 13 has an image whose target is docs/images/panel-full-window.png, a relative path; readme.spec.ts ACC-DOCS-189-IMAGE-PATH asserts the relative target, no raw.githubusercontent image and the PNG signature; make test exit 0
   - test: src/__tests__/readme.spec.ts: reads README.md, asserts the single image target is the relative path and the file exists
   - test-tags: UNIT
   - log: 2026-10-25T07:13:06Z @kj added
   - log: 2026-10-25T07:18:41Z @kj closed
   - log: 2026-10-25T07:27:54Z @kj PyPI shows no figure for a relative path; ACC-ACCORD-187 and this criterion keep the relative path at the Star Colonel's instruction
+  - log: 2026-10-28T22:33:25Z @kj edited evidence "README.md line 13 is a Markdown image at docs/images/panel-full-window.png; readme.spec.ts ACC-DOCS-189-IMAGE-PATH asserts the relative target, no raw.githubusercontent image and the PNG signature; make test exit 0" -> "README.md line 13 names `docs/images/panel-full-window.png` as the image target with no Markdown image syntax; readme.spec.ts ACC-DOCS-189-IMAGE-PATH asserts the relative target, no raw.githubusercontent image and the PNG signature; make test exit 0"
+  - log: 2026-10-29T00:09:16Z @kj edited evidence "README.md line 13 names `docs/images/panel-full-window.png` as the image target with no Markdown image syntax; readme.spec.ts ACC-DOCS-189-IMAGE-PATH asserts the relative target, no raw.githubusercontent image and the PNG signature; make test exit 0" -> "README.md line 13 has an image whose target is docs/images/panel-full-window.png, a relative path; readme.spec.ts ACC-DOCS-189-IMAGE-PATH asserts the relative target, no raw.githubusercontent image and the PNG signature; make test exit 0"
 

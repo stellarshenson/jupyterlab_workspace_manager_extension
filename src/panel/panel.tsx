@@ -11,6 +11,7 @@ import {
   addIcon,
   caretDownIcon,
   caretRightIcon,
+  cleaningIcon,
   closeIcon,
   ellipsesIcon,
   fileIcon,
@@ -706,18 +707,16 @@ export class WorkspacePanel
           </span>
           <span className="jp-WorkspaceManager-sectionLabel">{label}</span>
           <span className="jp-WorkspaceManager-sectionCount">({n})</span>
-          {shutdown && (
-            <button
-              className="jp-WorkspaceManager-button"
-              disabled={!n}
-              onClick={e => {
-                e.stopPropagation();
-                void this._shutDownSection(shutdown);
-              }}
-            >
-              Shut down all
-            </button>
-          )}
+          {shutdown &&
+            iconButton(
+              cleaningIcon,
+              'Shut down all',
+              () => void this._shutDownSection(shutdown),
+              !n,
+              undefined,
+              undefined,
+              true // pointerFocus
+            )}
         </div>
         {open && (
           <div className="jp-WorkspaceManager-sectionBody">
@@ -1559,7 +1558,8 @@ function iconButton(
   onClick: (e: React.MouseEvent) => void,
   disabled = false,
   expanded?: boolean,
-  pressed?: boolean
+  pressed?: boolean,
+  pointerFocus = false
 ): React.ReactElement {
   return (
     <button
@@ -1569,8 +1569,9 @@ function iconButton(
       aria-expanded={expanded}
       aria-pressed={pressed}
       disabled={disabled}
-      // a click leaves the focus where it was, so a row's shutdown button hides when the pointer leaves
-      onMouseDown={e => e.preventDefault()}
+      // a click leaves the focus where it was, so a row's shutdown button hides when the pointer leaves;
+      // a button that opens a dialog keeps the native pointer focus, so the dialog's default button gets no rim (DQ-19)
+      onMouseDown={pointerFocus ? undefined : e => e.preventDefault()}
       onClick={e => {
         e.stopPropagation();
         onClick(e);

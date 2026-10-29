@@ -1,5 +1,6 @@
 [build-system]
-requires = ["hatchling>=1.5.0", "hatch-nodejs-version>=0.3.2", "jupyter-builder>=1.2.0,<2"]
+# The release check's mock PyPI rejects Metadata-Version 2.5 with HTTP 400, so hatchling stays below 1.28.
+requires = ["hatchling>=1.5.0,<1.28", "hatch-nodejs-version>=0.3.2", "jupyter-builder>=1.2.0,<2"]
 build-backend = "hatchling.build"
 
 [project]

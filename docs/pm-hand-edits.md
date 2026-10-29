@@ -1,0 +1,1 @@
+- 2026-10-28T22:36:40Z @kj acc-crit.md 380ab485 sha256:59ac8d9da78d08f69068b42d9c7131ae1ab188969ad8ed5634370f2af35a8954: the edit log quotes the old evidence with Markdown image syntax, which the link checker resolves to the missing docs/docs/images/panel-full-window.png, so the quoted old value is reworded without image syntax

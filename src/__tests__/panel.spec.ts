@@ -335,10 +335,10 @@ const openSection = (panel: Widget, key: string) => {
   }
   return sectionBody(panel, key);
 };
-/** The Shut down all button of a section's header. */
+/** The Shut down all button of a section's header: the icon button named by its aria-label. */
 const shutDownAll = (panel: Widget, key: string) =>
   Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
-    b => b.textContent === 'Shut down all'
+    b => b.getAttribute('aria-label') === 'Shut down all'
   )!;
 const refreshButton = (panel: Widget) =>
   $(panel, 'button[aria-label="Refresh"]') as HTMLButtonElement;

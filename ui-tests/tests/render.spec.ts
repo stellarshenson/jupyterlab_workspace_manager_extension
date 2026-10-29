@@ -853,7 +853,7 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
   }
 });
 
-test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled Shut down all is a surface button: layout colour 1, a border colour 1 border, text colour 1, 20 px tall in a band as tall as the WORKSPACES band; a disabled one keeps that look at opacity 0.4', async ({
+test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled Shut down all is a 22 px icon button carrying the broom glyph in inverse layout colour 3: no background, no border, a 14 px glyph, a pointer, in a band as tall as the WORKSPACES band; hovering one paints the glyph in UI font colour 1; a disabled one keeps that look at opacity 0.4', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -866,28 +866,66 @@ test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled Shut d
         exact: true
       });
     await expect(button('terminals')).toBeEnabled();
+    await expect(button('terminals')).toHaveAttribute(
+      'aria-label',
+      'Shut down all'
+    );
+    await expect(button('terminals')).toHaveAttribute('title', 'Shut down all');
     await page.mouse.move(0, 0);
-    const look = async (b: Locator) => [
-      await rgba(page, await style(b, 'backgroundColor')),
-      await rgba(page, await style(b, 'borderTopColor')),
-      await style(b, 'borderTopWidth'),
-      await rgba(page, await style(b, 'color'))
-    ];
-    const surface = [
-      await rgba(page, 'var(--jp-layout-color1)'),
-      await rgba(page, 'var(--jp-border-color1)'),
-      '1px',
+    const look = async (b: Locator) => ({
+      // the band shows through: no background, no border
+      background: await rgba(page, await style(b, 'backgroundColor')),
+      border: await style(b, 'borderTopWidth'),
+      glyph: await Promise.all(
+        (await glyph(b.locator('svg'))).map(c => rgba(page, c))
+      ),
+      box: [
+        Math.round((await b.boundingBox())!.width),
+        Math.round((await b.boundingBox())!.height)
+      ],
+      glyphBox: Math.round((await b.locator('svg').boundingBox())!.width),
+      cursor: await style(b, 'cursor')
+    });
+    const iconButton = {
+      background: [0, 0, 0, 0],
+      border: '0px',
+      glyph: [await rgba(page, 'var(--jp-inverse-layout-color3)')],
+      box: [22, 22],
+      glyphBox: 14,
+      cursor: 'pointer'
+    };
+    expect(await look(button('terminals'))).toEqual(iconButton);
+    // the design system's Hover pair: the glyph takes UI font colour 1
+    await button('terminals').hover();
+    expect((await look(button('terminals'))).glyph).toEqual([
       await rgba(page, 'var(--jp-ui-font-color1)')
-    ];
-    expect(await look(button('terminals'))).toEqual(surface);
-    // the design system's small button size; the band keeps the height of a band without a button
-    expect((await button('terminals').boundingBox())!.height).toBe(20);
+    ]);
+    await page.mouse.move(0, 0);
+    // the band keeps the height of a band without a button
     expect((await sectionHeader(page, 'terminals').boundingBox())!.height).toBe(
       (await sectionHeader(page, 'workspaces').boundingBox())!.height
     );
+    // keyboard focus shows the design system's rim 1 px outside (DQ-19)
+    await sectionHeader(page, 'terminals').focus();
+    await page.keyboard.press('Tab');
+    await expect(button('terminals')).toBeFocused();
+    expect([
+      await style(button('terminals'), 'outlineStyle'),
+      await style(button('terminals'), 'outlineWidth'),
+      await rgba(page, await style(button('terminals'), 'outlineColor')),
+      await style(button('terminals'), 'outlineOffset')
+    ]).toEqual([
+      'solid',
+      '1px',
+      await rgba(page, 'var(--jp-brand-color1)'),
+      '1px'
+    ]);
     // no language server runs in this page
     await expect(button('servers')).toBeDisabled();
-    expect(await look(button('servers'))).toEqual(surface);
+    expect(await look(button('servers'))).toEqual({
+      ...iconButton,
+      cursor: 'default'
+    });
     expect(await style(button('servers'), 'opacity')).toBe('0.4');
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
@@ -907,7 +945,7 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
         const label = h.querySelector('.jp-WorkspaceManager-sectionLabel')!;
         return {
           otherButtons: Array.from(h.querySelectorAll('button'))
-            .filter(b => b.textContent?.trim() !== 'Shut down all')
+            .filter(b => b.getAttribute('aria-label') !== 'Shut down all')
             .map(b => b.getAttribute('aria-label') ?? b.className),
           caretTag: caret.tagName.toLowerCase(),
           caretHidden: caret.getAttribute('aria-hidden'),

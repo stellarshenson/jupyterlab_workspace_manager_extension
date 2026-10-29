@@ -2,6 +2,23 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.24] - 2026-10-29
+
+### Added
+
+- The Shut down all control of the KERNELS, TERMINALS and LANGUAGE SERVERS bands is the design system's broom icon button, with the accessible name Shut down all and the disabled state at 0.4 opacity
+
+### Changed
+
+- The section band keeps its height with the 22 px icon button, whose 14 px glyph takes its size from the same rule as every other header glyph
+- The design page marks its former surface-button sentence as superseded by decision DQ-20
+
+### Fixed
+
+- The broom shows its hover background with its glyph, where only the background changed before
+- The stylesheet rule order that made the lint job fail, and the tracker evidence line that made the link check fail
+- The wheel declares Metadata-Version 2.4 again, which the release check's package server accepts
+
 ## [0.8.23] - 2026-10-28
 
 ### Added

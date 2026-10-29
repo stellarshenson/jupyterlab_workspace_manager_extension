@@ -258,6 +258,15 @@ the sidebar panel, its header and its loads
   - root-cause: 2026-10-28T20:13:25Z @kj the header's second line was gated on the card being open and not hidden, though a hidden card is never current
   - log: 2026-10-28T20:13:25Z @kj added
   - log: 2026-10-28T20:13:31Z @kj closed: fixed: the second header line shows while the card is open, hidden or not; Galata case extended
+- [x] `DEF-PANEL-39-HOVER-GLYPH` **Shut down all has no hover feedback** - MINOR; on the KERNELS, TERMINALS and LANGUAGE SERVERS bands the Shut down all broom keeps its rest glyph --jp-inverse-layout-color3 while hovered, so the design system's Hover pair has only its --jp-layout-color3 background half; fix: two :hover:not(:disabled, .jp-mod-active) rules map the jp-icon3 fill and stroke to --jp-ui-font-color1; `style/base.css`
+  - evidence: Galata render.spec.ts SEC-05 failed on the pre-change bundle with the hover glyph [97,97,97,255] where --jp-ui-font-color1 [0,0,0,222] was expected (tmp/workflows/sections/logs/galata-d1-red.log) and passed on the rebuilt rig: render, sections, panel and content specs 109 of 109, --retries=0, 8.7m (tmp/workflows/sections/logs/galata-d1.log); make test exit 0, Jest 84 of 84, pytest 101, auth gate (tmp/workflows/sections/logs/make-test-d1.log)
+  - related: ACC-PANEL-157-OTHERS-ACTIONS
+  - repro: one terminal running, panel open: hover the TERMINALS Shut down all and read the glyph fill or stroke: rgb(97, 97, 97) in JupyterLab Light instead of --jp-ui-font-color1
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-29T00:09:17Z @kj the icon button's rest glyph is the theme's .jp-icon3 colour, the hover rule changed only the background, and no rule changed the glyph on hover
+  - log: 2026-10-28T23:21:43Z @kj added
+  - log: 2026-10-28T23:26:47Z @kj closed
+  - log: 2026-10-29T00:09:17Z @kj root-cause updated "2026-10-28T23:21:43Z @kj the base.css iconButton rules mapped the rest glyph --jp-inverse-layout-color3 and the --jp-layout-color3 hover background, but no rule changed the glyph on hover" -> "the icon button's rest glyph is the theme's .jp-icon3 colour, the hover rule changed only the background, and no rule changed the glyph on hover"
 
 ## Functional tests `GALATA`
 
@@ -334,4 +343,34 @@ routes of the server extension
   - root-cause: 2026-10-24T16:05:31Z @kj the records file is written into a folder that may not exist yet, and GET prunes every record whose workspace file is missing
   - log: 2026-10-24T16:05:31Z @kj added; reason: deferred by round 3 of the implementation review; filed on the Star Colonel's word, 2026-10-24
   - log: 2026-10-24T23:10:13Z @kj closed; reason: deferred-items campaign final verification, 2026-10-25
+
+## Release gates `GATES`
+
+CI gates: the docs link check and the release check wheel metadata
+
+- log: 2026-10-28T22:33:28Z @kj category created
+
+- [x] `DEF-GATES-37-EVIDENCE-IMAGE` **acc-crit evidence line fails the link check** - MEDIUM; Build >> Check Links fails on docs/acc-crit.md: the evidence of ACC-DOCS-189-IMAGE-PATH holds an image link whose target `docs/images/panel-full-window.png` the checker resolves against docs/, so it looks for docs/docs/images/panel-full-window.png, which does not exist; fix: the path in backticks with no image syntax; `docs/acc-crit.md`
+  - evidence: grep '](' on the ACC-DOCS-189-IMAGE-PATH entry finds nothing; mistune parses the entry with 0 image or link nodes; pm-tools check docs/ --strict 0 errors, 0 warnings
+  - test-tags: MANUAL
+  - repro: run the Build >> Check Links workflow on main; the link check fails on docs/acc-crit.md with a missing docs/docs/images/panel-full-window.png
+  - root-cause: 2026-10-28T22:33:28Z @kj the evidence line embeds an image link; the link checker resolves a relative Markdown target against the file directory docs/, so the target docs/images/panel-full-window.png becomes docs/docs/images/panel-full-window.png
+  - log: 2026-10-28T22:33:28Z @kj added
+  - log: 2026-10-28T22:34:49Z @kj edited test-tags added "MANUAL"
+  - log: 2026-10-28T22:36:57Z @kj closed: the evidence line carries the path in backticks; no image syntax remains anywhere in the entry
+- [x] `DEF-GATES-38-WHEEL-METADATA` **Release check rejects the wheel Metadata-Version 2.5** - MEDIUM; Check Release >> publish-assets fails with HTTP 400 from the job pypiserver 2.3.2; the wheel carries Metadata-Version: 2.5, written by hatchling 1.28 and later; fix: cap hatchling below 1.28 in [build-system].requires; `pyproject.toml`
+  - evidence: make build exit 0 with hatchling==1.27.0; the wheel jupyterlab_workspace_manager_extension-0.8.23-py3-none-any.whl METADATA reads Metadata-Version: 2.4; make test exit 0, Jest 84/84 and pytest 101 passed
+  - test-tags: MANUAL
+  - repro: run the Check Release >> publish-assets workflow on main; pypiserver 2.3.2 answers HTTP 400 to the wheel upload
+  - root-cause: 2026-10-28T22:33:30Z @kj hatchling 1.28 and later write Metadata-Version: 2.5; the release check pypiserver 2.3.2 rejects that version with HTTP 400; hatchling 1.27.0 writes 2.4
+  - log: 2026-10-28T22:33:30Z @kj added
+  - log: 2026-10-28T22:34:49Z @kj edited test-tags added "MANUAL"
+  - log: 2026-10-28T22:36:57Z @kj closed: hatchling capped below 1.28; the rebuilt wheel carries Metadata-Version 2.4
+- [x] `DEF-GATES-40-STYLELINT-ORDER` **stylelint fails on the DQ-20 band rules** - MEDIUM; CI Lint exits 2: stylelint reports no-descending-specificity on .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-iconButton; fix: the DQ-20 rules sit above the hover rule and the 14 px glyph size has one authority; `style/base.css`
+  - evidence: jlpm run lint:check exit 0, 0 errors, 42 warnings; stylelint reports no no-descending-specificity after the DQ-20 block moved above the hover rule; jlpm run prettier left style/base.css unchanged (tmp/workflows/sections/logs/lint-close-d.log)
+  - repro: run jlpm run lint:check on the 2026-10-29 tree: stylelint exits 2 with no-descending-specificity on .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-iconButton
+  - test-tags: MANUAL
+  - root-cause: 2026-10-29T00:09:13Z @kj the DQ-20 band rules were added after the hover rule, so the lower-specificity selector follows the higher one and no-descending-specificity fails
+  - log: 2026-10-29T00:09:13Z @kj added
+  - log: 2026-10-29T00:09:33Z @kj closed: fixed: the DQ-20 block moved above the hover rule; the 14 px glyph size has one authority
 

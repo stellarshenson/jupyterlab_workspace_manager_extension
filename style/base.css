@@ -119,7 +119,8 @@
 
 .jp-WorkspaceManager-header .jp-WorkspaceManager-headerButton svg,
 .jp-WorkspaceManager-header .jp-ToolbarButtonComponent svg,
-.jp-WorkspaceManager-cardHeader .jp-WorkspaceManager-iconButton svg {
+.jp-WorkspaceManager-cardHeader .jp-WorkspaceManager-iconButton svg,
+.jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-iconButton svg {
   width: 14px;
   height: 14px;
 }
@@ -200,7 +201,7 @@
   width: 14px;
 }
 
-/* the label keeps its whole text; a Shut down all too wide for the line wraps below it */
+/* the label keeps its whole text; the Shut down all button wraps below it when the band is too narrow */
 .jp-WorkspaceManager-sectionLabel {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -467,6 +468,14 @@
   opacity: 0.4;
 }
 
+/*
+ * The Shut down all of a section header is the panel's 22 px icon button at the band's end (DQ-20): a 14 px
+ * glyph, its -4 px margins keeping the band at its own height
+ */
+.jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-iconButton {
+  margin: -4px 0 -4px auto;
+}
+
 .jp-WorkspaceManager-iconButton:hover:not(:disabled),
 .jp-WorkspaceManager-iconButton.jp-mod-active {
   background: var(--jp-layout-color3);
@@ -484,6 +493,17 @@
 
 .jp-WorkspaceManager-iconButton.jp-mod-active .jp-icon3[stroke] {
   stroke: var(--jp-brand-color1);
+}
+
+/* the design system's Hover pair: the glyph takes --jp-ui-font-color1 */
+.jp-WorkspaceManager-iconButton:hover:not(:disabled, .jp-mod-active)
+  .jp-icon3[fill] {
+  fill: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-iconButton:hover:not(:disabled, .jp-mod-active)
+  .jp-icon3[stroke] {
+  stroke: var(--jp-ui-font-color1);
 }
 
 /* Open workspace, Close all tabs, the eye and ... keep their place on every card (DQ-12) */
@@ -610,42 +630,6 @@
   border: var(--jp-border-width) solid
     color-mix(in srgb, var(--jp-error-color1) 35%, transparent);
   background: color-mix(in srgb, var(--jp-error-color1) 15%, transparent);
-}
-
-.jp-WorkspaceManager-button {
-  height: 26px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 2px;
-  background: var(--jp-layout-color2);
-  color: var(--jp-ui-font-color0);
-  font-family: inherit;
-  font-size: var(--jp-ui-font-size1);
-  cursor: pointer;
-}
-
-/*
- * The Shut down all of a section header: a surface button on the band (layout colour 1, a border colour 1
- * border) at the design system's small size of 20 px; its -4 px margins keep the band at its own height
- */
-.jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-button {
-  flex: 0 0 auto;
-  height: 20px;
-  margin: -4px 0 -4px auto;
-  padding: 0 8px;
-  border: var(--jp-border-width) solid var(--jp-border-color1);
-  background: var(--jp-layout-color1);
-  color: var(--jp-ui-font-color1);
-}
-
-/* a disabled button keeps its place and its look at the design system's disabled opacity */
-.jp-WorkspaceManager-button:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.jp-WorkspaceManager-button:hover:not(:disabled) {
-  background: var(--jp-layout-color3);
 }
 
 /* Menus: swatches as the colourful tab extension draws them, filled with the workspace colour; the red bin */
