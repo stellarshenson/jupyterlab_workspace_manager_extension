@@ -6,6 +6,7 @@ import type {
   IRunningSessions,
   IRunningSessionSidebar
 } from '@jupyterlab/running';
+import type { TranslationBundle } from '@jupyterlab/translation';
 import type { ISectionEntry } from '@jupyterlab/apputils';
 import {
   addIcon,
@@ -168,6 +169,8 @@ export namespace WorkspacePanel {
     /** the id of this browser window for presence */
     window: string;
     managers?: IRunningSessionManagers | null;
+    /** the translation bundle of this extension */
+    trans: TranslationBundle;
   }
 }
 
@@ -191,6 +194,7 @@ export class WorkspacePanel
     this._current = options.current;
     this._window = options.window;
     this._managers = options.managers ?? null;
+    this._translation = options.trans;
     this.addClass('jp-WorkspaceManager');
     this.content.addClass('jp-WorkspaceManager-content');
     this.toolbar.addClass('jp-WorkspaceManager-header');
@@ -199,7 +203,7 @@ export class WorkspacePanel
     title.addClass('jp-WorkspaceManager-title');
     const label = document.createElement('span');
     label.className = 'jp-WorkspaceManager-titleLabel';
-    label.textContent = 'WORKBENCH';
+    label.textContent = this._translation.__('WORKBENCH');
     title.node.appendChild(label);
     this.toolbar.addItem('title', title);
     this.toolbar.addItem('spacer', Toolbar.createSpacerItem());
@@ -303,7 +307,10 @@ export class WorkspacePanel
   async newWorkspace(): Promise<void> {
     try {
       const store = workspaces(this._settings);
-      const form = await newWorkspaceDialog((await store.list()).ids);
+      const form = await newWorkspaceDialog(
+        (await store.list()).ids,
+        this._translation
+      );
       if (!form) {
         return;
       }
@@ -712,17 +719,26 @@ export class WorkspacePanel
               <>
                 {cards.map(card => this._renderCard(card, filtering, now))}
                 {model && !filtering && !cards.length && (
-                  <div className="jp-WorkspaceManager-empty">No workspaces</div>
+                  <div className="jp-WorkspaceManager-empty">
+                    {this._translation.__('No workspaces')}
+                  </div>
                 )}
                 {filtering && !cards.length && (
                   <div className="jp-WorkspaceManager-empty">
-                    Nothing matches
+                    {this._translation.__('Nothing matches')}
                   </div>
                 )}
                 {filtering && cards.length > 0 && unmatched > 0 && (
                   <div className="jp-WorkspaceManager-note">
-                    {unmatched} {unmatched === 1 ? 'workspace' : 'workspaces'}{' '}
-                    without a match {unmatched === 1 ? 'is' : 'are'} not shown
+                    {unmatched}{' '}
+                    {unmatched === 1
+                      ? this._translation.__('workspace')
+                      : this._translation.__('workspaces')}{' '}
+                    {this._translation.__('without a match')}{' '}
+                    {unmatched === 1
+                      ? this._translation.__('is')
+                      : this._translation.__('are')}{' '}
+                    {this._translation.__('not shown')}
                   </div>
                 )}
                 {hidden > 0 && (
@@ -731,7 +747,10 @@ export class WorkspacePanel
                       tag="span"
                       className="jp-WorkspaceManager-noteIcon"
                     />
-                    {hidden} hidden {hidden === 1 ? 'workspace' : 'workspaces'}
+                    {hidden} {this._translation.__('hidden')}{' '}
+                    {hidden === 1
+                      ? this._translation.__('workspace')
+                      : this._translation.__('workspaces')}
                   </div>
                 )}
               </>,
@@ -801,8 +820,10 @@ export class WorkspacePanel
         />
         <input
           className="jp-WorkspaceManager-filterInput"
-          aria-label="Filter workspaces, tabs, terminals and kernels"
-          placeholder="Filter"
+          aria-label={this._translation.__(
+            'Filter workspaces, tabs, terminals and kernels'
+          )}
+          placeholder={this._translation.__('Filter')}
           spellCheck={false}
           value={this._query}
           onChange={e => this._setQuery(e.target.value)}
@@ -810,8 +831,8 @@ export class WorkspacePanel
         {this._query && (
           <button
             className="jp-WorkspaceManager-iconButton"
-            title="Clear filter"
-            aria-label="Clear filter"
+            title={this._translation.__('Clear filter')}
+            aria-label={this._translation.__('Clear filter')}
             onClick={e => {
               // read the field first: the render below removes this button
               const input = e.currentTarget
@@ -894,7 +915,7 @@ export class WorkspacePanel
           <div className="jp-WorkspaceManager-sectionBody">
             {shutdown && shutdown !== 'workspaces' && !n ? (
               <div className="jp-WorkspaceManager-empty">
-                No {label.toLowerCase()}
+                {this._translation.__('No')} {label.toLowerCase()}
               </div>
             ) : (
               body
@@ -926,7 +947,7 @@ export class WorkspacePanel
         ? `jp-mod-drop${this._dropLine.after ? 'After' : 'Before'}`
         : ''
     ];
-    const when = age(section.lastModified, now);
+    const when = age(section.lastModified, now, this._translation);
     // the header of another workspace's card switches to it; the triangle opens the card
     const switches = !section.current;
     const click = () =>
@@ -970,7 +991,9 @@ export class WorkspacePanel
             {caret(open, () => this._toggle(key))}
             <span className="jp-WorkspaceManager-name">{name}</span>
             {section.hidden ? (
-              <span className="jp-WorkspaceManager-hiddenWord">hidden</span>
+              <span className="jp-WorkspaceManager-hiddenWord">
+                {this._translation.__('hidden')}
+              </span>
             ) : (
               <span className="jp-WorkspaceManager-age">{when.label}</span>
             )}
@@ -1011,7 +1034,7 @@ export class WorkspacePanel
               </span>
               {filtering ? (
                 <span className="jp-WorkspaceManager-counts">
-                  ({card.shown} of {card.total})
+                  ({card.shown} {this._translation.__('of')} {card.total})
                 </span>
               ) : (
                 <span className="jp-WorkspaceManager-counts">
@@ -1045,7 +1068,7 @@ export class WorkspacePanel
               )}
             {card.total === 0 && (
               <div className="jp-WorkspaceManager-empty">
-                No tabs, terminals or kernels
+                {this._translation.__('No tabs, terminals or kernels')}
               </div>
             )}
           </div>
@@ -1101,7 +1124,7 @@ export class WorkspacePanel
       open: () => this._openRow(section, tab.key),
       menu: [
         {
-          label: 'Close tab',
+          label: this._translation.__('Close tab'),
           icon: closeIcon,
           execute: () => void this._closeTab(section, tab.key)
         }
@@ -1117,7 +1140,7 @@ export class WorkspacePanel
     /** a row of the TERMINALS section */
     listed = false
   ): React.ReactElement {
-    const when = age(t.lastActivity, now);
+    const when = age(t.lastActivity, now, this._translation);
     const key = `terminal:${t.name}`;
     return row({
       key,
@@ -1136,7 +1159,7 @@ export class WorkspacePanel
           : void this._openTerminal(t.name),
       menu: [
         {
-          label: 'Shut down terminal',
+          label: this._translation.__('Shut down terminal'),
           icon: closeIcon,
           danger: true,
           execute: () => void this._shutDownTerminal(t, section)
@@ -1163,7 +1186,7 @@ export class WorkspacePanel
       label: k.detail || k.id,
       code: !k.detail,
       state: { word: k.state ?? 'unknown', dot: k.dotClass },
-      when: age(k.lastActivity, now),
+      when: age(k.lastActivity, now, this._translation),
       // the path on a line of its own: the kernel type and the folder give way, the file name last (KERN-02)
       detail: [
         [
@@ -1196,7 +1219,7 @@ export class WorkspacePanel
       },
       menu: [
         {
-          label: 'Shut down kernel',
+          label: this._translation.__('Shut down kernel'),
           icon: closeIcon,
           danger: true,
           execute: () => void this._shutDownKernel(k, section)
@@ -1241,7 +1264,7 @@ export class WorkspacePanel
               title: languageServerTitle(item),
               child,
               shutdown: item.shutdown && {
-                label: label ?? 'Shut Down',
+                label: label ?? this._translation.__('Shut Down'),
                 icon: m.shutdownItemIcon ?? closeIcon,
                 execute: () => item.shutdown!()
               },
@@ -1331,7 +1354,7 @@ export class WorkspacePanel
     }
     // the rows the dialog shows are the delete set: a workspace created after it is never deleted
     const rows = cleanRows(model.sections, kept);
-    if (!(await cleanUpDialog(rows))) {
+    if (!(await cleanUpDialog(rows, this._translation))) {
       return;
     }
     await this._act(async () => {
@@ -1392,18 +1415,23 @@ export class WorkspacePanel
     const id = section.id;
     const shown = this._shown();
     const i = shown.findIndex(s => s.id === id);
-    const menu: Menu = workspaceMenu(section.colour, section.current, {
-      open: () => void this._openWorkspace(section),
-      openInNewTab: () => void this._openWorkspace(section, true),
-      closeAll: () => void this._closeAll(section),
-      describe: () => void this._describe(section),
-      colour: colour => void this._store(id, { colour }),
-      hide: () => void this._store(id, { hidden: true }),
-      moveUp: i > 0 ? () => void this._move(id, i - 1) : undefined,
-      moveDown:
-        i < shown.length - 1 ? () => void this._move(id, i + 1) : undefined,
-      delete: () => void this._delete(section)
-    });
+    const menu: Menu = workspaceMenu(
+      section.colour,
+      section.current,
+      {
+        open: () => void this._openWorkspace(section),
+        openInNewTab: () => void this._openWorkspace(section, true),
+        closeAll: () => void this._closeAll(section),
+        describe: () => void this._describe(section),
+        colour: colour => void this._store(id, { colour }),
+        hide: () => void this._store(id, { hidden: true }),
+        moveUp: i > 0 ? () => void this._move(id, i - 1) : undefined,
+        moveDown:
+          i < shown.length - 1 ? () => void this._move(id, i + 1) : undefined,
+        delete: () => void this._delete(section)
+      },
+      this._translation
+    );
     const rect = anchor.getBoundingClientRect();
     menu.open(rect.left, rect.bottom);
   }
@@ -1606,7 +1634,11 @@ export class WorkspacePanel
   }
 
   private async _describe(section: ISection): Promise<void> {
-    const purpose = await descriptionDialog(section.id, section.purpose);
+    const purpose = await descriptionDialog(
+      section.id,
+      section.purpose,
+      this._translation
+    );
     if (purpose !== null) {
       await this._store(section.id, { purpose: purpose.trim() });
     }
@@ -1762,6 +1794,7 @@ export class WorkspacePanel
   private _current: string;
   private _window: string;
   private _managers: IRunningSessionManagers | null;
+  private _translation: TranslationBundle;
   private _root: Root;
   private _filterButton: Widget;
   private _hiddenButton: Widget;

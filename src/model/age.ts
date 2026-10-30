@@ -1,3 +1,5 @@
+import type { TranslationBundle } from '@jupyterlab/translation';
+
 export interface IAge {
   /** now, Nm ago, Nh ago, Nd ago, Nmo ago or Ny ago; never when the time is unknown */
   label: string;
@@ -11,13 +13,17 @@ const DAY = 86400;
  * Time since `time` (ISO 8601) at `now` (ms) in the design system's labels, with
  * whole-number floors; the label now and the recent emphasis share the 60 s threshold.
  */
-export function age(time: string | undefined, now: number): IAge {
+export function age(
+  time: string | undefined,
+  now: number,
+  trans: TranslationBundle
+): IAge {
   const s = (now - Date.parse(time ?? '')) / 1000;
   if (Number.isNaN(s)) {
-    return { label: 'never', mod: '' };
+    return { label: trans.__('never'), mod: '' };
   }
   if (s < 60) {
-    return { label: 'now', mod: 'jp-mod-recentlyActive' };
+    return { label: trans.__('now'), mod: 'jp-mod-recentlyActive' };
   }
   const [n, unit] =
     s < 3600

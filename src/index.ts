@@ -9,10 +9,12 @@ import {
   IRunningSessionManagers,
   IRunningSessionSidebar
 } from '@jupyterlab/running';
+import { ITranslator, nullTranslator } from '@jupyterlab/translation';
 import { UUID } from '@lumino/coreutils';
 
 import { report } from './api';
 import { panelIcon } from './icons';
+// eslint-disable-next-line jupyter/prefer-lazy-imports -- activate builds the sidebar synchronously, so the panel class cannot wait for a later import
 import { WorkspacePanel } from './panel/panel';
 
 const PRESENCE_MS = 30000;
@@ -42,21 +44,31 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
   autoStart: true,
   provides: IRunningSessionSidebar,
   requires: [IRunningSessionManagers],
-  optional: [ILayoutRestorer, ILabShell],
+  optional: [ILayoutRestorer, ILabShell, ITranslator],
   activate: (
     app: JupyterFrontEnd,
     managers: IRunningSessionManagers,
     restorer: ILayoutRestorer | null,
-    labShell: ILabShell | null
+    labShell: ILabShell | null,
+    translator: ITranslator | null
   ): IRunningSessionSidebar => {
+    const trans = (translator ?? nullTranslator).load(
+      '@stellarshenson/jupyterlab-workspace-manager-extension'
+    );
     const current = PageConfig.getOption('workspace') || 'default';
     const id = windowId();
-    const panel = new WorkspacePanel({ app, current, window: id, managers });
+    const panel = new WorkspacePanel({
+      app,
+      current,
+      window: id,
+      managers,
+      trans
+    });
     panel.id = 'jp-running-sessions';
     panel.title.icon = panelIcon;
-    panel.title.caption = 'Workspaces, Terminals and Kernels';
+    panel.title.caption = trans.__('Workspaces, Terminals and Kernels');
     panel.node.setAttribute('role', 'region');
-    panel.node.setAttribute('aria-label', 'Workspaces section');
+    panel.node.setAttribute('aria-label', trans.__('Workspaces section'));
     if (restorer) {
       restorer.add(panel, 'running-sessions');
     }
@@ -64,7 +76,8 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
     labShell?.layoutModified.connect(() => panel.tabsChanged());
 
     app.commands.addCommand('running:show-panel', {
-      label: 'Workspaces',
+      label: trans.__('Workspaces'),
+      describedBy: { args: null },
       execute: () => app.shell.activateById(panel.id)
     });
 

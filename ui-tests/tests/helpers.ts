@@ -429,6 +429,14 @@ export const UNDER_LOAD = { timeout: 20000 };
  */
 export const HEAVY_LOAD = { timeout: 60000 };
 
+/**
+ * For a kernel's execution state after a client connects to its session:
+ * jupyter_server holds 'starting' until the kernel reports a status to the
+ * client, so the wait follows the client's first request and covers startup
+ * under CI load. A longer wait without a client never passes.
+ */
+export const KERNEL_START = { timeout: 60000 };
+
 /** The header of the panel section `name`: workspaces, kernels, terminals or servers. */
 export const sectionHeader = (page: Page, name: string): Locator =>
   page.locator(

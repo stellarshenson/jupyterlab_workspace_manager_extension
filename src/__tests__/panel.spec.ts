@@ -8,6 +8,7 @@ import {
   dismissDialog,
   waitForDialog
 } from '@jupyterlab/testutils';
+import { nullTranslator } from '@jupyterlab/translation';
 import { CommandRegistry } from '@lumino/commands';
 import { MessageLoop } from '@lumino/messaging';
 import { Signal } from '@lumino/signaling';
@@ -26,6 +27,9 @@ const settle = async () => {
 };
 
 const NS = 'jupyterlab-workspace-manager-extension';
+const trans = nullTranslator.load(
+  '@stellarshenson/jupyterlab-workspace-manager-extension'
+);
 const MARKUP = '<img src=x onerror=alert(1)>';
 const iso = (minutesAgo: number) =>
   new Date(Date.now() - minutesAgo * 60000).toISOString();
@@ -298,7 +302,8 @@ async function mount(
     app,
     current: 'default',
     window: 'w1',
-    managers: options.managers ?? null
+    managers: options.managers ?? null,
+    trans
   });
   panels.push(panel);
   Widget.attach(panel, document.body);
@@ -2445,15 +2450,20 @@ describe('panel', () => {
 
   it('ACC-ACCORD-31-DELETE: the menu stays open on the arming click; a double-click does not delete, a later click does', () => {
     const deleted = jest.fn();
-    const menu = workspaceMenu('rose', false, {
-      open: jest.fn(),
-      openInNewTab: jest.fn(),
-      closeAll: jest.fn(),
-      describe: jest.fn(),
-      colour: jest.fn(),
-      hide: jest.fn(),
-      delete: deleted
-    });
+    const menu = workspaceMenu(
+      'rose',
+      false,
+      {
+        open: jest.fn(),
+        openInNewTab: jest.fn(),
+        closeAll: jest.fn(),
+        describe: jest.fn(),
+        colour: jest.fn(),
+        hide: jest.fn(),
+        delete: deleted
+      },
+      trans
+    );
     menu.open(0, 0);
     const index = menu.items.findIndex(i => i.command === 'delete');
     const item = () => menu.contentNode.children[index] as HTMLElement;

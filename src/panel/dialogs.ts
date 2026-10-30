@@ -1,4 +1,5 @@
 import { Dialog, showDialog } from '@jupyterlab/apputils';
+import type { TranslationBundle } from '@jupyterlab/translation';
 import { Widget } from '@lumino/widgets';
 
 import { cleanSummary, type ICleanRow } from '../model/cleanup';
@@ -150,17 +151,18 @@ class NewWorkspaceBody extends Widget {
 
 /** The New workspace dialog; `existing` is a fresh list of workspace ids. */
 export async function newWorkspaceDialog(
-  existing: string[]
+  existing: string[],
+  trans: TranslationBundle
 ): Promise<{ name: string; purpose: string } | null> {
   const body = new NewWorkspaceBody(existing);
   const dialog = new FormDialog(
     {
-      title: 'New workspace',
+      title: trans.__('New workspace'),
       body,
       buttons: [
         Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` }),
         Dialog.okButton({
-          label: 'Create',
+          label: trans.__('Create'),
           className: `${BUTTON} ${PRIMARY}`
         })
       ],
@@ -190,7 +192,8 @@ class DescriptionBody extends Widget {
 /** Set description: the field holds the current purpose; null on Cancel. */
 export async function descriptionDialog(
   name: string,
-  purpose: string
+  purpose: string,
+  trans: TranslationBundle
 ): Promise<string | null> {
   const dialog = new FormDialog(
     {
@@ -198,7 +201,10 @@ export async function descriptionDialog(
       body: new DescriptionBody(purpose),
       buttons: [
         Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` }),
-        Dialog.okButton({ label: 'Save', className: `${BUTTON} ${PRIMARY}` })
+        Dialog.okButton({
+          label: trans.__('Save'),
+          className: `${BUTTON} ${PRIMARY}`
+        })
       ],
       focusNodeSelector: 'textarea'
     },
@@ -249,21 +255,24 @@ class CleanupBody extends Widget {
 }
 
 /** Ask before clean-up; true when the user confirms it. */
-export async function cleanUpDialog(rows: ICleanRow[]): Promise<boolean> {
+export async function cleanUpDialog(
+  rows: ICleanRow[],
+  trans: TranslationBundle
+): Promise<boolean> {
   const cancel = Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` });
   const dialog = new Dialog({
-    title: 'Clean up workspaces',
+    title: trans.__('Clean up workspaces'),
     body: new CleanupBody(rows),
     buttons: [
       Dialog.warnButton({
-        label: 'Clean up',
+        label: trans.__('Clean up'),
         className: `${BUTTON} ${DANGER}`
       }),
       cancel
     ]
   });
   // apputils names only a string body, so the Widget body names its node
-  dialog.node.setAttribute('aria-label', 'Clean up workspaces');
+  dialog.node.setAttribute('aria-label', trans.__('Clean up workspaces'));
   const result = await dialog.launch();
   return result.button.accept;
 }

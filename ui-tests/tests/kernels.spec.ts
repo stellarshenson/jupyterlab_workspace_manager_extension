@@ -258,25 +258,34 @@ test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK
       });
       await page.mouse.up();
       expect(await panelWidth(page)).toBe(width);
-      // per part of the detail line: its text, whether the text is cut, whether it lies inside the row
-      const parts = await longRow.evaluate(r => {
+      // per part of the detail line: its text, the width of the whole text, whether it is cut, whether it lies inside the row; the line's content width and gap
+      const { parts, content, gap } = await longRow.evaluate(r => {
         const box = r.getBoundingClientRect();
-        return Array.from(
-          r.querySelectorAll<HTMLElement>(
-            '.jp-WorkspaceManager-rowDetail > span'
-          )
-        ).map(e => {
-          // the whole text: scrollWidth and clientWidth round away a cut under 1 px
-          const text = document.createRange();
-          text.selectNodeContents(e);
-          const b = e.getBoundingClientRect();
-          return {
-            text: e.textContent,
-            cut: text.getBoundingClientRect().width - b.width > 1 / 64,
-            inside: b.right <= box.right + 0.5,
-            style: `${getComputedStyle(e).textOverflow} ${getComputedStyle(e).direction}`
-          };
-        });
+        const line = r.querySelector<HTMLElement>(
+          '.jp-WorkspaceManager-rowDetail'
+        )!;
+        const style = getComputedStyle(line);
+        return {
+          content: line.clientWidth - parseFloat(style.paddingLeft),
+          gap: parseFloat(style.columnGap),
+          parts: Array.from(
+            r.querySelectorAll<HTMLElement>(
+              '.jp-WorkspaceManager-rowDetail > span'
+            )
+          ).map(e => {
+            // the whole text: scrollWidth and clientWidth round away a cut under 1 px
+            const text = document.createRange();
+            text.selectNodeContents(e);
+            const b = e.getBoundingClientRect();
+            return {
+              text: e.textContent,
+              width: text.getBoundingClientRect().width,
+              cut: text.getBoundingClientRect().width - b.width > 1 / 64,
+              inside: b.right <= box.right + 0.5,
+              style: `${getComputedStyle(e).textOverflow} ${getComputedStyle(e).direction}`
+            };
+          })
+        };
       });
       const [type, memory, cpu, folder, file] = parts;
       expect(file, `file name at ${width} px`).toMatchObject({
@@ -292,8 +301,14 @@ test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK
       }
       if (width === 300) {
         // the kernel type and the folder give way first (KERN-02); the folder is cut at its start
-        expect(type).toMatchObject({ cut: true, style: 'ellipsis ltr' });
         expect(folder).toMatchObject({ cut: true, style: 'ellipsis rtl' });
+        expect(type.style).toBe('ellipsis ltr');
+        // a whole type is a type whose line fits; a cut type gave way, since the figures stay whole
+        if (!type.cut) {
+          expect(
+            type.width + memory.width + cpu.width + 2 * gap
+          ).toBeLessThanOrEqual(content + 0.5);
+        }
       }
     }
   } finally {

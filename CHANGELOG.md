@@ -2,6 +2,18 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.28] - 2026-10-30
+
+### Changed
+
+- The panel, its dialogs and its menus read every string through the extension's translation bundle; the wording is unchanged
+
+### Fixed
+
+- The lint check reports no warnings, down from 45: the strings are translated, every command carries `describedBy`, and the unused binding is gone
+- The kernel-detail test asserts the type and folder give-way order by geometry instead of a font-dependent cut at a fixed width
+- The tooltip test opens the notebook before waiting for its kernel, and gives kernel startup its own 60 s wait
+
 ## [0.8.27] - 2026-10-30
 
 ### Added

@@ -15,6 +15,7 @@ import {
   gotoWorkspace,
   headerButton,
   kernelIds,
+  KERNEL_START,
   languageServer,
   layout,
   menuButton,
@@ -22,6 +23,7 @@ import {
   only,
   onlyWorkspaces,
   openCard,
+  openDocument,
   openPanel,
   openSection,
   PANEL,
@@ -855,11 +857,13 @@ test.describe('kernels and sessions of the server', () => {
       ]);
 
       // a kernel row: its kernelspec display name, the session path and its state
+      // a REST-created session has no client, so the server keeps 'starting' until one connects
+      await openDocument(page, notebook);
       const state = () =>
         serverList(page, '/api/kernels').then(
           list => list.find(k => k.id === session.kernel.id)?.execution_state
         );
-      await expect.poll(state, UNDER_LOAD).toBe('idle');
+      await expect.poll(state, KERNEL_START).toBe('idle');
       await openSection(page, 'kernels');
       await refresh(page);
       await expect(

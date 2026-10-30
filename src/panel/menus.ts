@@ -7,6 +7,7 @@ import {
   moveDownIcon,
   moveUpIcon
 } from '@jupyterlab/ui-components';
+import type { TranslationBundle } from '@jupyterlab/translation';
 import { CommandRegistry } from '@lumino/commands';
 import type { Message } from '@lumino/messaging';
 import type { Menu } from '@lumino/widgets';
@@ -143,7 +144,8 @@ export interface IWorkspaceActions {
 export function workspaceMenu(
   colour: Colour | null,
   current: boolean,
-  actions: IWorkspaceActions
+  actions: IWorkspaceActions,
+  trans: TranslationBundle
 ): Menu {
   const commands = new CommandRegistry();
   const arm = new DeleteArm(() => menu.update());
@@ -157,7 +159,13 @@ export function workspaceMenu(
     execute: () => void,
     isEnabled = () => true
   ) => {
-    commands.addCommand(id, { label, icon, execute, isEnabled });
+    commands.addCommand(id, {
+      label,
+      icon,
+      execute,
+      isEnabled,
+      describedBy: { args: null }
+    });
     menu.addItem({ command: id });
   };
   add('open', 'Open workspace', openIcon, actions.open, () => !current);
@@ -175,7 +183,7 @@ export function workspaceMenu(
   const colours = new MenuSvg({ commands, renderer: swatchRenderer });
   colours.addClass('jp-WorkspaceManager-menu');
   colours.addClass('jp-WorkspaceManager-colourMenu');
-  colours.title.label = 'Colour';
+  colours.title.label = trans.__('Colour');
   if (colour) {
     colours.title.icon = swatchIcons[colour];
   }
@@ -184,6 +192,7 @@ export function workspaceMenu(
       label: COLOUR_LABELS[c],
       icon: swatchIcons[c],
       isToggled: () => c === colour,
+      describedBy: { args: null },
       execute: () => actions.colour(c)
     });
     colours.addItem({ command: `colour-${c}` });
@@ -207,10 +216,12 @@ export function workspaceMenu(
   );
   menu.addItem({ type: 'separator' });
   commands.addCommand(DELETE, {
-    label: () => (arm.armed ? 'Confirm delete' : 'Delete workspace'),
+    label: () =>
+      arm.armed ? trans.__('Confirm delete') : trans.__('Delete workspace'),
     icon: () => (arm.armed ? warningIcon : deleteIcon),
     className: () => `${DANGER}${arm.armed ? ' jp-mod-confirm' : ''}`,
     isEnabled: () => !current,
+    describedBy: { args: null },
     execute: () => undefined
   });
   menu.addItem({ command: DELETE });
@@ -241,7 +252,8 @@ export function actionMenu(
       label,
       icon,
       execute,
-      className: danger ? DANGER : ''
+      className: danger ? DANGER : '',
+      describedBy: { args: null }
     });
     menu.addItem({ command: `item-${i}` });
   });
