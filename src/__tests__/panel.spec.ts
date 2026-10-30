@@ -1024,31 +1024,35 @@ describe('panel', () => {
     }
   });
 
-  it('ACC-PANEL-182-SECTION-HEADS: every section starts open; a header click closes or opens its section only; a new panel keeps the state', async () => {
+  it('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES opens by default; opening a section closes the open one; a click on the open header closes every section; a new panel keeps the state', async () => {
     const { panel } = await mount(standard());
     const expanded = (p: Widget) =>
       ['workspaces', 'kernels', 'terminals', 'servers'].map(key =>
         sectionHeader(p, key).getAttribute('aria-expanded')
       );
-    expect(expanded(panel)).toEqual(['true', 'true', 'true', 'true']);
-    expect($$(panel, '.jp-WorkspaceManager-sectionBody')).toHaveLength(4);
+    expect(expanded(panel)).toEqual(['true', 'false', 'false', 'false']);
+    expect($$(panel, '.jp-WorkspaceManager-sectionBody')).toHaveLength(1);
     sectionHeader(panel, 'kernels').click();
-    expect(expanded(panel)).toEqual(['true', 'false', 'true', 'true']);
+    expect(expanded(panel)).toEqual(['false', 'true', 'false', 'false']);
     expect(
-      section(panel, 'kernels')!.querySelector(
+      section(panel, 'workspaces')!.querySelector(
         '.jp-WorkspaceManager-sectionBody'
       )
     ).toBeNull();
     sectionHeader(panel, 'terminals').click();
-    expect(expanded(panel)).toEqual(['true', 'false', 'false', 'true']);
+    expect(expanded(panel)).toEqual(['false', 'false', 'true', 'false']);
     sectionHeader(panel, 'terminals').click();
-    expect(expanded(panel)).toEqual(['true', 'false', 'true', 'true']);
-    // the next page of this browser
+    expect(expanded(panel)).toEqual(['false', 'false', 'false', 'false']);
+    // the next page of this browser: every section closed stays closed
     const { panel: next } = await mount(standard());
-    expect(expanded(next)).toEqual(['true', 'false', 'true', 'true']);
+    expect(expanded(next)).toEqual(['false', 'false', 'false', 'false']);
+    sectionHeader(next, 'workspaces').click();
+    expect(expanded(next)).toEqual(['true', 'false', 'false', 'false']);
+    const { panel: again } = await mount(standard());
+    expect(expanded(again)).toEqual(['true', 'false', 'false', 'false']);
   });
 
-  it('ACC-PANEL-208-SECTION-STORE: a localStorage that throws, or an unreadable stored state, opens every section, and a click still closes one', async () => {
+  it('ACC-PANEL-208-SECTION-STORE: a localStorage that throws, or an unreadable stored state, opens WORKSPACES alone, and a click opens one section and closes the other', async () => {
     const expanded = (p: Widget) =>
       ['workspaces', 'kernels', 'terminals', 'servers'].map(key =>
         sectionHeader(p, key).getAttribute('aria-expanded')
@@ -1062,20 +1066,20 @@ describe('panel', () => {
       })
     ];
     const { panel } = await mount(standard());
-    expect(expanded(panel)).toEqual(['true', 'true', 'true', 'true']);
+    expect(expanded(panel)).toEqual(['true', 'false', 'false', 'false']);
     sectionHeader(panel, 'kernels').click();
-    expect(expanded(panel)).toEqual(['true', 'false', 'true', 'true']);
+    expect(expanded(panel)).toEqual(['false', 'true', 'false', 'false']);
     failing.forEach(spy => spy.mockRestore());
 
     for (const stored of ['{', '{"kernels": false}']) {
       localStorage.setItem(
-        'jupyterlab_workspace_manager_extension:closed-sections',
+        '@stellarshenson/jupyterlab-workspace-manager-extension:closed-sections',
         stored
       );
       const { panel: other } = await mount(standard());
-      expect(expanded(other)).toEqual(['true', 'true', 'true', 'true']);
+      expect(expanded(other)).toEqual(['true', 'false', 'false', 'false']);
       sectionHeader(other, 'servers').click();
-      expect(expanded(other)).toEqual(['true', 'true', 'true', 'false']);
+      expect(expanded(other)).toEqual(['false', 'false', 'false', 'true']);
     }
   });
 
@@ -1352,11 +1356,10 @@ describe('panel', () => {
     release();
     await settle();
 
-    // a card open, a row focused, the WORKSPACES list scrolled, KERNELS closed
+    // a card open, a row focused, the WORKSPACES list scrolled, KERNELS closed by default
     triangle(panel, 'w:auto-6').click();
     const list = sectionBody(panel, 'workspaces');
     list.scrollTop = 40;
-    sectionHeader(panel, 'kernels').click();
     expect(section(panel, 'kernels')!.textContent).not.toContain('k1');
     const row = card(panel, 'w:auto-6').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
@@ -1430,7 +1433,8 @@ describe('panel', () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
     const { panel, fake } = await mount(server);
-    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    const pending =
+      '@stellarshenson/jupyterlab-workspace-manager-extension:pending-tab';
     sessionStorage.removeItem(pending);
     // created after the panel's last reload: the panel's model does not list it
     server.workspaces.push(workspace('created-since', 1));
@@ -1465,7 +1469,8 @@ describe('panel', () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
     const { panel } = await mount(server);
-    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    const pending =
+      '@stellarshenson/jupyterlab-workspace-manager-extension:pending-tab';
     sessionStorage.removeItem(pending);
     const url = jest.spyOn(panel as any, '_url');
 
@@ -1486,7 +1491,8 @@ describe('panel', () => {
     const server = standard();
     server.presence = ['auto-6'];
     const { panel, app } = await mount(server);
-    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    const pending =
+      '@stellarshenson/jupyterlab-workspace-manager-extension:pending-tab';
     sessionStorage.removeItem(pending);
     const url = jest.spyOn(panel as any, '_url');
 
@@ -1510,7 +1516,8 @@ describe('panel', () => {
     const server = standard();
     server.presenceFailing = true;
     const { panel } = await mount(server);
-    const pending = 'jupyterlab_workspace_manager_extension:pending-tab';
+    const pending =
+      '@stellarshenson/jupyterlab-workspace-manager-extension:pending-tab';
     sessionStorage.removeItem(pending);
     const url = jest.spyOn(panel as any, '_url');
 
@@ -1680,7 +1687,7 @@ describe('panel', () => {
     ).map(svg => svg.getAttribute('data-icon'));
     expect(icons).toEqual([
       'ui-components:tab',
-      'jupyterlab_workspace_manager_extension:terminal',
+      '@stellarshenson/jupyterlab-workspace-manager-extension:terminal',
       'ui-components:kernel'
     ]);
   });
@@ -1820,20 +1827,9 @@ describe('panel', () => {
       'terminal 1now',
       'a.ipynbidle5m ago'
     ]);
-    expect(text(openSection(panel, 'kernels'))).toEqual(['a.ipynbidle5m ago']);
-    expect(text(openSection(panel, 'terminals'))).toEqual(['terminal 1now']);
     expect($(panel, '.jp-WorkspaceManager-rowDetail')).toBeNull();
-    // the process, the kernel type, the path, the folder, memory and CPU wait for the selection
-    for (const hidden of ['claude', PYTHON, 'docs', 'work/', 'MB', '%']) {
-      expect(
-        panel.node.querySelector('.jp-WorkspaceManager-list')!.textContent
-      ).not.toContain(hidden);
-    }
     // ACC-KERNEL-49-STATE: the word in the line, the title and the dot's aria-label
-    for (const root of [
-      group(card(panel, 'w:auto-6'), 'KERNELS'),
-      sectionBody(panel, 'kernels')
-    ]) {
+    const state = (root: HTMLElement) => {
       const row = root.querySelector<HTMLElement>('.jp-WorkspaceManager-row')!;
       const dot = row.querySelector('.jp-WorkspaceManager-dot')!;
       expect(row.querySelector('.jp-WorkspaceManager-state')!.textContent).toBe(
@@ -1843,6 +1839,17 @@ describe('panel', () => {
       expect(dot.getAttribute('role')).toBe('img');
       expect(dot.getAttribute('aria-label')).toBe('idle');
       expect(dot.classList).toContain('jp-mod-idle');
+    };
+    state(group(card(panel, 'w:auto-6'), 'KERNELS'));
+    // one section open at a time: KERNELS is opened, then TERMINALS
+    expect(text(openSection(panel, 'kernels'))).toEqual(['a.ipynbidle5m ago']);
+    state(sectionBody(panel, 'kernels'));
+    expect(text(openSection(panel, 'terminals'))).toEqual(['terminal 1now']);
+    // the process, the kernel type, the path, the folder, memory and CPU wait for the selection
+    for (const hidden of ['claude', PYTHON, 'docs', 'work/', 'MB', '%']) {
+      expect(
+        panel.node.querySelector('.jp-WorkspaceManager-list')!.textContent
+      ).not.toContain(hidden);
     }
   });
 
@@ -1931,6 +1938,7 @@ describe('panel', () => {
         ];
       });
     // the path on a second detail line
+    openSection(panel, 'kernels');
     const row = $(panel, '[data-section="kernels"] .jp-WorkspaceManager-row')!;
     row.focus();
     expect(

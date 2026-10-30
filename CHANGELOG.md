@@ -2,6 +2,26 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.27] - 2026-10-30
+
+### Added
+
+- Sections open exclusively: opening one closes the others, clicking the open one closes it, the closed set survives a reload, and WORKSPACES opens by default
+- KERNELS, TERMINALS and LANGUAGE SERVERS dock at the panel bottom; the open section fills the height above them and is the only scroll container, with no row cap on the WORKSPACES list
+- The current window's card paints its 2 px outline inside its box, so no band is clipped at a flush edge
+- Every Galata suite runs through the bubblewrap runner: read-only project, scratch home and /tmp, its own free port
+
+### Changed
+
+- The labextension is scoped `@stellarshenson/jupyterlab-workspace-manager-extension` and every plugin and state id follows it, because JupyterLab 4.6.5's URI parser reports "URI scheme is malformed." for the old underscored id; the Python package keeps its underscored name
+- The workspace colour washes the card body and header at 14 % while the 4 px strip keeps the token at full strength
+- Every card and row surface spans the panel width, and the section header is the reference panel's 24 px band with its text caret
+
+### Fixed
+
+- The keyboard focus ring on the current card stays visible above the card's inside outline
+- Two Galata tests no longer assume a section stays mounted when another one opens
+
 ## [0.8.26] - 2026-10-29
 
 ### Added

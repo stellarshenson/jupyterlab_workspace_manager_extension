@@ -8,7 +8,7 @@ has_ai_rules: false
 has_binder: false
 has_settings: true
 kind: frontend-and-server
-labextension_name: jupyterlab_workspace_manager_extension
+labextension_name: '@stellarshenson/jupyterlab-workspace-manager-extension'
 project_short_description: 'Workspace-driven Running panel: workspaces as coloured
     accordion sections with their tabs, terminals and kernels'
 python_name: jupyterlab_workspace_manager_extension

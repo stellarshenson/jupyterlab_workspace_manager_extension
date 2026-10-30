@@ -368,6 +368,53 @@ the sidebar panel, its header and its loads
   - log: 2026-10-29T13:24:52Z @kj added
   - log: 2026-10-29T13:24:55Z @kj closed: fixed: the type class applies only to a listed KERNELS row; a card kernel row's type carries SHRINK alone
   - log: 2026-10-29T13:25:02Z @kj edited evidence "panel.spec.ts ACC-KERNEL-196 card assertion failed on the pre-change panel.tsx in fix7-red.log (received 'jp-mod-shrink jp-WorkspaceManager-type'), section TYPE assertion green there; make-test-fix7.log Jest 100 passed, pytest 145 passed; kernels.spec.ts and content.spec.ts 23 passed --retries=0 in galata-fix7.log" -> "panel.spec.ts ACC-KERNEL-196-KERNEL-DETAILS card assertion failed on the pre-change panel.tsx in fix7-red.log (received 'jp-mod-shrink jp-WorkspaceManager-type'), section TYPE assertion green there; make-test-fix7.log Jest 100 passed, pytest 145 passed; kernels.spec.ts and content.spec.ts 23 passed --retries=0 in galata-fix7.log"
+- [x] `DEF-PANEL-62-CARD-NOWASH` **Card stays grey, ignoring the workspace colour** - MAJOR; every card's body and header stay plain `--jp-layout-color1` and `--jp-layout-color2`, so workspaces differ only by the 4 px strip; fix: the 14 % wash on both surfaces; `style/base.css`
+  - evidence: fixed by ACC-ACCORD-226-CARD-WASH green; 100 passed, playwright exit 0 in tmp/workflows/panel-fix/logs/galata-panel-fix-green.log (14:09)
+  - related: ACC-ACCORD-226-CARD-WASH
+  - repro: open the WORKBENCH panel with two differently coloured workspaces; both cards are grey and the colour shows only in each 4 px strip
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-30T12:07:43Z @kj `style/base.css` `.jp-WorkspaceManager-card` paints `background: var(--jp-layout-color1)` and `.jp-WorkspaceManager-cardHeader` paints `var(--jp-layout-color2)`; `--wm-strip` reaches only the border-left
+  - log: 2026-10-30T12:07:43Z @kj added
+  - log: 2026-10-30T13:10:23Z @kj closed
+- [x] `DEF-PANEL-63-SIDE-GUTTERS` **Card side margins waste the panel width** - MAJOR; each card keeps an 8 px side margin, so it stops short of both panel edges; the reference panel's reserved scrollbar strip is standard treatment; fix: card margin 0 and the text inset as padding; `style/base.css`
+  - evidence: fixed by ACC-PANEL-227-FLUSH-WIDTH green; margin 4px 0, gutter stable per the reference panel; 100 passed, playwright exit 0 in tmp/workflows/panel-fix/logs/galata-panel-fix-green.log
+  - related: ACC-PANEL-227-FLUSH-WIDTH
+  - repro: open the WORKBENCH panel with one workspace; the card stops 8 px from each panel edge and a scrollbar strip stays at the right of a list that fits
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-30T12:59:55Z @kj the card's 8 px side margin puts the 4 px strip 8 px inside the panel edge; the section body's scrollbar-gutter: stable matches the reference panel and is not a defect
+  - root-cause: 2026-10-30T12:07:46Z @kj `style/base.css` `.jp-WorkspaceManager-card` sets `margin: 4px 8px` and `.jp-WorkspaceManager-sectionBody` sets `scrollbar-gutter: stable`; the strip is the card's left border inside that margin
+  - log: 2026-10-30T12:07:46Z @kj added
+  - log: 2026-10-30T12:59:52Z @kj amended title "Card margins and a reserved scrollbar strip waste the panel width" -> "Card side margins waste the panel width"; text "each card keeps an 8 px side margin and each section body reserves a scrollbar strip, so cards stop short of both panel edges; fix: card margin 0, text inset as padding, `scrollbar-gutter: auto`; `style/base.css`" -> "MAJOR; each card keeps an 8 px side margin, so it stops short of both panel edges; the reference panel's reserved scrollbar strip is standard treatment; fix: card margin 0 and the text inset as padding; `style/base.css`"; reason: the reference panel keeps scrollbar-gutter: stable; the wasted width was the card margin
+  - log: 2026-10-30T12:59:55Z @kj root-cause overridden; reason: the reference panel keeps the gutter; only the card margin wasted width
+  - log: 2026-10-30T13:10:23Z @kj closed
+- [x] `DEF-PANEL-64-BAND-CARET` **Section band nearly the panel header's height, caret is not the reference glyph** - MAJOR; the section headers stand 31 px against the reference's ~24 px, and their caret is a ui-components SVG instead of the reference's ▾/▸ text glyph in a 14 px colour 2 column
+  - evidence: Galata render.spec.ts ACC-PANEL-228-BAND-HEIGHT passed in the five-file run tmp/workflows/panel-fix/logs/galata-header-green.log (107 tests, 0 failed, --retries=0, exit 0); it failed on the pre-change frontend with workspaces band 31 px (tmp/workflows/panel-fix/logs/galata-header-red.log); the caret is a 14 px aria-hidden span reading ▾ open and ▸ closed
+  - repro: open the panel, measure a section header and the WORKBENCH header, inspect the section caret
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-30T13:14:21Z @kj style/base.css .jp-WorkspaceManager-sectionHeader pads 6 px vertically; src/panel/panel.tsx _renderSection draws caretDownIcon/caretRightIcon where the reference draws a text glyph
+  - log: 2026-10-30T13:14:21Z @kj added
+  - log: 2026-10-30T13:19:58Z @kj edited text "the section headers stand about 27 px against the reference's ~24 px, and their caret is a ui-components SVG instead of the reference's ▾/▸ text glyph in a 14 px colour 2 column" -> "the section headers stand 31 px against the reference's ~24 px, and their caret is a ui-components SVG instead of the reference's ▾/▸ text glyph in a 14 px colour 2 column"
+  - log: 2026-10-30T13:39:33Z @kj closed
+- [x] `DEF-PANEL-65-OUTLINE-CLIP` **Current card outline clipped on the left** - MINOR; this window's 2 px outline loses its left band when the card sits flush on the section body; cause: the card has no horizontal margin, so the outline drawn outside it crosses the body's content edge and `overflow-y: auto` clips it; fix: section body padding 2 px; `style/base.css`
+  - evidence: Galata sections.spec.ts ACC-ACCORD-128/129 at 4x passed in /home/lab/workspace/private/jupyterlab/jupyterlab_workspace_manager_extension/tmp/workflows/panel-fix/logs/plan-1-galata-sections-panel.log (51 passed, 0 failed, --retries=0)
+  - related: ACC-ACCORD-129-FLUSH
+  - repro: open the panel at 4x device scale; this window's card sits flush left and the outline's left band is missing
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-10-30T15:16:11Z @kj the card's zero horizontal margin puts its outside 2 px outline beyond the section body's content edge, which `overflow-y: auto` clips
+  - log: 2026-10-30T15:16:11Z @kj added
+  - log: 2026-10-30T15:16:11Z @kj reported: cycle-1 adversarial review of the flush delta: this window's card outline is clipped on the left
+  - log: 2026-10-30T15:16:12Z @kj fixed: section body padding 2px; the 4x corner test is back to HEAD's geometry and judges the left band
+  - log: 2026-10-30T15:16:12Z @kj closed
+  - log: 2026-10-30T15:37:22Z @kj regressed as DEF-PANEL-65-OUTLINE-CLIP-1
+- [x] `DEF-PANEL-65-OUTLINE-CLIP-1` **Current card outline clipped on the left** - MINOR; this window's 2 px outline loses its left band when the card sits flush on the section body; cause: the card has no horizontal margin, so the outline drawn outside it crosses the body's content edge and `overflow-y: auto` clips it; fix: section body padding 2 px; `style/base.css`
+  - evidence: the 4x sections.spec.ts ACC-PANEL-231-OUTLINE-INSIDE test paints the left band inside the card box, flush left edge kept; five-spec Galata run apply-panel-fix-2, 110 of 110 passed, 1 worker, --retries=0 (tmp/workflows/panel-fix-2/logs/galata-panel-fix-2-green.log)
+  - root-cause: 2026-10-30T15:37:31Z @kj the same mechanism as DEF-PANEL-65-OUTLINE-CLIP: the card's zero horizontal margin puts its outside 2 px outline beyond the section body's clip; the 2 px body padding that fixed it is reverted for the flush surface
+  - test-tags: FUNCTIONAL
+  - repro: open the panel at 4x device scale with a workspace this window has open; the card sits flush left and the outline's left band is missing
+  - log: 2026-10-30T15:37:22Z @kj regression of DEF-PANEL-65-OUTLINE-CLIP: regressed: plan 2 reverted the section body padding to 2px 0 for the flush surface (ACC-PANEL-227); this window's outside 2 px outline loses its left band again - deferred to the owner, a 2 px conflict between his flush surface and his outside outline (DQ-19, ACC-ACCORD-129)
+  - log: 2026-10-30T15:37:30Z @kj edited repro added "open the panel at 4x device scale with a workspace this window has open; the card sits flush left and the outline's left band is missing"; test-tags added "FUNCTIONAL"
+  - log: 2026-10-30T15:54:51Z @kj owner's 2026-10-30 direction: the current card's 2 px outline paints inside its box (outline-offset: -2px) as the chosen branch; the section body padding branch in the body is dropped; the defect stays open until the 4x test proves the left band is painted
+  - log: 2026-10-30T18:18:20Z @kj closed: closed; reason: inside outline branch (outline-offset -2px) removes the clip; the 4x test proves the left band painted
 
 ## Functional tests `GALATA`
 
@@ -545,4 +592,18 @@ The jupyterlab-workspace command line and its agent skill
   - log: 2026-10-29T07:16:11Z @kj added; reason: review 3's plan corrects the help line
   - log: 2026-10-29T07:16:14Z @kj closed; reason: the line is the whole fix and the suite stays green
   - log: 2026-10-29T07:16:17Z @kj edited evidence "cli.py:740 says 'switch a window to a workspace' and the description beside it names the broadcast and the refusal; the help tests and the full suite passed in tmp/workflows/sections/logs/make-test-final3.log (92 jest, 139 pytest)" -> "cli.py:748 says 'switch a window to a workspace' and the description beside it names the broadcast and the refusal; the help tests and the full suite passed in tmp/workflows/sections/logs/make-test-final3.log (92 jest, 139 pytest)"; reason: the plan's line number was 740; the current file has it at 748
+
+## Packaging `PACK`
+
+The package manifest, labextension name and plugin and state ids that decide whether the extension loads
+
+- log: 2026-10-30T16:06:43Z @kj category created
+
+- [x] `DEF-PACK-66-JLAB465` **Panel never loads on JupyterLab 4.6.5** - MAJOR; on JupyterLab 4.6.5 the panel never loads: SettingRegistry.set throws `i.forEach is not a function`; cause: fast-uri rejects the underscored plugin id scheme with `URI scheme is malformed.`; fix: the scoped labextension rename; the same failure hit jupyterlab_core_patches_extension and jupyterlab_ai_code_assistants_extension, both now scoped; `src/index.ts`
+  - evidence: make test exit 0 (Jest 102, pytest 145); make build exit 0; wheel 0.8.26 has 9 entries under labextensions/@stellarshenson/jupyterlab-workspace-manager-extension/ and 0 under the old path; panel.spec.ts through galata-bwrap 18/20, panel loads, identity tests pass; 2 failures assert pending PANEL docking work; JupyterLab installed 4.6.4
+  - repro: install the extension in JupyterLab 4.6.5 and load the lab; the panel never loads and the console shows `i.forEach is not a function`; in Node, fast-uri parse of jupyterlab_workspace_manager_extension:plugin returns error `URI scheme is malformed.`
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-10-30T16:06:43Z @kj ajv 8 in JupyterLab 4.6.5 uses fast-uri, whose scheme grammar rejects the underscore; parse of jupyterlab_workspace_manager_extension:plugin returns `URI scheme is malformed.`, so SettingRegistry.set fails and the panel never loads
+  - log: 2026-10-30T16:06:43Z @kj added
+  - log: 2026-10-30T16:23:32Z @kj closed
 

@@ -81,16 +81,18 @@ test.use({ autoGoto: false, mockState: false });
 
 const LIGHT = 'JupyterLab Light';
 const DARK = 'Galaxa Dark Theme - Steel';
-const SHOTS = path.resolve(
-  __dirname,
-  '..',
-  '..',
-  'tmp',
-  'workflows',
-  'sections',
-  'render',
-  'pass-3'
-);
+const SHOTS =
+  process.env.WM_SHOTS_DIR ??
+  path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'tmp',
+    'workflows',
+    'sections',
+    'render',
+    'pass-3'
+  );
 const shot = (name: string): string => path.join(SHOTS, `${name}.png`);
 
 /** Requested by every reload of the panel and by nothing else. */
@@ -474,7 +476,10 @@ test.describe('the seeded scenario', () => {
         async () => undefined,
         () => openSection(page, 'terminals'),
         // a selected row and its detail
-        () => sectionBody(page, 'kernels').locator(ROW).first().focus()
+        async () => {
+          await openSection(page, 'kernels');
+          await sectionBody(page, 'kernels').locator(ROW).first().focus();
+        }
       ]) {
         await show();
         await page.mouse.move(0, 0);
@@ -561,8 +566,11 @@ test.describe('the seeded scenario', () => {
       s => s.kernel?.id === session.kernel.id
     );
     await only(page, /\/api\/terminals(\?.*)?$/, t => t.name === terminal);
-    await page.route('**/jupyterlab-workspace-manager-extension/**', route =>
-      route.fulfill({ status: 404, json: { message: 'Not Found' } })
+    // the server endpoints answer 404; the labextension's own files, served under
+    // /lab/extensions/@stellarshenson/jupyterlab-workspace-manager-extension/, still load
+    await page.route(
+      /\/jupyterlab-workspace-manager-extension\/(terminals|kernels|meta|presence|switch)(\/[^?]*)?(\?.*)?$/,
+      route => route.fulfill({ status: 404, json: { message: 'Not Found' } })
     );
     const current = fresh('absent');
     const other = `${current}-other`;
@@ -764,32 +772,34 @@ test('HDR-07 ACC-PANEL-201-HEADER-BAND: the title WORKBENCH starts on the x of t
   }
 });
 
-test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloads every 10 s without the turning icon and keeps the WORKSPACES scroll, a closed KERNELS, the selected TERMINALS row, the open card and an open menu; hidden, it sends no reload; shown again, it reloads at once', async ({
+test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloads every 10 s without the turning icon and keeps the open WORKSPACES section, its scroll, the selected row of the open card, the open card, an open menu and KERNELS closed; hidden, it sends no reload; shown again, it reloads at once', async ({
   page
 }) => {
   test.setTimeout(150000);
   const current = fresh('pollhidden');
-  const terminal = await startTerminal(page);
   let ids: string[] = [];
   try {
     ids = await setUp(
       page,
       current,
-      Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`${i}`, {}]))
+      Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [
+          `${i}`,
+          i === 0 ? { data: layout(['editor:README.md']) } : {}
+        ])
+      )
     );
-    await sectionHeader(page, 'kernels').click();
+    // one section open: WORKSPACES, with KERNELS closed
     await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
       'aria-expanded',
       'false'
     );
-    const selected = rowOf(
-      sectionBody(page, 'terminals'),
-      `terminal ${terminal}`
-    );
-    await selected.focus();
-    await expect(selected).toHaveClass(/jp-mod-selected/);
     await triangle(page, ids[1]).click();
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
+    // a row of the open card, focused: the panel's one selected row
+    const selected = rowOf(card(page, ids[1]), 'README.md');
+    await selected.focus();
+    await expect(selected).toHaveClass(/jp-mod-selected/);
     await menuButton(page, ids[1]).click();
     await expect(page.locator('.jp-WorkspaceManager-menu')).toBeVisible();
     // scrolled after the click, which scrolls the button into view
@@ -846,7 +856,6 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
     await page.locator(PANEL_TAB).click();
     await shown;
   } finally {
-    await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, ids);
   }
 });
@@ -971,7 +980,72 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
   }
 });
 
-test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-93-FOCUS: Tab reaches a section header; Enter closes the open section, Space opens it; a 1 px brand colour 1 outline on keyboard focus only', async ({
+test('ACC-PANEL-228-BAND-HEIGHT: each section band is ~24 px and shorter than the WORKBENCH header with 4 px padding; its caret is a 14 px aria-hidden span reading ▾ open and ▸ closed', async ({
+  page
+}) => {
+  const current = fresh('band');
+  try {
+    await enterWorkspace(page, current);
+    const workbench = (await page
+      .locator(`${PANEL} .jp-WorkspaceManager-header`)
+      .boundingBox())!.height;
+    for (const name of ['workspaces', 'kernels', 'terminals', 'servers']) {
+      const header = sectionHeader(page, name);
+      const caret = header.locator('.jp-WorkspaceManager-caret');
+      const band = await header.evaluate(h => {
+        const s = getComputedStyle(h);
+        return {
+          height: Math.round(h.getBoundingClientRect().height),
+          paddingTop: s.paddingTop,
+          paddingBottom: s.paddingBottom
+        };
+      });
+      expect(
+        Math.abs(band.height - 24),
+        `${name} band ${band.height} px against the reference's 24 px`
+      ).toBeLessThanOrEqual(2);
+      expect(
+        band.height,
+        `${name} band ${band.height} px against the ${workbench} px WORKBENCH header`
+      ).toBeLessThan(workbench);
+      expect.soft(band, name).toMatchObject({
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      });
+      const open = (await header.getAttribute('aria-expanded')) === 'true';
+      const drawn = await caret.evaluate(n => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--jp-ui-font-color2)';
+        n.parentElement!.appendChild(probe);
+        const colour2 = getComputedStyle(probe).color;
+        probe.remove();
+        return {
+          tag: n.tagName.toLowerCase(),
+          hidden: n.getAttribute('aria-hidden'),
+          width: Math.round(n.getBoundingClientRect().width),
+          text: n.textContent,
+          colour2: getComputedStyle(n).color === colour2
+        };
+      });
+      expect.soft(drawn, name).toEqual({
+        tag: 'span',
+        hidden: 'true',
+        width: 14,
+        text: open ? '▾' : '▸',
+        colour2: true
+      });
+      await header.click();
+      await expect(header).toHaveAttribute('aria-expanded', String(!open));
+      await expect(caret).toHaveText(open ? '▸' : '▾');
+      await header.click();
+      await expect(header).toHaveAttribute('aria-expanded', String(open));
+    }
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE, ACC-PANEL-93-FOCUS: Tab reaches a section header; Enter opens the closed section and closes the open one, Space closes it; a 1 px brand colour 1 outline on keyboard focus only', async ({
   page
 }) => {
   const current = fresh('seckeys');
@@ -979,7 +1053,8 @@ test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-93-FOCUS: Tab reaches a sect
     await enterWorkspace(page, current);
     const brand1 = await rgba(page, 'var(--jp-brand-color1)');
     const kernels = sectionHeader(page, 'kernels');
-    await sectionHeader(page, 'workspaces').focus();
+    const workspaces = sectionHeader(page, 'workspaces');
+    await workspaces.focus();
     for (let i = 0; i < 16; i++) {
       if (await kernels.evaluate(n => n === document.activeElement)) {
         break;
@@ -993,23 +1068,25 @@ test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-93-FOCUS: Tab reaches a sect
       await style(kernels, 'outlineWidth'),
       await rgba(page, await style(kernels, 'outlineColor'))
     ]).toEqual(['solid', '1px', brand1]);
-    await expect(kernels).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press('Enter');
+    // WORKSPACES opens by default; Enter opens KERNELS and closes WORKSPACES; Space closes KERNELS
     await expect(kernels).toHaveAttribute('aria-expanded', 'false');
-    await page.keyboard.press('Space');
+    await page.keyboard.press('Enter');
     await expect(kernels).toHaveAttribute('aria-expanded', 'true');
+    await expect(workspaces).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Space');
+    await expect(kernels).toHaveAttribute('aria-expanded', 'false');
     // a click on a header that does not have the focus yet: a focused one keeps its keyboard state
     await page.locator('#jp-main-dock-panel').click();
     await kernels.click();
     await expect(kernels).toBeFocused();
-    await expect(kernels).toHaveAttribute('aria-expanded', 'false');
+    await expect(kernels).toHaveAttribute('aria-expanded', 'true');
     expect(await style(kernels, 'outlineStyle')).toBe('none');
   } finally {
     await deleteWorkspaces(page, [current]);
   }
 });
 
-test('SEC-08 ACC-PANEL-208-SECTION-STORE, ACC-PANEL-182-SECTION-HEADS: the open state is kept in localStorage; a localStorage that throws, or an unreadable value, opens every section, and a click still closes one', async ({
+test('SEC-08 ACC-PANEL-208-SECTION-STORE, ACC-PANEL-182-SECTION-HEADS: the open state is kept in localStorage; a localStorage that throws, or an unreadable value, opens WORKSPACES alone, and a click opens one section and closes the other', async ({
   page
 }) => {
   const current = fresh('store');
@@ -1021,9 +1098,15 @@ test('SEC-08 ACC-PANEL-208-SECTION-STORE, ACC-PANEL-182-SECTION-HEADS: the open 
     );
   try {
     await enterWorkspace(page, current);
+    // WORKSPACES opens by default; the other three are closed
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
     const before = await page.evaluate(() => ({ ...localStorage }));
     await sectionHeader(page, 'kernels').click();
     await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    await expect(sectionHeader(page, 'workspaces')).toHaveAttribute(
       'aria-expanded',
       'false'
     );
@@ -1032,12 +1115,12 @@ test('SEC-08 ACC-PANEL-208-SECTION-STORE, ACC-PANEL-182-SECTION-HEADS: the open 
     expect(changed).toHaveLength(1);
     const key = changed[0];
 
-    // an unreadable value
+    // an unreadable value: WORKSPACES alone opens
     await page.evaluate(key => localStorage.setItem(key, '{'), key);
     await page.reload();
     await openPanel(page);
     await expect(card(page, current)).toBeVisible(UNDER_LOAD);
-    expect(await expanded()).toEqual(['true', 'true', 'true', 'true']);
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
 
     // a localStorage that throws on this key; JupyterLab keeps its own keys there too
     await page.addInitScript(key => {
@@ -1058,10 +1141,11 @@ test('SEC-08 ACC-PANEL-208-SECTION-STORE, ACC-PANEL-182-SECTION-HEADS: the open 
     await page.reload();
     await openPanel(page);
     await expect(card(page, current)).toBeVisible(UNDER_LOAD);
-    expect(await expanded()).toEqual(['true', 'true', 'true', 'true']);
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
     await sectionHeader(page, 'kernels').click();
-    expect(await expanded()).toEqual(['true', 'false', 'true', 'true']);
-    await expect(sectionBody(page, 'kernels')).toHaveCount(0);
+    expect(await expanded()).toEqual(['false', 'true', 'false', 'false']);
+    await expect(sectionBody(page, 'kernels')).toHaveCount(1);
+    await expect(sectionBody(page, 'workspaces')).toHaveCount(0);
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -1675,13 +1759,8 @@ test.describe('rows of terminals and kernels of the server', () => {
       const c = card(page, ids[1]);
       const tab = rowOf(c, 'notes.md');
       const term = rowOf(c, `terminal ${terminal}`);
-      await openSection(page, 'kernels');
-      const kern = rowOf(sectionBody(page, 'kernels'), kernel);
       await expect(tab).toHaveText('notes.md');
       await expect(term).toHaveText(`terminal ${terminal}3h ago`, UNDER_LOAD);
-      await expect(kern).toHaveText(
-        /^[0-9a-f-]{36}(idle|starting|busy)(now|\d+m ago)$/
-      );
       await expect(
         page.locator(`${PANEL} .jp-WorkspaceManager-rowDetail`)
       ).toHaveCount(0);
@@ -1715,9 +1794,8 @@ test.describe('rows of terminals and kernels of the server', () => {
       const font = (l: Locator) => style(l, 'fontFamily');
       expect({
         terminal: await font(term.locator('.jp-WorkspaceManager-rowLabel')),
-        kernel: await font(kern.locator('.jp-WorkspaceManager-rowLabel')),
         path: await font(tab.locator('.jp-WorkspaceManager-rowDetail > span'))
-      }).toEqual({ terminal: code, kernel: code, path: code });
+      }).toEqual({ terminal: code, path: code });
       await expect(tab.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
         'docs/deep'
       );
@@ -1737,6 +1815,15 @@ test.describe('rows of terminals and kernels of the server', () => {
       ] as const) {
         expect(await font(l), what).not.toBe(code);
       }
+      // one section open at a time: the KERNELS row renders with KERNELS opened
+      await openSection(page, 'kernels');
+      const kern = rowOf(sectionBody(page, 'kernels'), kernel);
+      await expect(kern).toHaveText(
+        /^[0-9a-f-]{36}(idle|starting|busy)(now|\d+m ago)$/
+      );
+      expect(await font(kern.locator('.jp-WorkspaceManager-rowLabel'))).toBe(
+        code
+      );
     } finally {
       await page.request.delete(`/api/kernels/${kernel}`);
       await page.request.delete(`/api/terminals/${terminal}`);
@@ -1758,11 +1845,7 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
     await sendToTerminal(page, terminals[0], 'sleep 60\n');
     await refresh(page);
     await triangle(page, ids[1]).click();
-    await openSection(page, 'terminals');
     const tab = rowOf(card(page, ids[1]), 'notes.md');
-    const rows = terminals.map(t =>
-      rowOf(sectionBody(page, 'terminals'), `terminal ${t}`)
-    );
     const layout2 = await rgba(page, 'var(--jp-layout-color2)');
     const paint = async (row: Locator) => ({
       background: await rgba(page, await style(row, 'backgroundColor')),
@@ -1772,17 +1855,37 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
       )
     });
 
-    // ROW-09: hover in a card and in a section
-    for (const row of [tab, rows[0]]) {
-      await page.mouse.move(0, 0);
-      const rest = await paint(row);
-      expect(rest.background).not.toEqual(layout2);
-      await row.hover();
-      expect(await paint(row)).toEqual({
-        background: layout2,
-        name: rest.name
-      });
-    }
+    // ROW-09: hover in a card
+    await page.mouse.move(0, 0);
+    const cardRest = await paint(tab);
+    expect(cardRest.background).not.toEqual(layout2);
+    await tab.hover();
+    expect(await paint(tab)).toEqual({
+      background: layout2,
+      name: cardRest.name
+    });
+    await page.mouse.move(0, 0);
+    // a tab row in a folder: its folder
+    await tab.focus();
+    await expect(tab.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
+      'docs'
+    );
+
+    // one section open at a time: the TERMINALS rows render with TERMINALS opened
+    await openSection(page, 'terminals');
+    const rows = terminals.map(t =>
+      rowOf(sectionBody(page, 'terminals'), `terminal ${t}`)
+    );
+
+    // ROW-09: hover in a section
+    await page.mouse.move(0, 0);
+    const rowRest = await paint(rows[0]);
+    expect(rowRest.background).not.toEqual(layout2);
+    await rows[0].hover();
+    expect(await paint(rows[0])).toEqual({
+      background: layout2,
+      name: rowRest.name
+    });
     await page.mouse.move(0, 0);
 
     // ROW-10: a click selects the TERMINALS row; its detail line shows the process
@@ -1809,12 +1912,6 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
     await refresh(page);
     await expect(selected).toHaveCount(1);
     await expect(selected).toHaveAttribute('title', next);
-    // a tab row in a folder: its folder
-    await tab.focus();
-    await expect(tab.locator('.jp-WorkspaceManager-rowDetail')).toHaveText(
-      'docs'
-    );
-    await expect(selected).toHaveCount(1);
   } finally {
     await Promise.all(
       terminals.map(t => page.request.delete(`/api/terminals/${t}`))
@@ -1858,6 +1955,8 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
       new RegExp(`/lab/workspaces/${current}(\\?.*)?$`)
     );
     // this window's card: the terminal row activates the same tab
+    // (one section open at a time: WORKSPACES is opened for the card rows)
+    await openSection(page, 'workspaces');
     await openCard(page, current);
     await rowOf(card(page, current), `terminal ${terminal}`).click();
     await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
@@ -2573,7 +2672,7 @@ test("LEG-04 ACC-PANEL-203-TOKENS-ONLY, ACC-ACCORD-86-OWN-PALETTE: no stylesheet
   }
 });
 
-test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a row, a section header and a header button shows a whole 1 px solid brand colour 1 outline, 1 px outside and 1 px inside a card; a click shows none', async ({
+test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a row, a section header and a header button shows a whole 1 px solid brand colour 1 outline, 1 px outside and 1 px inside a card, 2 px further inside the current card header; a click shows none', async ({
   page
 }) => {
   const current = fresh('outline');
@@ -2585,9 +2684,12 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
     await triangle(page, ids[1]).click();
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
     const brand1 = await rgba(page, 'var(--jp-brand-color1)');
-    // the rim sits 1 px outside; inside a card, which clips its content, 1 px inside (DQ-19)
+    // the rim sits 1 px outside; inside a card, which clips its content, 1 px inside (DQ-19).
+    // This window's card paints the 2 px current-card outline at its rim (DQ-19,
+    // ACC-PANEL-231) over the header's rim, so that header's rim sits 2 px further in
     const targets: [string, Locator, string][] = [
-      ['card-header', cardHeader(page, current), '-1px'],
+      ['card-header', cardHeader(page, ids[1]), '-1px'],
+      ['current-header', cardHeader(page, current), '-3px'],
       ['triangle', triangle(page, current), '-1px'],
       ['row', card(page, ids[1]).locator(ROW).nth(1), '-1px'],
       ['section-header', sectionHeader(page, 'kernels'), '1px'],
@@ -2628,18 +2730,18 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
           height: box.height + 12
         }
       });
+      const inside = offset.startsWith('-');
       const px = await pixels(
         page,
         await page.screenshot({
-          clip:
-            offset === '-1px'
-              ? { x: box.x, y: box.y, width: box.width, height: box.height }
-              : {
-                  x: box.x - 6,
-                  y: box.y - 6,
-                  width: box.width + 12,
-                  height: box.height + 12
-                }
+          clip: inside
+            ? { x: box.x, y: box.y, width: box.width, height: box.height }
+            : {
+                x: box.x - 6,
+                y: box.y - 6,
+                width: box.width + 12,
+                height: box.height + 12
+              }
         })
       );
       const at = (x: number, y: number) =>
@@ -2648,25 +2750,32 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
       // the outermost or the next device pixel: a box at a fractional position snaps either way
       const either = (a: [number, number], b: [number, number]) =>
         near(at(...a), brand1) || near(at(...b), brand1);
-      // an inside rim at the box's edge, an outside rim 1 px beyond the 6 px margin
-      const pad = offset === '-1px' ? 0 : 6;
-      const sides =
-        offset === '-1px'
-          ? {
-              top: either([mx, 0], [mx, 1]),
-              right: either([px.width - 1, my], [px.width - 2, my]),
-              bottom: either([mx, px.height - 1], [mx, px.height - 2]),
-              left: either([0, my], [1, my])
-            }
-          : {
-              top: either([mx, pad - 2], [mx, pad - 1]),
-              right: either([px.width - pad + 1, my], [px.width - pad + 2, my]),
-              bottom: either(
-                [mx, px.height - pad + 1],
-                [mx, px.height - pad + 2]
-              ),
-              left: either([pad - 2, my], [pad - 1, my])
-            };
+      // an inside rim sits at the box's edge, or 2 px in where it clears the current card's
+      // 2 px outline; an outside rim sits 1 px beyond the 6 px margin
+      const inset = offset === '-3px' ? 2 : 0;
+      const pad = 6;
+      const sides = inside
+        ? {
+            top: either([mx, inset], [mx, inset + 1]),
+            right: either(
+              [px.width - 1 - inset, my],
+              [px.width - 2 - inset, my]
+            ),
+            bottom: either(
+              [mx, px.height - 1 - inset],
+              [mx, px.height - 2 - inset]
+            ),
+            left: either([inset, my], [inset + 1, my])
+          }
+        : {
+            top: either([mx, pad - 2], [mx, pad - 1]),
+            right: either([px.width - pad + 1, my], [px.width - pad + 2, my]),
+            bottom: either(
+              [mx, px.height - pad + 1],
+              [mx, px.height - pad + 2]
+            ),
+            left: either([pad - 2, my], [pad - 1, my])
+          };
       expect
         .soft(sides, `${name}: the outline on each side`)
         .toEqual({ top: true, right: true, bottom: true, left: true });

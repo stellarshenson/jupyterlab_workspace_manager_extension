@@ -84,7 +84,8 @@ const POLL_MS = 10000;
 const SWITCH_MS = 1000;
 const SPIN_MS = 500;
 /** A tab to activate after the reload a workspace switch makes; the server keeps its request 90 s too. */
-const PENDING_TAB = 'jupyterlab_workspace_manager_extension:pending-tab';
+const PENDING_TAB =
+  '@stellarshenson/jupyterlab-workspace-manager-extension:pending-tab';
 const PENDING_MS = 30000;
 /** The lists before the first reload: a list that fails at once stays empty. */
 const EMPTY: ILoaded = {
@@ -99,17 +100,21 @@ const EMPTY: ILoaded = {
 
 /** Where this browser keeps the panel sections the user closed. */
 const CLOSED_SECTIONS =
-  'jupyterlab_workspace_manager_extension:closed-sections';
+  '@stellarshenson/jupyterlab-workspace-manager-extension:closed-sections';
 
-/** The sections closed in this browser; a missing or unreadable value, or no localStorage, means every section open. */
+/** The four section keys, in render order. */
+const SECTION_KEYS = ['workspaces', 'kernels', 'terminals', 'servers'] as const;
+
+/** The sections closed in this browser; a missing or unreadable value, or no localStorage, means WORKSPACES alone open. */
 function closedSections(): Set<string> {
+  const initial = () =>
+    new Set<string>(SECTION_KEYS.filter(key => key !== 'workspaces'));
   try {
-    const closed = JSON.parse(
-      window.localStorage.getItem(CLOSED_SECTIONS) ?? '[]'
-    );
-    return new Set(Array.isArray(closed) ? closed : []);
+    const saved = window.localStorage.getItem(CLOSED_SECTIONS);
+    const closed = saved === null ? null : JSON.parse(saved);
+    return Array.isArray(closed) ? new Set<string>(closed) : initial();
   } catch {
-    return new Set();
+    return initial();
   }
 }
 
@@ -626,11 +631,14 @@ export class WorkspacePanel
     this._render();
   }
 
-  /** A section header: it opens or closes its section only; the open state outlives the page. */
+  /** A section header: one section opens at a time, and a click on the open one closes every section; the state outlives the page. */
   private _toggleSection(key: string): void {
-    if (!this._closedSections.delete(key)) {
-      this._closedSections.add(key);
-    }
+    // closed means every key except the one opening; an open key closes the rest too
+    this._closedSections = new Set(
+      this._closedSections.has(key)
+        ? SECTION_KEYS.filter(k => k !== key)
+        : SECTION_KEYS
+    );
     try {
       window.localStorage.setItem(
         CLOSED_SECTIONS,
@@ -855,13 +863,9 @@ export class WorkspacePanel
             }
           }}
         >
-          {/* the header is the one button; its caret is decoration */}
+          {/* the header is the one button; its caret is the reference's text glyph */}
           <span className="jp-WorkspaceManager-caret" aria-hidden="true">
-            {open ? (
-              <caretDownIcon.react tag="span" />
-            ) : (
-              <caretRightIcon.react tag="span" />
-            )}
+            {open ? '▾' : '▸'}
           </span>
           <span className="jp-WorkspaceManager-sectionLabel">{label}</span>
           <span className="jp-WorkspaceManager-sectionCount">({n})</span>

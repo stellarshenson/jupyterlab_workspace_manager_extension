@@ -44,7 +44,7 @@ optional purpose, its age and counts in the header, then its tabs, terminals and
   change that reads or writes workspaces, terminals or kernels
 - **Colour palettes** - `../jupyterlab_colourful_tab_extension`, the tab colours the workspace
   colours resemble
-- npm package `jupyterlab_workspace_manager_extension`, PyPI package
+- npm package `@stellarshenson/jupyterlab-workspace-manager-extension`, PyPI package
   `jupyterlab-workspace-manager-extension`; server routes under
   `jupyterlab-workspace-manager-extension/`; version read from `package.json` by
   `hatch-nodejs-version`

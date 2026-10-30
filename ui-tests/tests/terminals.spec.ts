@@ -294,6 +294,8 @@ test('ACC-TERM-215-TAB-MATCH: a click on a terminal row activates the tab of its
     const again = await page.request.post('/api/terminals', { data: { name } });
     expect(again.ok()).toBe(true);
     await refresh(page);
+    // opening TERMINALS closed WORKSPACES and unmounted its card: reopen it
+    await openSection(page, 'workspaces');
     // this window's card lists the new terminal through the kept tab of the old one
     await openCard(page, current);
     const cardRow = rowOf(card(page, current), `terminal ${name}`);

@@ -40,7 +40,7 @@ interface IText {
   size: number;
   style: string;
   group: boolean;
-  /** the panel title, a section label or a section count */
+  /** the panel title, a section label, a section count or the section caret glyph */
   heading: boolean;
   /** an empty-state line */
   empty: boolean;
@@ -62,7 +62,7 @@ function texts(page: Page): Promise<IText[]> {
         style: style.fontStyle,
         group: !!el.closest('.jp-WorkspaceManager-groupLabel'),
         heading: !!el.closest(
-          '.jp-WorkspaceManager-title, .jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount'
+          '.jp-WorkspaceManager-title, .jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount, .jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-caret'
         ),
         empty: !!el.closest('.jp-WorkspaceManager-empty'),
         meta: !!el.closest(
@@ -175,9 +175,8 @@ async function textsOfOpenCards(
   ids: { current: string; coloured: string[] }
 ): Promise<IText[]> {
   const found: IText[] = [];
-  // every section is open: the cards and the TERMINALS rows render
+  // one section open at a time: the cards render with WORKSPACES open, the TERMINALS rows with TERMINALS open
   await openSection(page, 'workspaces');
-  await openSection(page, 'terminals');
   for (const caret of [
     triangle(page, ids.current),
     triangle(page, ids.coloured[0])
@@ -187,6 +186,8 @@ async function textsOfOpenCards(
     await page.mouse.move(0, 0);
     found.push(...(await texts(page)));
   }
+  await openSection(page, 'terminals');
+  found.push(...(await texts(page)));
   return found;
 }
 
@@ -215,7 +216,6 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
   try {
     await refresh(page);
     await openSection(page, 'workspaces');
-    await openSection(page, 'terminals');
     for (const theme of [DARK, LIGHT]) {
       await page.theme.setTheme(theme);
       const [colour1, colour2, colour3] = [
@@ -261,11 +261,6 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
           'note',
           page.locator(`${PANEL} .jp-WorkspaceManager-note`).first(),
           colour2
-        ],
-        [
-          'empty line',
-          page.locator(`${PANEL} .jp-WorkspaceManager-empty`).first(),
-          colour2
         ]
       ];
       for (const c of await header
@@ -302,18 +297,31 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
       await check();
       // the design system's hover pair paints a hovered glyph colour 1: measure with the pointer off the triangle openCard clicked
       await page.mouse.move(0, 0);
-      // the carets, of a section and of a card
-      for (const caret of [
-        sectionHeader(page, 'workspaces').locator(
-          '.jp-WorkspaceManager-caret .jp-icon3[fill]'
-        ),
-        triangle(page, ids.coloured[0]).locator('.jp-icon3[fill]')
-      ]) {
+      // the carets: the section's text glyph takes colour, the card's SVG fill
+      const carets: [Locator, string][] = [
+        [
+          sectionHeader(page, 'workspaces').locator(
+            '.jp-WorkspaceManager-caret'
+          ),
+          'color'
+        ],
+        [triangle(page, ids.coloured[0]).locator('.jp-icon3[fill]'), 'fill']
+      ];
+      for (const [caret, property] of carets) {
         expect
-          .soft(await colourOf(caret.first(), 'fill'), `${theme} caret`)
+          .soft(await colourOf(caret.first(), property), `${theme} caret`)
           .toEqual(colour2);
       }
+      // the empty line: KERNELS holds no item, opened as the one open section
+      await openSection(page, 'kernels');
+      const emptyLine = page
+        .locator(`${PANEL} .jp-WorkspaceManager-empty`)
+        .first();
+      expect
+        .soft(await colourOf(emptyLine), `${theme} empty line`)
+        .toEqual(colour2);
       // a terminal row: its name is colour 1 and its time colour 2, whether or not it is recent (DQ-21)
+      await openSection(page, 'terminals');
       const terminal = page
         .locator(`${PANEL} [data-section="terminals"] .jp-WorkspaceManager-row`)
         .first();
@@ -333,6 +341,8 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
       for (const c of colours) {
         expect.soft(await rgba(page, c), `${theme} ${c}`).not.toEqual(colour3);
       }
+      // WORKSPACES opens again for the next theme's card checks
+      await openSection(page, 'workspaces');
     }
   } finally {
     await ids.cleanup();
@@ -362,6 +372,7 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
       const found = await textsOfOpenCards(page, ids);
       await shown();
       // an empty workspace's card open, then a filter that matches nothing
+      await openSection(page, 'workspaces');
       await openCard(page, ids.coloured[2]);
       found.push(...(await shown()));
       await page
@@ -369,6 +380,11 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
         .fill('zzzz');
       found.push(...(await shown()));
       await page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`).fill('');
+      // one section open at a time: the empty KERNELS and LANGUAGE SERVERS sections are opened to be read
+      await openSection(page, 'kernels');
+      found.push(...(await shown()));
+      await openSection(page, 'servers');
+      found.push(...(await shown()));
       const small = found.filter(
         t => t.group || t.heading || t.empty || t.meta
       );
@@ -567,9 +583,12 @@ test('ACC-PANEL-168-COUNT-BRACKETS: the WORKSPACES count reads (4); the counts b
       header.locator('.jp-WorkspaceManager-sectionLabel')
     ).toHaveText('WORKSPACES');
     await expect(sectionCount(page, 'workspaces')).toHaveText('(4)');
-    // the label and the count, as the page draws them
+    // the caret glyph, the label and the count, as the page draws them
+    const glyph = (
+      (await header.locator('.jp-WorkspaceManager-caret').textContent()) ?? ''
+    ).trim();
     expect(await header.evaluate(n => (n as HTMLElement).innerText)).toMatch(
-      /^WORKSPACES\s*\(4\)$/
+      new RegExp(`^${glyph}\\s*WORKSPACES\\s*\\(4\\)$`)
     );
     await openCard(page, others[0]);
     await expect(

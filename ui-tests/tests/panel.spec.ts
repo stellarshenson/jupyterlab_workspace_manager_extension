@@ -1,5 +1,5 @@
 import { expect, test } from '@jupyterlab/galata';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   card,
@@ -7,6 +7,7 @@ import {
   fresh,
   gotoWorkspace,
   headerButton,
+  languageServer,
   only,
   onlyWorkspaces,
   openPanel,
@@ -182,7 +183,7 @@ test('ACC-PANEL-5-ICON: the sidebar tab shows the extension icon of four panes',
   );
   await expect(svg).toHaveAttribute(
     'data-icon',
-    'jupyterlab_workspace_manager_extension:panel'
+    '@stellarshenson/jupyterlab-workspace-manager-extension:panel'
   );
   // four panes in a 2 by 2 grid, only the top-left one filled
   const panes = await svg.locator('rect').evaluateAll(rects =>
@@ -304,7 +305,7 @@ test.describe('with the workspaces of the server', () => {
     }
   });
 
-  test('ACC-PANEL-90-SCROLL: each section list scrolls on its own under its header, 5 to 10 rows tall; the panel header and the filter field stay; nothing else scrolls', async ({
+  test('ACC-PANEL-90-SCROLL: each open section body is its own scroll container under a sticky header; the panel header and the filter field stay in place', async ({
     page
   }) => {
     const current = fresh('scroll');
@@ -319,12 +320,11 @@ test.describe('with the workspaces of the server', () => {
       await openPanel(page);
       await refresh(page);
       await expect(card(page, many[29])).toBeAttached();
-      await expect(
-        sectionBody(page, 'terminals').locator('.jp-WorkspaceManager-row')
-      ).not.toHaveCount(0);
       await headerButton(page, 'Filter').click();
 
+      // one section open at a time: each opened in turn is the only scroll container
       for (const name of ['workspaces', 'kernels', 'terminals', 'servers']) {
+        await openSection(page, name);
         const drawn = await sectionBody(page, name).evaluate(n => {
           const s = getComputedStyle(n);
           const h = getComputedStyle(n.previousElementSibling!);
@@ -337,42 +337,35 @@ test.describe('with the workspaces of the server', () => {
           ];
         });
         expect(drawn, name).toEqual(['auto', '0px', 'stable', 'sticky', '0px']);
-      }
-      // the two full lists: between 5 and 10 rows of 24 px
-      for (const name of ['workspaces', 'terminals']) {
-        const box = (await sectionBody(page, name).boundingBox())!;
-        expect(box.height, name).toBeGreaterThanOrEqual(5 * 24);
-        expect(box.height, name).toBeLessThanOrEqual(10 * 24);
-      }
-      // no ancestor of a list scrolls on its axis
-      const scrolling = await sectionBody(page, 'workspaces').evaluate(n => {
-        const found: string[] = [];
-        for (
-          let e = n.parentElement;
-          e && e.id !== 'jp-running-sessions';
-          e = e.parentElement
-        ) {
-          const y = getComputedStyle(e).overflowY;
-          if (
-            (y === 'auto' || y === 'scroll') &&
-            e.scrollHeight > e.clientHeight
+        // no ancestor of a list scrolls on its axis
+        const scrolling = await sectionBody(page, name).evaluate(n => {
+          const found: string[] = [];
+          for (
+            let e = n.parentElement;
+            e && e.id !== 'jp-running-sessions';
+            e = e.parentElement
           ) {
-            found.push(e.className);
+            const y = getComputedStyle(e).overflowY;
+            if (
+              (y === 'auto' || y === 'scroll') &&
+              e.scrollHeight > e.clientHeight
+            ) {
+              found.push(e.className);
+            }
           }
-        }
-        return found;
-      });
-      expect(scrolling).toEqual([]);
+          return found;
+        });
+        expect(scrolling, name).toEqual([]);
+      }
 
+      await openSection(page, 'workspaces');
       const header = page.locator(`${PANEL} .jp-WorkspaceManager-header`);
       const filter = page.locator(`${PANEL} .jp-WorkspaceManager-filter`);
       const list = sectionBody(page, 'workspaces');
-      const terminalList = sectionBody(page, 'terminals');
       const before = [
         await header.boundingBox(),
         await filter.boundingBox(),
-        await sectionHeader(page, 'workspaces').boundingBox(),
-        await terminalList.evaluate(n => n.scrollTop)
+        await sectionHeader(page, 'workspaces').boundingBox()
       ];
       await list.hover();
       await page.mouse.wheel(0, 600);
@@ -382,8 +375,7 @@ test.describe('with the workspaces of the server', () => {
       expect([
         await header.boundingBox(),
         await filter.boundingBox(),
-        await sectionHeader(page, 'workspaces').boundingBox(),
-        await terminalList.evaluate(n => n.scrollTop)
+        await sectionHeader(page, 'workspaces').boundingBox()
       ]).toEqual(before);
       await expect(header).toBeInViewport();
       await expect(filter).toBeInViewport();
@@ -394,6 +386,141 @@ test.describe('with the workspaces of the server', () => {
       );
       await deleteWorkspaces(page, [current, ...many]);
     }
+  });
+
+  test('ACC-PANEL-232-ROW-CAP: WORKSPACES fills the height between the panel header and the three closed bands and shows more than ten rows before it scrolls', async ({
+    page
+  }) => {
+    const current = fresh('cap');
+    const many = Array.from({ length: 30 }, (_, i) => `${current}-${i}`);
+    await Promise.all(many.map(id => putWorkspace(page, id)));
+    await onlyWorkspaces(page, id => id.startsWith(current));
+    try {
+      await gotoWorkspace(page, current);
+      await openPanel(page);
+      await refresh(page);
+      await expect(card(page, many[29])).toBeAttached();
+      const drawn = await sectionBody(page, 'workspaces').evaluate(n => ({
+        client: n.clientHeight,
+        scroll: n.scrollHeight,
+        overflow: getComputedStyle(n).overflowY
+      }));
+      expect(drawn.overflow).toBe('auto');
+      // the old clamp stopped at ten rows of 24 px; the open list fills the panel
+      expect(drawn.client).toBeGreaterThan(10 * 24);
+      expect(drawn.scroll).toBeGreaterThan(drawn.client);
+      // the WORKSPACES band above the open body, the collapsed KERNELS band below it
+      const workspacesHeader = (await sectionHeader(
+        page,
+        'workspaces'
+      ).boundingBox())!;
+      const body = (await sectionBody(page, 'workspaces').boundingBox())!;
+      const kernelsHeader = (await sectionHeader(
+        page,
+        'kernels'
+      ).boundingBox())!;
+      expect(
+        Math.abs(body.y - (workspacesHeader.y + workspacesHeader.height))
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(body.y + body.height - kernelsHeader.y)
+      ).toBeLessThanOrEqual(1);
+    } finally {
+      await deleteWorkspaces(page, [current, ...many]);
+    }
+  });
+
+  test.describe('with a real kernel', () => {
+    test.use({ kernels: null });
+
+    test('ACC-PANEL-227-FLUSH-WIDTH: a workspace card and a KERNELS, TERMINALS and LANGUAGE SERVERS row each span its section body to both edges', async ({
+      page
+    }) => {
+      test.setTimeout(120000);
+      const current = fresh('flush');
+      await putWorkspace(page, current);
+      const kernel = (
+        await (
+          await page.request.post('/api/kernels', {
+            data: { name: 'python3' }
+          })
+        ).json()
+      ).id;
+      const terminal = await startTerminal(page);
+      try {
+        await only(page, /\/api\/kernels(\?.*)?$/, k => k.id === kernel);
+        await only(
+          page,
+          /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+          t => t.name === terminal
+        );
+        await onlyWorkspaces(page, id => id === current);
+        await gotoWorkspace(page, current);
+        await openPanel(page);
+        await refresh(page);
+        await languageServer(page, true);
+
+        const boxes: [string, Locator][] = [
+          ['workspaces', card(page, current)],
+          [
+            'kernels',
+            sectionBody(page, 'kernels')
+              .locator('.jp-WorkspaceManager-row')
+              .first()
+          ],
+          [
+            'terminals',
+            sectionBody(page, 'terminals')
+              .locator('.jp-WorkspaceManager-row')
+              .first()
+          ],
+          [
+            'servers',
+            sectionBody(page, 'servers')
+              .locator('.jp-WorkspaceManager-row')
+              .first()
+          ]
+        ];
+        // one section at a time: open each in turn, the card first
+        for (const [name, box] of boxes) {
+          await openSection(page, name);
+          await expect(box, name).toBeVisible();
+          const drawn = await box.evaluate(n => {
+            const body = n.closest(
+              '.jp-WorkspaceManager-sectionBody'
+            ) as HTMLElement;
+            const s = getComputedStyle(body);
+            const b = body.getBoundingClientRect();
+            // the content box ends before the borders and whatever strip the body keeps
+            const bar =
+              body.offsetWidth -
+              body.clientWidth -
+              parseFloat(s.borderLeftWidth) -
+              parseFloat(s.borderRightWidth);
+            const left =
+              b.left +
+              parseFloat(s.borderLeftWidth) +
+              parseFloat(s.paddingLeft);
+            const right =
+              b.right -
+              parseFloat(s.borderRightWidth) -
+              parseFloat(s.paddingRight) -
+              bar;
+            const r = n.getBoundingClientRect();
+            return {
+              left: r.left - left,
+              right: right - r.right
+            };
+          });
+          expect(Math.abs(drawn.left), name).toBeLessThanOrEqual(1);
+          expect(Math.abs(drawn.right), name).toBeLessThanOrEqual(1);
+        }
+      } finally {
+        await page.request.delete(`/api/kernels/${kernel}`);
+        await page.request.delete(`/api/terminals/${terminal}`);
+        await deleteWorkspaces(page, [current]);
+      }
+    });
   });
 
   test.describe('in a 720 px window', () => {
@@ -436,6 +563,8 @@ test.describe('with the workspaces of the server', () => {
           UNDER_LOAD
         );
         await expect(sectionCount(page, 'terminals')).toHaveText('(12)');
+        // one section at a time: the empty LANGUAGE SERVERS list is opened to be read
+        await openSection(page, 'servers');
         await expect(sectionBody(page, 'servers')).toHaveText(
           'No language servers'
         );
@@ -486,6 +615,140 @@ test.describe('with the workspaces of the server', () => {
           ...kernels.map(k => page.request.delete(`/api/kernels/${k}`)),
           ...terminals.map(t => page.request.delete(`/api/terminals/${t}`))
         ]);
+        await deleteWorkspaces(page, [current, ...many]);
+      }
+    });
+
+    test('ACC-PANEL-230-DOCKED-BANDS: the three laboratory bands dock at the panel bottom in order, all three stay in view, and the open section body is the only scroll container', async ({
+      page
+    }) => {
+      test.setTimeout(180000);
+      const current = fresh('docked');
+      const many = Array.from({ length: 30 }, (_, i) => `${current}-${i}`);
+      await Promise.all(many.map(id => putWorkspace(page, id)));
+      const terminals: string[] = [];
+      try {
+        for (let i = 0; i < 12; i++) {
+          terminals.push(await startTerminal(page));
+        }
+        // the terminals of other tests are not this test's
+        await only(
+          page,
+          /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+          t => terminals.includes(t.name)
+        );
+        await onlyWorkspaces(page, id => id.startsWith(current));
+        await gotoWorkspace(page, current);
+        await openPanel(page);
+        await refresh(page);
+        await expect(sectionCount(page, 'terminals')).toHaveText('(12)');
+
+        const drawn = () =>
+          page
+            .locator(`${PANEL} .jp-WorkspaceManager-content`)
+            .evaluate(content => {
+              const c = content.getBoundingClientRect();
+              const list = content.querySelector('.jp-WorkspaceManager-list')!;
+              const sections = [...list.children] as HTMLElement[];
+              const box = (e: Element) =>
+                e
+                  .querySelector('.jp-WorkspaceManager-sectionHeader')!
+                  .getBoundingClientRect();
+              const body = (e: Element) =>
+                e.querySelector('.jp-WorkspaceManager-sectionBody');
+              const last = box(sections[sections.length - 1]);
+              return {
+                order: sections.map(s => s.dataset.section),
+                lastBottom: Math.round(last.bottom),
+                contentBottom: Math.round(c.bottom),
+                bands: [1, 2, 3].map(i => {
+                  const r = box(sections[i]);
+                  return (
+                    Math.round(r.top) >= Math.round(c.top) &&
+                    Math.round(r.bottom) <= Math.round(c.bottom)
+                  );
+                }),
+                bodies: sections.map(s => (body(s) ? s.dataset.section : null)),
+                scrollables: [...content.querySelectorAll('*')]
+                  .filter(e =>
+                    ['auto', 'scroll'].includes(getComputedStyle(e).overflowY)
+                  )
+                  .map(e => e.className)
+              };
+            });
+
+        const open = await drawn();
+        expect(open.order).toEqual([
+          'workspaces',
+          'kernels',
+          'terminals',
+          'servers'
+        ]);
+        // nothing renders below the LANGUAGE SERVERS band
+        expect(
+          Math.abs(open.lastBottom - open.contentBottom)
+        ).toBeLessThanOrEqual(1);
+        expect(open.bands).toEqual([true, true, true]);
+        expect(open.bodies).toEqual(['workspaces', null, null, null]);
+        expect(open.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
+        const filled = await sectionBody(page, 'workspaces').evaluate(n => ({
+          client: n.clientHeight,
+          scroll: n.scrollHeight
+        }));
+        expect(filled.client).toBeGreaterThan(10 * 24);
+        expect(filled.scroll).toBeGreaterThan(filled.client);
+
+        // KERNELS opened: the three bands stay in view and the kernels body takes the space left
+        await sectionHeader(page, 'kernels').click();
+        await expect(sectionBody(page, 'workspaces')).toHaveCount(0);
+        const kern = await drawn();
+        expect(kern.order).toEqual([
+          'workspaces',
+          'kernels',
+          'terminals',
+          'servers'
+        ]);
+        expect(kern.bands).toEqual([true, true, true]);
+        expect(
+          Math.abs(kern.lastBottom - kern.contentBottom)
+        ).toBeLessThanOrEqual(1);
+        expect(kern.bodies).toEqual([null, 'kernels', null, null]);
+        expect(kern.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
+        const kernelsHeader = (await sectionHeader(
+          page,
+          'kernels'
+        ).boundingBox())!;
+        const kernelsBody = (await sectionBody(page, 'kernels').boundingBox())!;
+        const terminalsHeader = (await sectionHeader(
+          page,
+          'terminals'
+        ).boundingBox())!;
+        expect(
+          Math.abs(kernelsBody.y - (kernelsHeader.y + kernelsHeader.height))
+        ).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(kernelsBody.y + kernelsBody.height - terminalsHeader.y)
+        ).toBeLessThanOrEqual(1);
+
+        // KERNELS closed again: no section grows, every band stays docked and no body is drawn
+        await sectionHeader(page, 'kernels').click();
+        await expect(sectionBody(page, 'kernels')).toHaveCount(0);
+        const closed = await drawn();
+        expect(closed.order).toEqual([
+          'workspaces',
+          'kernels',
+          'terminals',
+          'servers'
+        ]);
+        expect(
+          Math.abs(closed.lastBottom - closed.contentBottom)
+        ).toBeLessThanOrEqual(1);
+        expect(closed.bodies).toEqual([null, null, null, null]);
+        expect(closed.scrollables).toEqual([]);
+      } finally {
+        await Promise.all(
+          terminals.map(t => page.request.delete(`/api/terminals/${t}`))
+        );
         await deleteWorkspaces(page, [current, ...many]);
       }
     });
@@ -548,7 +811,7 @@ test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the bu
   // a button another extension adds to the toolbar of the panel, as search-tabs did
   await page.evaluate(async () => {
     const panel: any = await (window as any).galata.getPlugin(
-      'jupyterlab_workspace_manager_extension:plugin'
+      '@stellarshenson/jupyterlab-workspace-manager-extension:plugin'
     );
     // the title is a plain Lumino widget: its class makes the item
     const Widget = panel.toolbar.layout.widgets[0].constructor;
@@ -646,7 +909,7 @@ const SECTIONS = [
   ['servers', 'LANGUAGE SERVERS']
 ];
 
-test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on layout colour 2 with no corners and no shadow, 6 px above and below; caret, a 600 uppercase size 0 label at 18 px in colour 1, the count in colour 2 6 px after it; hover layout colour 3', async ({
+test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on layout colour 2 with no corners and no shadow, 4 px above and below; caret, a 600 uppercase size 0 label at 18 px in colour 1, the count in colour 2 6 px after it; hover layout colour 3', async ({
   page
 }) => {
   await page.goto();
@@ -662,9 +925,10 @@ test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on 
   ];
   for (const [name, label] of SECTIONS) {
     const header = sectionHeader(page, name);
-    await expect(
-      header.locator('.jp-WorkspaceManager-caret svg')
-    ).toHaveAttribute('data-icon', /^ui-components:caret-(right|down)$/);
+    const caret = header.locator('.jp-WorkspaceManager-caret');
+    await expect(caret).toHaveText(
+      (await header.getAttribute('aria-expanded')) === 'true' ? '▾' : '▸'
+    );
     await expect(
       header.locator('.jp-WorkspaceManager-sectionLabel')
     ).toHaveText(label);
@@ -698,7 +962,7 @@ test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on 
       };
     });
     expect(drawn, name).toEqual({
-      band: [layout2, 'none', '0px', '6px', '6px'],
+      band: [layout2, 'none', '0px', '4px', '4px'],
       fullWidth: true,
       label: ['600', 'uppercase', '1px', size0, colour1],
       // the band sits 2 px inside the panel edge for its focus rim (DQ-19)

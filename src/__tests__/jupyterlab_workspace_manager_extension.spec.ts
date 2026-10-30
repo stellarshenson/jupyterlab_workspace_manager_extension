@@ -2,7 +2,7 @@
  * Example of [Jest](https://jestjs.io/docs/getting-started) unit tests
  */
 
-describe('jupyterlab_workspace_manager_extension', () => {
+describe('@stellarshenson/jupyterlab-workspace-manager-extension', () => {
   it('should be tested', () => {
     expect(1 + 1).toEqual(2);
   });

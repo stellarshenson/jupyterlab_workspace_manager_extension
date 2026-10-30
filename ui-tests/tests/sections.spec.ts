@@ -435,7 +435,7 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts it
   }
 });
 
-test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3), KERNELS, TERMINALS and LANGUAGE SERVERS start open; a header click closes or opens that section only; a reload keeps each state', async ({
+test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES (3) opens by default; opening a section closes the open one; clicking the open header closes all four; a reload keeps the one open section', async ({
   page
 }) => {
   // the terminals, kernels and language servers of other tests are listed too
@@ -487,45 +487,57 @@ test('ACC-PANEL-182-SECTION-HEADS: WORKSPACES (3), KERNELS, TERMINALS and LANGUA
       'LANGUAGE SERVERS'
     ]);
 
-    // every section open, each with its rows
+    // WORKSPACES alone is open; its body holds every card
     const expanded = () =>
       Promise.all(
         ['workspaces', 'kernels', 'terminals', 'servers'].map(name =>
           sectionHeader(page, name).getAttribute('aria-expanded')
         )
       );
-    expect(await expanded()).toEqual(['true', 'true', 'true', 'true']);
-    for (const [name, text] of [
-      ['kernels', kernelId],
-      ['terminals', `terminal ${terminal}`],
-      ['servers', 'fake-lsp (python)']
-    ] as const) {
-      await expect(sectionBody(page, name)).toBeVisible();
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
+
+    // opening a section closes the open one; a closed section shows its band only
+    const steps: [string, string, string][] = [
+      ['kernels', kernelId, 'workspaces'],
+      ['terminals', `terminal ${terminal}`, 'kernels'],
+      ['servers', 'fake-lsp (python)', 'terminals']
+    ];
+    for (const [name, text, was] of steps) {
+      await sectionHeader(page, name).click();
       await expect(sectionBody(page, name)).toContainText(text);
       await expect(
         sectionBody(page, name).locator('.jp-WorkspaceManager-row')
       ).toHaveCount(1);
+      await expect(sectionBody(page, was)).toHaveCount(0);
+      expect(await expanded()).toEqual(
+        ['workspaces', 'kernels', 'terminals', 'servers'].map(k =>
+          k === name ? 'true' : 'false'
+        )
+      );
     }
 
-    // a click closes KERNELS only, then TERMINALS only; a closed section shows its header only
-    await sectionHeader(page, 'kernels').click();
-    await expect(sectionBody(page, 'kernels')).toHaveCount(0);
-    expect(await expanded()).toEqual(['true', 'false', 'true', 'true']);
-    await expect(card(page, current)).toBeVisible();
-    await sectionHeader(page, 'terminals').click();
-    await expect(sectionBody(page, 'terminals')).toHaveCount(0);
-    expect(await expanded()).toEqual(['true', 'false', 'false', 'true']);
-    await expect(sectionBody(page, 'servers')).toContainText('fake-lsp');
+    // a click on the open header closes every section
+    await sectionHeader(page, 'servers').click();
+    expect(await expanded()).toEqual(['false', 'false', 'false', 'false']);
+    for (const name of ['workspaces', 'kernels', 'terminals', 'servers']) {
+      await expect(sectionBody(page, name)).toHaveCount(0);
+    }
 
-    // the open state outlives the page
+    // WORKSPACES opens again; the one open section outlives the page
+    await sectionHeader(page, 'workspaces').click();
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
     await page.reload();
     await openPanel(page);
     await refresh(page);
     await expect(card(page, current)).toBeVisible();
-    expect(await expanded()).toEqual(['true', 'false', 'false', 'true']);
+    expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
     await sectionHeader(page, 'kernels').click();
     await expect(sectionBody(page, 'kernels')).toContainText(kernelId);
-    expect(await expanded()).toEqual(['true', 'true', 'false', 'true']);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    expect(await expanded()).toEqual(['false', 'true', 'false', 'false']);
+    await expect(sectionBody(page, 'kernels')).toContainText(kernelId);
   } finally {
     await languageServer(page, false);
     if (terminal) {
@@ -1295,6 +1307,98 @@ test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, 
   }
 });
 
+test('ACC-ACCORD-226-CARD-WASH: the workspace colour given from the card menu washes the card body and its header at 14 %, and a card with no colour keeps the plain surfaces', async ({
+  page
+}) => {
+  const current = fresh('wash');
+  const other = `${current}-a`;
+  await putWorkspace(page, current);
+  await putWorkspace(page, other);
+  // linear-gradient(rgba(r, g, b, a), rgba(r, g, b, a)) or color(srgb r g b / a): the washes of the image
+  const alphas = (image: string) =>
+    [...image.matchAll(/(?:rgba?|color)\(([^)]+)\)/g)].map(m => {
+      const parts = m[1].replace(/^srgb\s+/, '').split(/[,\s/]+/);
+      return parts.length === 4 ? Number(parts[3]) : 1;
+    });
+  try {
+    await setUpExisting(page, current);
+    // the colour from the card's own menu, as a workspace gets it
+    await fromMenu(page, other, 'Colour');
+    await menuItem(page, 'Green').click();
+    await expect(card(page, other)).toHaveClass(/jp-mod-mint/);
+
+    // the surfaces the criterion names, polled until the rendered card carries the wash:
+    // a stylesheet that lands after the card renders must not make the plain card read as none
+    const surfaces = (id: string) =>
+      card(page, id).evaluate(n => {
+        const header = n.querySelector('.jp-WorkspaceManager-cardHeader')!;
+        return [
+          getComputedStyle(n).backgroundImage,
+          getComputedStyle(header).backgroundImage
+        ];
+      });
+    await expect
+      .poll(
+        () => surfaces(other).then(([c, h]) => [alphas(c), alphas(h)]),
+        UNDER_LOAD
+      )
+      .toEqual([
+        [0.14, 0.14],
+        [0.14, 0.14]
+      ]);
+
+    // a card with no colour: the class alone, no colour class, --wm-strip transparent
+    // (a reload gives every listed workspace a colour, so the plain card is the class alone)
+    const plain = await page.locator(PANEL).evaluate(panel => {
+      const probe = document.createElement('div');
+      probe.className = 'jp-WorkspaceManager-card';
+      const header = document.createElement('div');
+      header.className = 'jp-WorkspaceManager-cardHeader';
+      probe.appendChild(header);
+      panel.appendChild(probe);
+      const drawn = {
+        card: getComputedStyle(probe).backgroundImage,
+        header: getComputedStyle(header).backgroundImage
+      };
+      probe.remove();
+      return drawn;
+    });
+    expect(alphas(plain.card)).toEqual([0, 0]);
+    expect(alphas(plain.header)).toEqual([0, 0]);
+
+    for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
+      await page.theme.setTheme(theme);
+      const drawn = await card(page, other).evaluate(n => {
+        const header = n.querySelector('.jp-WorkspaceManager-cardHeader')!;
+        return {
+          card: getComputedStyle(n).backgroundImage,
+          header: getComputedStyle(header).backgroundImage,
+          body: getComputedStyle(n).backgroundColor,
+          band: getComputedStyle(header).backgroundColor,
+          strip: getComputedStyle(n).borderLeftColor
+        };
+      });
+      const what = `${theme} ${other}`;
+      expect(drawn.card, what).not.toBe(plain.card);
+      expect(drawn.header, what).not.toBe(plain.header);
+      expect(alphas(drawn.card), what).toEqual([0.14, 0.14]);
+      expect(alphas(drawn.header), what).toEqual([0.14, 0.14]);
+      // the wash sits over layout colour 1 on the body and 2 on the header; the strip keeps the token
+      expect(await rgb(page, drawn.body), what).toEqual(
+        await rgb(page, 'var(--jp-layout-color1)')
+      );
+      expect(await rgb(page, drawn.band), what).toEqual(
+        await rgb(page, 'var(--jp-layout-color2)')
+      );
+      expect(await rgb(page, drawn.strip), what).toEqual(
+        await rgb(page, 'var(--jp-success-color1)')
+      );
+    }
+  } finally {
+    await deleteWorkspaces(page, [current, other]);
+  }
+});
+
 test("ACC-ACCORD-76-OUTLINE: only this window's card has the brand colour 2 outline", async ({
   page
 }) => {
@@ -1606,13 +1710,14 @@ test.describe('at 4x device scale', () => {
 
   /**
    * The device pixels of a region around a card's top-left corner, with the
-   * card's corner at (`margin`, `margin`) CSS px of the region.
+   * card's corner at (0, `margin`) CSS px of the region: the card has no
+   * horizontal margin, so its strip sits on the panel edge.
    */
   async function cornerPixels(page: Page, id: string, margin: number) {
     const box = (await card(page, id).boundingBox())!;
     const size = margin + 12;
     const png = await page.screenshot({
-      clip: { x: box.x - margin, y: box.y - margin, width: size, height: size }
+      clip: { x: box.x, y: box.y - margin, width: size, height: size }
     });
     return page.evaluate(async b64 => {
       const image = new Image();
@@ -1630,7 +1735,7 @@ test.describe('at 4x device scale', () => {
     }, png.toString('base64'));
   }
 
-  test("ACC-ACCORD-128-STRIP-PLAIN, ACC-ACCORD-129-FLUSH: the strip and the header stay inside the card's 2 px corners; the outline lies against it; this window's strip is every card's strip", async ({
+  test("ACC-ACCORD-128-STRIP-PLAIN, ACC-ACCORD-129-FLUSH: the strip and the header stay inside the card's 2 px corners; the outline lies against it; this window's strip shows its inner 2 px under its own 2 px outline", async ({
     page
   }) => {
     const current = fresh('fit');
@@ -1647,7 +1752,11 @@ test.describe('at 4x device scale', () => {
         const strip = await rgb(page, 'var(--jp-success-color1)');
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
-        const header = await rgb(page, 'var(--jp-layout-color2)');
+        // the header sits under the card's wash (ACC-ACCORD-226-CARD-WASH)
+        const header = await rgb(
+          page,
+          'color-mix(in srgb, var(--jp-success-color1) 14%, var(--jp-layout-color2))'
+        );
 
         // ACC-ACCORD-128: the same strip on both cards; ACC-ACCORD-129: one clipped shape
         const shape = (id: string) =>
@@ -1667,8 +1776,8 @@ test.describe('at 4x device scale', () => {
         expect(await rgb(page, mine[1])).toEqual(strip);
 
         const S = 4; // device pixels per CSS pixel
-        const R = 2 * S; // the corner radius
         const W = 2 * S; // the outline width
+        const R = 2; // the card's corner radius in CSS px
         const at = (
           px: { width: number; data: number[] },
           x: number,
@@ -1676,36 +1785,41 @@ test.describe('at 4x device scale', () => {
         ) => px.data.slice((y * px.width + x) * 4, (y * px.width + x) * 4 + 3);
         const is = (c: number[], expected: number[]) => near(c, expected, 8);
 
-        // the region of the other card ends 2px above it, under this window's outline
-        for (const [id, outlined, M] of [
-          [current, true, 4],
-          [other, false, 2]
+        // the outline lies inside the card's own box, over the strip's outer 2 px
+        const M = 3;
+        for (const [id, outlined] of [
+          [current, true],
+          [other, false]
         ] as const) {
           const px = await cornerPixels(page, id, M);
-          const [cx, cy] = [M * S + R, M * S + R]; // centre of the corner arc
           const wrong: string[] = [];
           for (let y = 0; y < px.width; y++) {
             for (let x = 0; x < px.width; x++) {
-              const [dx, dy] = [x + 0.5 - cx, y + 0.5 - cy];
-              // distance outside the card's edge; negative inside
-              const out =
-                dx < 0 && dy < 0
-                  ? Math.hypot(dx, dy) - R
-                  : Math.max(-(x + 0.5 - M * S), -(y + 0.5 - M * S));
               const c = at(px, x, y);
-              // anti-aliased bands at the edge and at the outline's outer edge are not judged
-              if (
-                Math.abs(out) < 1.5 ||
-                (outlined && Math.abs(out - W) < 1.5)
-              ) {
+              if (y + 0.5 < M * S) {
+                // above the card's top edge: neither the card nor its outline stands there
+                if (Math.abs(y + 0.5 - M * S) < 1.5) {
+                  continue;
+                }
+                if (!is(c, panel)) {
+                  wrong.push(`(${x},${y}) ${c} above, where ${panel}`);
+                }
                 continue;
               }
-              if (out < 0) {
+              if (!outlined) {
                 continue;
               }
-              const expected = outlined && out < W ? outline : panel;
-              if (!is(c, expected)) {
-                wrong.push(`(${x},${y}) ${c} where ${expected}`);
+              // the 2 px corner arc turns the band inward: its pixels are not the straight band
+              if (x + 0.5 < R * S + 1 && y + 0.5 - M * S < R * S + 1) {
+                continue;
+              }
+              // inside the box: the outline band runs along the left and top edges
+              const inside = Math.min(x + 0.5, y + 0.5 - M * S);
+              if (Math.abs(inside - W) < 1.5) {
+                continue;
+              }
+              if (inside < W && !is(c, outline)) {
+                wrong.push(`(${x},${y}) ${c} inside, where ${outline}`);
               }
             }
           }
@@ -1714,10 +1828,13 @@ test.describe('at 4x device scale', () => {
             `${theme} ${id}: ${wrong.length} pixels`
           ).toEqual([]);
 
-          // ACC-ACCORD-128: the strip, then at its right edge the header's layout colour 2
-          const row = M * S + 2 * R;
-          const x0 = M * S;
-          expect(is(at(px, x0 + 1, row), strip), `${id} strip`).toBe(true);
+          // ACC-ACCORD-128: the outline covers the strip's first 2 px; the strip shows from 2 to 4 px, then the header
+          const row = M * S + 6 * S;
+          const x0 = 0;
+          expect(
+            is(at(px, x0 + 1, row), outlined ? outline : strip),
+            `${id} left edge`
+          ).toBe(true);
           expect(
             is(at(px, x0 + 4 * S - 1, row), strip),
             `${id} strip end`
@@ -1726,10 +1843,97 @@ test.describe('at 4x device scale', () => {
             is(at(px, x0 + 4 * S, row), header),
             `${id} header start`
           ).toBe(true);
+          if (outlined) {
+            // the top band, away from the corner
+            expect(
+              is(at(px, x0 + 6 * S, M * S + 1), outline),
+              `${id} top band`
+            ).toBe(true);
+          }
         }
       }
     } finally {
       await deleteWorkspaces(page, [current, other]);
+    }
+  });
+
+  test("ACC-PANEL-231-OUTLINE-INSIDE: this window's card paints its 2 px brand colour 2 outline inside its own box on all four sides, and its left edge stays flush with the section body", async ({
+    page
+  }) => {
+    test.setTimeout(120000);
+    const current = fresh('inside');
+    await putWorkspace(page, current);
+    await patchMeta(page, current, { colour: 'mint' });
+    try {
+      await setUpExisting(page, current);
+      await page.mouse.move(0, 0);
+      const outline = await rgb(page, 'var(--jp-brand-color2)');
+      const panel = await rgb(page, 'var(--jp-layout-color1)');
+      const S = 4; // device pixels per CSS pixel
+      const M = 3; // CSS px of panel captured around the card
+      const box = (await card(page, current).boundingBox())!;
+      // flush: the card keeps no horizontal margin inside its section body, whose
+      // content edge starts after the list's 2 px gutter for the header focus rim
+      const flush = await card(page, current).evaluate(n => {
+        const body = n.closest(
+          '.jp-WorkspaceManager-sectionBody'
+        ) as HTMLElement;
+        const s = getComputedStyle(body);
+        const b = body.getBoundingClientRect();
+        return (
+          n.getBoundingClientRect().left -
+          (b.left + parseFloat(s.borderLeftWidth) + parseFloat(s.paddingLeft))
+        );
+      });
+      expect(Math.abs(flush)).toBeLessThanOrEqual(1);
+
+      const [w, h] = [Math.round(box.width * S), Math.round(box.height * S)];
+      const [x0, y0] = [M * S, M * S];
+      const points: [string, number, number][] = [
+        ['left band', x0 + 2, y0 + Math.round(h / 2)],
+        ['right band', x0 + w - 4, y0 + Math.round(h / 2)],
+        ['top band', x0 + Math.round(w / 2), y0 + 2],
+        ['bottom band', x0 + Math.round(w / 2), y0 + h - 4],
+        ['left outside', x0 - 2, y0 + Math.round(h / 2)],
+        ['right outside', x0 + w + 2, y0 + Math.round(h / 2)],
+        ['top outside', x0 + Math.round(w / 2), y0 - 2],
+        ['bottom outside', x0 + Math.round(w / 2), y0 + h + 2]
+      ];
+      const png = await page.screenshot({
+        clip: {
+          x: box.x - M,
+          y: box.y - M,
+          width: box.width + 2 * M,
+          height: box.height + 2 * M
+        }
+      });
+      const samples = await page.evaluate(
+        async ({ b64, points }: { b64: string; points: number[][] }) => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${b64}`;
+          await image.decode();
+          const canvas = document.createElement('canvas');
+          canvas.width = image.width;
+          canvas.height = image.height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(image, 0, 0);
+          return points.map(([x, y]) =>
+            Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3))
+          );
+        },
+        {
+          b64: png.toString('base64'),
+          points: points.map(([, x, y]) => [x, y])
+        }
+      );
+      const is = (c: number[], expected: number[]) =>
+        c.every((v, i) => Math.abs(v - expected[i]) <= 8);
+      points.forEach(([what], i) => {
+        const expected = what.includes('outside') ? panel : outline;
+        expect(is(samples[i], expected), `${what}: ${samples[i]}`).toBe(true);
+      });
+    } finally {
+      await deleteWorkspaces(page, [current]);
     }
   });
 });

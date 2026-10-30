@@ -45,7 +45,7 @@ c.ServerApp.port = int(os.environ.get("JUPYTER_TEST_PORT") or "8888")
 # take 4.5 s. A built copy in extra_labextensions_path loads as before; an installed copy is
 # copied into the one folder that replaces the standard paths.
 only = mkdtemp(prefix="galata-labextensions-")
-for name in ["jupyterlab_workspace_manager_extension", "galaxalabs_jupyterlab_steel_dark_theme"]:
+for name in ["@stellarshenson/jupyterlab-workspace-manager-extension", "galaxalabs_jupyterlab_steel_dark_theme"]:
     for path in jupyter_path("labextensions"):
         if os.path.isdir(os.path.join(path, name)):
             shutil.copytree(os.path.join(path, name), os.path.join(only, name))

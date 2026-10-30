@@ -1,14 +1,14 @@
 # Workspace panel for JupyterLab
 
 [![GitHub Actions](https://github.com/stellarshenson/jupyterlab_workspace_manager_extension/actions/workflows/build.yml/badge.svg)](https://github.com/stellarshenson/jupyterlab_workspace_manager_extension/actions/workflows/build.yml)
-[![npm version](https://img.shields.io/npm/v/jupyterlab_workspace_manager_extension.svg)](https://www.npmjs.com/package/jupyterlab_workspace_manager_extension)
+[![npm version](https://img.shields.io/npm/v/@stellarshenson/jupyterlab-workspace-manager-extension.svg)](https://www.npmjs.com/package/@stellarshenson/jupyterlab-workspace-manager-extension)
 [![PyPI version](https://img.shields.io/pypi/v/jupyterlab-workspace-manager-extension.svg?cache=20261025)](https://pypi.org/project/jupyterlab-workspace-manager-extension/)
 [![Total PyPI downloads](https://static.pepy.tech/badge/jupyterlab-workspace-manager-extension)](https://pepy.tech/project/jupyterlab-workspace-manager-extension)
 [![JupyterLab 4](https://img.shields.io/badge/JupyterLab-4-orange.svg)](https://jupyterlab.readthedocs.io/en/stable/)
 [![Brought To You By KOLOMOLO](https://img.shields.io/badge/Brought%20To%20You%20By-KOLOMOLO-00ffff?style=flat)](https://kolomolo.com)
 [![Donate PayPal](https://img.shields.io/badge/Donate-PayPal-blue?style=flat)](https://www.paypal.com/donate/?hosted_button_id=B4KPBJDLLXTSA)
 
-This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: a WORKSPACES section with one card per workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS sections listing everything that runs, each section opening and closing on its own.
+This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: a WORKSPACES section with one card per workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS sections listing everything that runs, docked at the bottom of the panel while one section at a time is open and fills the height above them.
 
 ![The workspace panel](docs/images/panel-full-window.png)
 
@@ -28,7 +28,8 @@ The panel groups them by workspace: what each project holds, what is running in 
 - **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, move up, move down, delete
 - **Card order** - the cards keep one fixed order that switching workspaces does not change, a drag or Move up and Move down moves a card, and a new workspace goes last
 - **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last card of WORKSPACES
-- **Kernels, terminals and language servers** - three sections below the workspaces, always shown, for every running kernel and terminal, in a workspace or not, and the running language servers, each section with its count and a shut down all
+- **Kernels, terminals and language servers** - three sections docked below the workspaces, always in view, for every running kernel and terminal, in a workspace or not, and the running language servers, each section with its count and a shut down all
+- **One section at a time** - opening a section closes the others, the open section takes the height above the docked bands and scrolls, and a reload keeps the same section open
 - **Kernel rows** - a KERNELS row shows the status dot, the name and the time; select it for the kernel type, the document, the memory and the CPU use
 - **Tooltips** - hover a tab, terminal, kernel or language server for its details on several lines
 - **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them

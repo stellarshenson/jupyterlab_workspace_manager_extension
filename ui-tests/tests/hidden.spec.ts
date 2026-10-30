@@ -100,7 +100,7 @@ test("ACC-HIDDEN-52-SHOW-HIDDEN, ACC-HIDDEN-53-UNHIDE: the header eye shows hidd
     await expect(again).toBeVisible();
     await expect(again.locator('svg')).toHaveAttribute(
       'data-icon',
-      /jupyterlab_workspace_manager_extension:eye/
+      /@stellarshenson\/jupyterlab-workspace-manager-extension:eye/
     );
 
     // ACC-HIDDEN-53
@@ -144,7 +144,7 @@ test("ACC-HIDDEN-213-EYE-TOGGLE: the eye of a shown card hides it as Hide worksp
     await expect(cardEye(other)).toHaveAttribute('aria-pressed', 'false');
     await expect(cardEye(other).locator('svg')).toHaveAttribute(
       'data-icon',
-      'jupyterlab_workspace_manager_extension:eye-off'
+      '@stellarshenson/jupyterlab-workspace-manager-extension:eye-off'
     );
     await cardEye(other).click();
     await expect(card(page, other)).toHaveCount(0, HEAVY_LOAD);
@@ -160,7 +160,7 @@ test("ACC-HIDDEN-213-EYE-TOGGLE: the eye of a shown card hides it as Hide worksp
     await expect(cardEye(other)).toHaveAttribute('aria-pressed', 'true');
     await expect(cardEye(other).locator('svg')).toHaveAttribute(
       'data-icon',
-      'jupyterlab_workspace_manager_extension:eye'
+      '@stellarshenson/jupyterlab-workspace-manager-extension:eye'
     );
     await cardEye(other).click();
     await expect(card(page, other)).not.toHaveClass(/jp-mod-hiddenWorkspace/);

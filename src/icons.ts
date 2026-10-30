@@ -2,7 +2,7 @@ import { LabIcon } from '@jupyterlab/ui-components';
 
 import { COLOURS, type Colour } from './model/palette';
 
-const NS = 'jupyterlab_workspace_manager_extension';
+const NS = '@stellarshenson/jupyterlab-workspace-manager-extension';
 
 // Stroke glyphs set `fill:none` inline: JupyterLab's `.jp-icon3[fill]` rule
 // would otherwise fill them, and `.jp-icon3[stroke]` gives the theme colour.

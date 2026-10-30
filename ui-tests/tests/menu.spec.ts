@@ -341,7 +341,8 @@ test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace and, armed, Confirm delete d
       const plain = await paint('Set description...');
       expect(plain.fill, theme).not.toBe(error);
       const bin = 'ui-components:delete';
-      const warning = 'jupyterlab_workspace_manager_extension:warning';
+      const warning =
+        '@stellarshenson/jupyterlab-workspace-manager-extension:warning';
 
       // at rest: the error-coloured label and bin, the reference's background
       expect(await red(), theme).toEqual(['Delete workspace']);

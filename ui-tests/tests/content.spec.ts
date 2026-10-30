@@ -548,6 +548,8 @@ test('ACC-LISTS-104-ROW-MENU: row actions open by right-click or the context-men
       sectionBody(page, 'servers').locator(`${ROW} button`)
     ).toHaveCount(1);
 
+    // opening SERVERS closed WORKSPACES and unmounted its card: reopen it for the menu
+    await openSection(page, 'workspaces');
     const labels = page.locator('.jp-WorkspaceManager-menu .lm-Menu-itemLabel');
     await rowOf(c, 'menu.txt').click({ button: 'right' });
     await expect(labels).toHaveText(['Close tab']);

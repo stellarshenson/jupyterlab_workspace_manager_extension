@@ -104,7 +104,7 @@
   background: var(--jp-layout-color3);
 }
 
-/* the carets of the sections and of the cards */
+/* the card's caret icon */
 .jp-WorkspaceManager-caret .jp-icon3[fill] {
   fill: var(--jp-ui-font-color2);
 }
@@ -148,27 +148,37 @@
 }
 
 /*
-    The sections share the panel's height and none of them scrolls the panel (DQ-05):
-    a grid gives each section its whole height while it fits, and the sections that
-    do not fit share the height left in equal parts, so a short panel shortens the
-    long lists and keeps every header and a short or empty list whole
+    One flex column of the panel's height (DQ-23): the open section takes the height
+    left between the panel header and the collapsed bands, KERNELS, TERMINALS and
+    LANGUAGE SERVERS keep their order and dock at the bottom, and no section scrolls
+    the panel. Nothing sits below the LANGUAGE SERVERS band.
 */
 .jp-WorkspaceManager-list {
-  display: grid;
+  display: flex;
   flex: 1 1 auto;
-  grid-auto-rows: minmax(0, max-content);
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
+  flex-direction: column;
   min-height: 0;
 
   /* 2 px at the sides leave the room for a full-width header's outside focus rim (DQ-19) */
-  padding: 0 2px 8px;
+  padding: 0 2px;
 }
 
 .jp-WorkspaceManager-section {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
+  min-height: 0;
   border-bottom: var(--jp-border-width) solid var(--jp-border-color3);
+}
+
+/* the open section fills the height left by the panel header and the collapsed bands */
+.jp-WorkspaceManager-section.jp-mod-open {
+  flex: 1 1 auto;
+}
+
+/* with all four sections closed no section grows, so this margin docks the lab bands at the panel bottom */
+.jp-WorkspaceManager-section[data-section='kernels'] {
+  margin-top: auto;
 }
 
 /* A section header is a band on layout colour 2 (DQ-03): 6 px above and below the text, no shadow */
@@ -180,7 +190,7 @@
   flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
-  padding: 6px 8px 6px 2px;
+  padding: 4px 8px 4px 2px;
   background: var(--jp-layout-color2);
   font-size: var(--jp-ui-font-size0);
   letter-spacing: 1px;
@@ -192,6 +202,11 @@
   background: var(--jp-layout-color3);
 }
 
+/* the focused band's outside rim paints over the next band's header, which also carries z-index 1 */
+.jp-WorkspaceManager-sectionHeader:focus-visible {
+  z-index: 2;
+}
+
 /* the caret: a 14 px column on the 2 px left after the list's side gutter, so the label starts at 18 px */
 .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-caret {
   display: flex;
@@ -199,6 +214,7 @@
   align-items: center;
   justify-content: center;
   width: 14px;
+  color: var(--jp-ui-font-color2);
 }
 
 /* the label keeps its whole text; the Shut down all button wraps below it when the band is too narrow */
@@ -216,13 +232,14 @@
   white-space: nowrap;
 }
 
-/* Each section's list is its own scroll container, 5 to 10 rows of 24 px tall (DQ-05) */
+/* The open section's body is the panel's only scroll container and fills its section (DQ-23) */
 .jp-WorkspaceManager-sectionBody {
   box-sizing: border-box;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: clamp(120px, 33vh, 240px);
   overflow-y: auto;
+
+  /* the reference panel keeps the gutter: rows line up across sections, scrollbar or not */
   scrollbar-gutter: stable;
   padding: 2px 0;
 }
@@ -283,18 +300,21 @@
 
 /*
     A card (DQ-02): 2 px corners that clip the header, a layout colour 1 body and a
-    border colour 1 border; the 4 px strip in the workspace colour is its left border
+    border colour 1 border; the 4 px strip in the workspace colour is its left border,
+    and the same colour washes the body and the header at 14 %
 */
 .jp-WorkspaceManager-card {
   --wm-strip: transparent;
+  --wm-tint: color-mix(in srgb, var(--wm-strip) 14%, transparent);
 
   position: relative;
-  margin: 4px 8px;
+  margin: 4px 0;
   border: var(--jp-border-width) solid var(--jp-border-color1);
   border-left: 4px solid var(--wm-strip);
   border-radius: var(--jp-border-radius);
   overflow: hidden;
   background: var(--jp-layout-color1);
+  background-image: linear-gradient(var(--wm-tint), var(--wm-tint));
 }
 
 /* The workspace colours are theme tokens (DQ-01); the stored names stay */
@@ -328,10 +348,10 @@
   --wm-strip: var(--jp-info-color1);
 }
 
-/* This window's card: the outline */
+/* This window's card: the outline paints inside the card's box, so the flush card keeps every band (DQ-19) */
 .jp-WorkspaceManager-card.jp-mod-current {
   outline: 2px solid var(--jp-brand-color2);
-  outline-offset: 0;
+  outline-offset: -2px;
 }
 
 /* While a card is dragged: the line above or below the card where it lands */
@@ -343,11 +363,19 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header one step up, with no tint (DQ-02) */
+/* the header one step up, under the card's wash (DQ-02) */
 .jp-WorkspaceManager-cardHeader {
   padding: 6px 8px;
   background: var(--jp-layout-color2);
+  background-image: linear-gradient(var(--wm-tint), var(--wm-tint));
   cursor: pointer;
+}
+
+/* This window's card paints its 2 px outline over the header's 1 px rim, so the header's rim sits 2 px further in, clear of it (DQ-19, ACC-PANEL-93-FOCUS) */
+.jp-WorkspaceManager
+  .jp-WorkspaceManager-card.jp-mod-current
+  > .jp-WorkspaceManager-cardHeader:focus-visible {
+  outline-offset: -3px;
 }
 
 .jp-WorkspaceManager-headerLine {

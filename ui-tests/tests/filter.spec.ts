@@ -8,6 +8,7 @@ import {
   fresh,
   headerButton,
   layout,
+  openSection,
   PANEL,
   patchMeta,
   putWorkspace,
@@ -127,9 +128,12 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching cards and car
     await expect(sectionBody(page, 'workspaces').locator(ROW)).toHaveCount(1);
     await expect(rowOf(card(page, held), `terminal ${named}`)).toBeVisible();
     // the filter narrows the cards; TERMINALS keeps the terminal that does not match
+    // (one section opens at a time: TERMINALS is opened for the row, then WORKSPACES again for the cards)
+    await openSection(page, 'terminals');
     await expect(
       rowOf(sectionBody(page, 'terminals'), `terminal ${plain}`)
     ).toBeVisible();
+    await openSection(page, 'workspaces');
     await expect(
       card(page, held).locator('.jp-WorkspaceManager-counts')
     ).toHaveText('(1 of 2)');

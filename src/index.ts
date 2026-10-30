@@ -36,7 +36,7 @@ function windowId(): string {
  * plugin provides its token, its id, its restorer name and its command.
  */
 const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
-  id: 'jupyterlab_workspace_manager_extension:plugin',
+  id: '@stellarshenson/jupyterlab-workspace-manager-extension:plugin',
   description:
     'Workspace-driven Running panel: workspaces as coloured accordion sections with their tabs, terminals and kernels',
   autoStart: true,
