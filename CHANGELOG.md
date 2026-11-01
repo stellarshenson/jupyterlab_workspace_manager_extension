@@ -2,6 +2,20 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.29] - 2026-11-01
+
+### Changed
+
+- The six workspace colours are the coloured tabs palette's light active shades (`#e39fb1`, `#d2ab82`, `#bab56d`, `#87c086`, `#77bae0`, `#bfa9da`), and the Colour menu labels them Yellow and Purple
+- The tab count rule reads "JupyterLab does not restore" instead of "does not save"
+
+### Fixed
+
+- A terminal row shows the process running in the terminal between the name and the time, in a card and in the TERMINALS section, without selection
+- The tabs counter counts every open tab, terminal tabs and each view of one document included; `workspaces list` and `tabs list` follow the same rule
+- Section bands span the panel edge to edge, with the 1 px divider above WORKSPACES; band and section-row focus rings are drawn inside the band
+- A row in this window's card ends 2 px short of the card outline, so its focus ring is whole and crosses no icon
+
 ## [0.8.28] - 2026-10-30
 
 ### Changed

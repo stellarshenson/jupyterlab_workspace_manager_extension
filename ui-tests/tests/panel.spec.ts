@@ -3,13 +3,16 @@ import type { Locator, Page } from '@playwright/test';
 
 import {
   card,
+  cardHeader,
   deleteWorkspaces,
   fresh,
   gotoWorkspace,
   headerButton,
   languageServer,
+  layout,
   only,
   onlyWorkspaces,
+  openCard,
   openPanel,
   openSection,
   PANEL,
@@ -20,6 +23,7 @@ import {
   sectionBody,
   sectionCount,
   sectionHeader,
+  sidebarTo,
   startTerminal,
   UNDER_LOAD
 } from './helpers';
@@ -965,8 +969,8 @@ test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on 
       band: [layout2, 'none', '0px', '4px', '4px'],
       fullWidth: true,
       label: ['600', 'uppercase', '1px', size0, colour1],
-      // the band sits 2 px inside the panel edge for its focus rim (DQ-19)
-      labelInset: 16,
+      // the band starts at the panel edge, so the label is 18 px from both (DQ-26)
+      labelInset: 18,
       count: [colour2, 6]
     });
     await header.locator('.jp-WorkspaceManager-sectionLabel').hover();
@@ -976,6 +980,335 @@ test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on 
     ).toBe(layout3);
     await page.mouse.move(0, 0);
   }
+});
+
+/** Open the section `name`, or with no name close them all: a click on the open band closes every section (DQ-04). */
+async function showSection(page: Page, name?: string): Promise<void> {
+  if (name) {
+    await openSection(page, name);
+  } else {
+    const open = page.locator(
+      `${PANEL} .jp-WorkspaceManager-section.jp-mod-open > .jp-WorkspaceManager-sectionHeader`
+    );
+    if (await open.count()) {
+      await open.click();
+    }
+  }
+  await expect(
+    page.locator(`${PANEL} .jp-WorkspaceManager-section.jp-mod-open`)
+  ).toHaveCount(name ? 1 : 0);
+}
+
+const WITHIN = 0.5;
+
+test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: each of the four bands has the left and the right of the title band and of the panel, with each section open and with all closed, at the default width and at 300 px', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  for (const width of [await panelWidth(page), 300]) {
+    if (width !== (await panelWidth(page))) {
+      await sidebarTo(page, width);
+    }
+    for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+      await showSection(page, open);
+      const drawn = await page.locator(PANEL).evaluate(panel => {
+        const edges = (e: Element) => {
+          const r = e.getBoundingClientRect();
+          return [r.left, r.right];
+        };
+        return {
+          panel: edges(panel),
+          title: edges(panel.querySelector('.jp-WorkspaceManager-header')!),
+          bands: Array.from(
+            panel.querySelectorAll('.jp-WorkspaceManager-sectionHeader')
+          ).map(edges)
+        };
+      });
+      const state = `${width} px, ${open ?? 'all closed'} open`;
+      [0, 1].forEach(side => {
+        expect
+          .soft(
+            Math.abs(drawn.title[side] - drawn.panel[side]),
+            `${state}: title band to panel, side ${side}`
+          )
+          .toBeLessThanOrEqual(WITHIN);
+        drawn.bands.forEach((band, i) => {
+          expect
+            .soft(
+              Math.abs(band[side] - drawn.title[side]),
+              `${state}: ${SECTIONS[i][0]} band to title band, side ${side}`
+            )
+            .toBeLessThanOrEqual(WITHIN);
+        });
+      });
+    }
+  }
+});
+
+test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: the title label and the section labels share one left x, each 18 px from the left of its own band', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  const lefts = await page.locator(PANEL).evaluate(panel => {
+    const left = (e: Element) => e.getBoundingClientRect().left;
+    const title = panel.querySelector('.jp-WorkspaceManager-header')!;
+    return {
+      title: [
+        left(title),
+        left(title.querySelector('.jp-WorkspaceManager-titleLabel')!)
+      ],
+      sections: Array.from(
+        panel.querySelectorAll('.jp-WorkspaceManager-sectionHeader')
+      ).map(h => [
+        left(h),
+        left(h.querySelector('.jp-WorkspaceManager-sectionLabel')!)
+      ])
+    };
+  });
+  expect
+    .soft(
+      Math.abs(lefts.title[1] - lefts.title[0] - 18),
+      'title label to the title band'
+    )
+    .toBeLessThanOrEqual(WITHIN);
+  lefts.sections.forEach(([band, label], i) => {
+    expect
+      .soft(
+        Math.abs(label - lefts.title[1]),
+        `${SECTIONS[i][0]} label to the title label`
+      )
+      .toBeLessThanOrEqual(WITHIN);
+    expect
+      .soft(Math.abs(label - band - 18), `${SECTIONS[i][0]} label to its band`)
+      .toBeLessThanOrEqual(WITHIN);
+  });
+});
+
+test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of the width and colour of every section bottom border, with each section open, with all closed and with the filter field showing; flush neighbours touch; LANGUAGE SERVERS ends at the panel bottom', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  const line = [
+    'solid',
+    '1px',
+    await token(page, 'borderTopColor', 'var(--jp-border-color3)')
+  ];
+  for (const filtering of [false, true]) {
+    if (filtering) {
+      await headerButton(page, 'Filter').click();
+      await expect(
+        page.locator(`${PANEL} .jp-WorkspaceManager-filter`)
+      ).toBeVisible();
+    }
+    for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+      await showSection(page, open);
+      const drawn = await page.locator(PANEL).evaluate(panel => {
+        const rule = (s: CSSStyleDeclaration, side: 'Top' | 'Bottom') => [
+          s[`border${side}Style`],
+          s[`border${side}Width`],
+          s[`border${side}Color`]
+        ];
+        return {
+          panelBottom: panel.getBoundingClientRect().bottom,
+          titleBottom: panel
+            .querySelector('.jp-WorkspaceManager-header')!
+            .getBoundingClientRect().bottom,
+          filterBottom: panel
+            .querySelector('.jp-WorkspaceManager-filter')
+            ?.getBoundingClientRect().bottom,
+          sections: Array.from(
+            panel.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-section')
+          ).map(section => {
+            const s = getComputedStyle(section);
+            const r = section.getBoundingClientRect();
+            return {
+              name: section.dataset.section,
+              top: r.top,
+              bottom: r.bottom,
+              bandTop: section
+                .querySelector('.jp-WorkspaceManager-sectionHeader')!
+                .getBoundingClientRect().top,
+              topRule: rule(s, 'Top'),
+              bottomRule: rule(s, 'Bottom')
+            };
+          })
+        };
+      });
+      const state = `${open ?? 'all closed'} open, filter ${filtering}`;
+      const [workspaces] = drawn.sections;
+      expect.soft(workspaces.topRule, `${state}: WORKSPACES top`).toEqual(line);
+      for (const section of drawn.sections) {
+        expect
+          .soft(section.bottomRule, `${state}: ${section.name} bottom`)
+          .toEqual(line);
+      }
+      // the line is the only thing between what stands above the WORKSPACES band and the band
+      expect
+        .soft(
+          Math.abs(workspaces.bandTop - workspaces.top - parseFloat(line[1])),
+          `${state}: the line directly above the WORKSPACES band`
+        )
+        .toBeLessThanOrEqual(WITHIN);
+      if (filtering) {
+        expect
+          .soft(
+            workspaces.top,
+            `${state}: the line below the filter field, not above it`
+          )
+          .toBeGreaterThanOrEqual(drawn.filterBottom!);
+      } else {
+        expect
+          .soft(
+            Math.abs(workspaces.top - drawn.titleBottom),
+            `${state}: the line directly below the title band`
+          )
+          .toBeLessThanOrEqual(WITHIN);
+      }
+      // one line between neighbours: the upper one's bottom border and no top border on the lower one
+      drawn.sections.slice(1).forEach((section, i) => {
+        expect
+          .soft(section.topRule[1], `${state}: ${section.name} top`)
+          .toBe('0px');
+        // all closed, KERNELS alone stands apart: its margin docks the lab bands at the bottom
+        if (open || section.name !== 'kernels') {
+          expect
+            .soft(
+              Math.abs(section.top - drawn.sections[i].bottom),
+              `${state}: ${drawn.sections[i].name} to ${section.name}`
+            )
+            .toBeLessThanOrEqual(WITHIN);
+        }
+      });
+      expect
+        .soft(
+          Math.abs(
+            drawn.sections[drawn.sections.length - 1].bottom - drawn.panelBottom
+          ),
+          `${state}: LANGUAGE SERVERS to the panel bottom`
+        )
+        .toBeLessThanOrEqual(WITHIN);
+    }
+  }
+  await headerButton(page, 'Filter').click();
+  await expect(
+    page.locator(`${PANEL} .jp-WorkspaceManager-filter`)
+  ).toHaveCount(0);
+
+  // the title band draws its own --jp-border-color2 line above the new one, and a line in the
+  // colour of the band beside it does not show: one of the two shows in each theme
+  await showSection(page, 'workspaces');
+  for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
+    await page.theme.setTheme(theme);
+    await page.mouse.move(0, 0);
+    const shown = await page.locator(PANEL).evaluate(panel => {
+      const title = getComputedStyle(
+        panel.querySelector('.jp-WorkspaceManager-header')!
+      );
+      const section = panel.querySelector('.jp-WorkspaceManager-section')!;
+      const band = getComputedStyle(
+        section.querySelector('.jp-WorkspaceManager-sectionHeader')!
+      );
+      const top = getComputedStyle(section);
+      return [
+        title.borderBottomColor !== title.backgroundColor &&
+          title.borderBottomWidth !== '0px',
+        top.borderTopColor !== band.backgroundColor &&
+          top.borderTopWidth !== '0px'
+      ].filter(Boolean).length;
+    });
+    expect.soft(shown, `${theme}: visible lines above the band`).toBe(1);
+  }
+});
+
+test.describe('a focus ring at the panel edge', () => {
+  test.use({ mockState: false });
+
+  test('ACC-PANEL-93-FOCUS: keyboard focus on the first and the last band, a card header, a card row and a section row draws a 1 px ring whose whole rectangle lies inside the panel and inside every ancestor that clips it', async ({
+    page
+  }) => {
+    const current = fresh('ring');
+    const other = `${current}-other`;
+    const terminal = await startTerminal(page);
+    await putWorkspace(page, other, layout(['editor:one.md']));
+    try {
+      await onlyWorkspaces(page, id => id.startsWith(current));
+      await gotoWorkspace(page, current);
+      await openPanel(page);
+      await refresh(page);
+      await openCard(page, other);
+
+      const ring = async (name: string, target: Locator) => {
+        // a keyboard focus: focus it, step back and Tab forward again
+        await target.focus();
+        await page.keyboard.press('Shift+Tab');
+        await page.keyboard.press('Tab');
+        await expect(target, name).toBeFocused();
+        const drawn = await target.evaluate((n, selector) => {
+          const s = getComputedStyle(n);
+          const grow = parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth);
+          const r = n.getBoundingClientRect();
+          const inside = (left: number, top: number, w: number, h: number) =>
+            r.left - grow >= left - 0.01 &&
+            r.top - grow >= top - 0.01 &&
+            r.right + grow <= left + w + 0.01 &&
+            r.bottom + grow <= top + h + 0.01;
+          const panel = document.querySelector(selector)!;
+          const p = panel.getBoundingClientRect();
+          // a clipping ancestor shows its padding box, without a scrollbar's gutter
+          const clips: string[] = [];
+          for (let a = n.parentElement!; a !== panel; a = a.parentElement!) {
+            const o = getComputedStyle(a);
+            const b = a.getBoundingClientRect();
+            if (
+              (o.overflowX !== 'visible' || o.overflowY !== 'visible') &&
+              !inside(
+                b.left + a.clientLeft,
+                b.top + a.clientTop,
+                a.clientWidth,
+                a.clientHeight
+              )
+            ) {
+              clips.push(a.className);
+            }
+          }
+          return {
+            ring: [s.outlineStyle, s.outlineWidth, s.outlineOffset],
+            insidePanel: inside(p.left, p.top, p.width, p.height),
+            clips
+          };
+        }, PANEL);
+        expect.soft(drawn, name).toEqual({
+          ring: ['solid', '1px', '-1px'],
+          insidePanel: true,
+          clips: []
+        });
+      };
+
+      await ring('first band', sectionHeader(page, 'workspaces'));
+      await ring('last band', sectionHeader(page, 'servers'));
+      await ring('card header', cardHeader(page, other));
+      await ring(
+        'card row',
+        card(page, other).locator('.jp-WorkspaceManager-row').first()
+      );
+      await openSection(page, 'terminals');
+      await ring(
+        'section row',
+        sectionBody(page, 'terminals')
+          .locator('.jp-WorkspaceManager-row')
+          .first()
+      );
+    } finally {
+      await page.request.delete(`/api/terminals/${terminal}`);
+      await deleteWorkspaces(page, [current, other]);
+    }
+  });
 });
 
 test('ACC-PANEL-193-SECTIONS-SHOWN: with no kernel, terminal or language server the four sections show in order; each empty one says so and its Shut down all is disabled', async ({

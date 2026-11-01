@@ -957,29 +957,41 @@ describe('panel', () => {
     }
   });
 
-  it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one row; a click activates a view, Close tab closes both', async () => {
-    const views = [0, 1].map(i => {
+  it('DEF-PANEL-10-SHARED-VIEW, DEF-PANEL-69-TABS-SAMEFILE: each open tab of one file has its own row and count; its click and Close tab act on that tab alone', async () => {
+    // a third file whose name is the key the second view of a.md takes
+    const views = ['a.md', 'a.md', 'a.md#2'].map((path, i) => {
       const view = new Widget();
       view.id = `view-${i}`;
-      view.title.label = 'a.md';
-      (view as any).context = { path: 'a.md' };
+      view.title.label = path;
+      (view as any).context = { path };
       return view;
     });
     const closed = views.map(v => jest.spyOn(v, 'close'));
+    const error = jest.spyOn(console, 'error');
     const { panel, app } = await mount(standard(), { live: views });
     header(panel, 'w:default').click();
-    const rows = card(panel, 'w:default').querySelectorAll<HTMLElement>(
-      '.jp-WorkspaceManager-row'
-    );
-    expect(rows).toHaveLength(1);
-    rows[0].click();
-    expect(app.shell.activateById).toHaveBeenCalledWith('view-0');
+    const rows = () =>
+      card(panel, 'w:default').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      );
+    expect(rows()).toHaveLength(3);
+    expect(
+      header(panel, 'w:default').querySelector(
+        '.jp-WorkspaceManager-count[title="Tabs"]'
+      )!.textContent
+    ).toBe('3');
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
 
-    rows[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    rows().forEach((row, i) => {
+      row.click();
+      expect(app.shell.activateById).toHaveBeenLastCalledWith(`view-${i}`);
+    });
+
+    rows()[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
     chooseMenuItem(0); // Close tab
-    await new Promise(resolve => setTimeout(resolve, 50));
-    expect(closed[0]).toHaveBeenCalledTimes(1);
-    expect(closed[1]).toHaveBeenCalledTimes(1);
+    await settle();
+    expect(closed.map(close => close.mock.calls.length)).toEqual([0, 1, 0]);
   });
 
   it('DEF-PANEL-11-SHUTDOWN-STALE: Shut down all shuts down the terminals running when the user confirms', async () => {
@@ -1149,8 +1161,8 @@ describe('panel', () => {
         header(panel, key).querySelectorAll('.jp-WorkspaceManager-count')
       ).map(c => c.textContent);
     };
-    expect(counts('w:auto-6')).toEqual(['1', '1', '1']);
-    expect(counts('w:default')).toEqual(['0', '1', '0']);
+    expect(counts('w:auto-6')).toEqual(['2', '1', '1']);
+    expect(counts('w:default')).toEqual(['1', '1', '0']);
   });
 
   it('ACC-KERNEL-151-ROW-CLICK, ACC-LISTS-195-ALL-KERNELS: a KERNELS row of a console kernel held by another workspace switches to that workspace', async () => {
@@ -1709,7 +1721,7 @@ describe('panel', () => {
     expect(counts()).toEqual([]);
 
     triangle(panel, 'w:auto-6').click();
-    expect(counts()).toEqual(['1', '1', '0']);
+    expect(counts()).toEqual(['2', '1', '0']);
     expect(
       Array.from(
         card(panel, 'w:auto-6').querySelectorAll(
@@ -1732,6 +1744,60 @@ describe('panel', () => {
         .textContent
     ).toBe('(1 of 2)');
   });
+
+  it.each([
+    [
+      '6 terminal tabs and no document',
+      ['1', '2', '3', '4', '5', '6'].map(n => `terminal:${n}`),
+      ['6', '6', '0'],
+      ['TERMINALS (6)']
+    ],
+    [
+      'documents and terminals',
+      ['editor:a.md', 'editor:b.md', 'terminal:1'],
+      ['3', '1', '0'],
+      ['TABS (2)', 'TERMINALS (1)']
+    ],
+    [
+      'a key the layout repeats for a second New View of one document',
+      ['editor:a.md', 'editor:a.md'],
+      ['1', '0', '0'],
+      ['TABS (1)']
+    ],
+    [
+      'a saved key of a terminal that no longer runs',
+      ['terminal:1', 'terminal:2', 'terminal:ended'],
+      ['2', '2', '0'],
+      ['TERMINALS (2)']
+    ]
+  ])(
+    'ACC-ACCORD-70-COUNT-TABS: the tab count of a saved layout with %s',
+    async (_, keys, shown, groups) => {
+      const server = standard();
+      server.workspaces[1] = workspace('auto-6', 60, keys);
+      server.terminals = ['1', '2', '3', '4', '5', '6'].map(name => ({
+        name,
+        last_activity: iso(0),
+        process: 'claude'
+      }));
+      const { panel } = await mount(server);
+      triangle(panel, 'w:auto-6').click();
+      expect(
+        Array.from(
+          header(panel, 'w:auto-6').querySelectorAll(
+            '.jp-WorkspaceManager-count'
+          )
+        ).map(c => c.textContent)
+      ).toEqual(shown);
+      expect(
+        Array.from(
+          card(panel, 'w:auto-6').querySelectorAll(
+            '.jp-WorkspaceManager-groupLabel'
+          )
+        ).map(l => l.textContent)
+      ).toEqual(groups);
+    }
+  );
 
   it('ACC-ACCORD-101-PURPOSE-TEXT:a workspace name, a purpose, a terminal tab title, a process name, a file name and a folder holding markup show as text', async () => {
     const server = standard();
@@ -1767,16 +1833,17 @@ describe('panel', () => {
       l => l.textContent
     );
     expect(labels).toContain(`${MARKUP}.md`);
-    // the folder of the document and the process of the terminal, each in its selected row's detail line
+    // the folder of the document in its selected row's detail line, the process of the terminal in its row's line
     const rows = card(panel, 'w:default').querySelectorAll<HTMLElement>(
       '.jp-WorkspaceManager-row'
     );
-    const details = Array.from(rows).map(r => {
-      r.focus();
-      return $(panel, '.jp-mod-selected .jp-WorkspaceManager-rowDetail')!
-        .textContent;
-    });
-    expect(details).toEqual([MARKUP, MARKUP]);
+    rows[0].focus();
+    expect(
+      $(panel, '.jp-mod-selected .jp-WorkspaceManager-rowDetail')!.textContent
+    ).toBe(MARKUP);
+    expect(
+      rows[1].querySelector('.jp-WorkspaceManager-rowProcess')!.textContent
+    ).toBe(MARKUP);
     expect(panel.node.querySelector('img')).toBeNull();
     const terminalRow = $$(panel, '.jp-WorkspaceManager-row').find(r =>
       r.textContent!.includes('terminal 1')
@@ -1805,7 +1872,7 @@ describe('panel', () => {
     ).toBe('ui-components:kernel');
   });
 
-  it('ACC-LISTS-209-ROW-LINE, ACC-KERNEL-49-STATE: an unselected tab, terminal or kernel row shows its name, a kernel its state word, and the time only; the state word is in the line, the title and the dot aria-label, in a card and in KERNELS', async () => {
+  it('ACC-LISTS-209-ROW-LINE, ACC-TERM-42-PROCESS, ACC-KERNEL-49-STATE: an unselected tab, terminal or kernel row shows its name, a terminal its process, a kernel its state word, and the time only; the state word is in the line, the title and the dot aria-label, in a card and in KERNELS', async () => {
     const server = standard();
     server.sessions.push({
       id: 's1',
@@ -1829,7 +1896,7 @@ describe('panel', () => {
     expect(text(card(panel, 'w:auto-6'))).toEqual([
       'README.md',
       'a.ipynb',
-      'terminal 1now',
+      'terminal 1claudenow',
       'a.ipynbidle5m ago'
     ]);
     expect($(panel, '.jp-WorkspaceManager-rowDetail')).toBeNull();
@@ -1849,16 +1916,18 @@ describe('panel', () => {
     // one section open at a time: KERNELS is opened, then TERMINALS
     expect(text(openSection(panel, 'kernels'))).toEqual(['a.ipynbidle5m ago']);
     state(sectionBody(panel, 'kernels'));
-    expect(text(openSection(panel, 'terminals'))).toEqual(['terminal 1now']);
-    // the process, the kernel type, the path, the folder, memory and CPU wait for the selection
-    for (const hidden of ['claude', PYTHON, 'docs', 'work/', 'MB', '%']) {
+    expect(text(openSection(panel, 'terminals'))).toEqual([
+      'terminal 1claudenow'
+    ]);
+    // the kernel type, the path, the folder, memory and CPU wait for the selection
+    for (const hidden of [PYTHON, 'docs', 'work/', 'MB', '%']) {
       expect(
         panel.node.querySelector('.jp-WorkspaceManager-list')!.textContent
       ).not.toContain(hidden);
     }
   });
 
-  it('ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS, ACC-TERM-44-PROCESS-UNREAD: a focused row is the one selected row and shows its detail line; the arrow keys move it; a terminal with no readable process shows no detail line', async () => {
+  it('ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS, ACC-TERM-44-PROCESS-UNREAD: a focused row is the one selected row and shows its detail line; the arrow keys move it; a terminal row has no detail line, its process shows once in its line, and with no readable process it shows none', async () => {
     const server = standard();
     server.terminals.push({ name: '2', last_activity: iso(0), process: null });
     server.workspaces[1] = workspace('auto-6', 60, [
@@ -1885,19 +1954,22 @@ describe('panel', () => {
     );
     expect(document.activeElement).toBe(rows[1]);
     expect(selected()).toEqual([rows[1]]);
-    expect(detail()).toBe('claude');
+    expect(detail()).toBeNull();
+    expect(rows[1].textContent).toBe('terminal 1claudenow');
     rows[1].dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })
     );
     expect(selected()).toEqual([rows[2]]);
     expect(detail()).toBeNull();
+    expect(rows[2].textContent).toBe('terminal 2now');
     // a row of a section takes the selection from the card's row
     const listed = openSection(panel, 'terminals').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
     )!;
     listed.focus();
     expect(selected()).toEqual([listed]);
-    expect(detail()).toBe('claude');
+    expect(detail()).toBeNull();
+    expect(listed.textContent).toBe('terminal 1claudenow');
     // a reload keeps it while its item exists
     await panel.refresh();
     expect(selected()).toEqual([listed]);

@@ -8,6 +8,8 @@ import {
   activeTab,
   card,
   cardHeader,
+  closeLauncher,
+  countOf,
   deleteWorkspaces,
   enterWorkspace,
   expectRefused,
@@ -18,6 +20,7 @@ import {
   putWorkspace,
   refresh,
   rowOf,
+  saved,
   secondWindow,
   UNDER_LOAD
 } from './helpers';
@@ -367,5 +370,81 @@ test('ACC-CLI-219-SWITCH-WORKSPACE: of two eligible windows a broadcast switch m
   } finally {
     await other?.close();
     await deleteWorkspaces(page, [current, target, bystander]);
+  }
+});
+
+test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces list agree on an editor and its Markdown preview; the Launcher and a second New View count only in the card', async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('cardcli');
+  const file = `${tmpPath}/agree.md`;
+  const editor = `editor:${file}`;
+  const preview = `markdownviewer-widget:${file}`;
+  const inCli = async (): Promise<number | undefined> => {
+    const run = await cli(['workspaces', 'list', '--json']);
+    expect(run.code).toBe(0);
+    return (JSON.parse(run.stdout) as { name: string; tabs: number }[]).find(
+      row => row.name === current
+    )?.tabs;
+  };
+  /** The tabs of the saved layout: the wait that makes a read of the CLI mean something. */
+  const savedKeys = async (): Promise<string[]> => {
+    const dock = (await saved(page, current))['layout-restorer:data']?.main
+      ?.dock;
+    const keys = (area: any): string[] =>
+      area?.type === 'tab-area'
+        ? area.widgets
+        : (area?.children ?? []).flatMap(keys);
+    return keys(dock).sort();
+  };
+  await page.contents.uploadContent('# agree\n', 'text', file);
+  try {
+    await enterWorkspace(page, current);
+    await page.evaluate(async path => {
+      const { commands } = (window as any).jupyterapp;
+      await commands.execute('docmanager:open', { path, factory: 'Editor' });
+      await commands.execute('fileeditor:markdown-preview');
+    }, file);
+    await cardHeader(page, current).click();
+    const count = countOf(card(page, current), 'Tabs');
+
+    // the Launcher counts in the card alone
+    await expect.poll(savedKeys, UNDER_LOAD).toEqual([editor, preview]);
+    await expect(count).toHaveText('3');
+    expect(await inCli()).toBe(2);
+
+    // an editor and its preview: 2 in both
+    await closeLauncher(page);
+    await expect(count).toHaveText('2');
+    expect(await inCli()).toBe(2);
+    const listed = await cli(['tabs', 'list', current, '--json']);
+    expect(
+      (JSON.parse(listed.stdout) as { key: string }[]).map(t => t.key).sort()
+    ).toEqual([editor, preview]);
+
+    // a second New View of the active tab: the layout repeats its key, and the card alone counts it
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => !!(window as any).jupyterapp.shell.currentWidget?.context
+          ),
+        UNDER_LOAD
+      )
+      .toBe(true);
+    await page.evaluate(() =>
+      (window as any).jupyterapp.commands.execute('docmanager:clone')
+    );
+    await expect
+      .poll(async () => {
+        const keys = await savedKeys();
+        return [keys.length, new Set(keys).size];
+      }, UNDER_LOAD)
+      .toEqual([3, 2]);
+    await expect(count).toHaveText('3');
+    expect(await inCli()).toBe(2);
+  } finally {
+    await deleteWorkspaces(page, [current]);
   }
 });

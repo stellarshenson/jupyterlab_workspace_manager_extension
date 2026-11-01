@@ -133,13 +133,17 @@ export function formatCpu(percent: number | null | undefined): string {
   return typeof percent === 'number' ? `${Math.round(percent)}%` : '-';
 }
 
-/** The tabs a saved workspace holds, in the main area and the down area. */
+/**
+ * The tabs a saved workspace holds, in the main area and the down area, once
+ * per key: the layout repeats a key for a second New View of one document, and
+ * a reload restores one tab of it.
+ */
 export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
   const layout = data['layout-restorer:data'] as any;
   const keys: string[] = areaKeys(layout?.main?.dock).concat(
     layout?.down?.widgets ?? []
   );
-  return keys.map(key => {
+  return Array.from(new Set(keys)).map(key => {
     const saved = (data[key] as any)?.data ?? {};
     return { key, path: saved.path, name: saved.name };
   });
@@ -184,13 +188,7 @@ export function buildModel(input: IModelInput): IModel {
     const terminals = new Set<string>();
     const kernels = new Map<string, Session.IModel>();
     const docs: ITabRow[] = [];
-    const seen = new Set<string>();
     for (const tab of tabs) {
-      // two views of one document share its key: one row
-      if (seen.has(tab.key)) {
-        continue;
-      }
-      seen.add(tab.key);
       const kind = prefix(tab.key);
       if (kind === 'terminal') {
         terminals.add(suffix(tab.key));

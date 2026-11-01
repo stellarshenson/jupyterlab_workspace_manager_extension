@@ -495,7 +495,7 @@ export class WorkspacePanel
   private _activate(path: string): boolean {
     const section = this._model()?.sections.find(s => s.current);
     const tab = section?.tabs.find(t => t.path === path);
-    const widget = tab && this._live.get(tab.key)?.[0];
+    const widget = tab && this._live.get(tab.key);
     if (!section || !tab || !widget) {
       return false;
     }
@@ -575,7 +575,7 @@ export class WorkspacePanel
     return model;
   }
 
-  /** The open tabs of this window, keyed as the layout restorer keys them. */
+  /** The open tabs of this window, keyed as the layout restorer keys them; each tab has its own key (DQ-25). */
   private _liveTabs(): ITab[] {
     this._live.clear();
     const tabs: ITab[] = [];
@@ -597,9 +597,14 @@ export class WorkspacePanel
               : path
                 ? `document:${path}`
                 : `widget:${widget.id}`;
-        this._live.set(key, [...(this._live.get(key) ?? []), widget]);
+        // a terminal keeps its key: the model reads the terminal's name from it
+        let own = key;
+        for (let n = 2; !terminal && this._live.has(own); n++) {
+          own = `${key}#${n}`;
+        }
+        this._live.set(own, widget);
         tabs.push({
-          key,
+          key: own,
           path,
           title: widget.title.label,
           name: console ? widget.title.label : undefined
@@ -1038,7 +1043,12 @@ export class WorkspacePanel
                 </span>
               ) : (
                 <span className="jp-WorkspaceManager-counts">
-                  {count(tabIcon, 'Tabs', section.tabs.length)}
+                  {/* every open tab: the documents and the terminal tabs (DQ-24) */}
+                  {count(
+                    tabIcon,
+                    'Tabs',
+                    section.tabs.length + section.terminals.length
+                  )}
                   {count(terminalGlyph, 'Terminals', section.terminals.length)}
                   {count(kernelIcon, 'Kernels', section.kernels.length)}
                 </span>
@@ -1107,7 +1117,7 @@ export class WorkspacePanel
   }
 
   private _tabRow(section: ISection, tab: ITabRow): React.ReactElement {
-    const live = section.current ? this._live.get(tab.key)?.[0] : undefined;
+    const live = section.current ? this._live.get(tab.key) : undefined;
     const icon = tab.path
       ? (this._app.docRegistry.getFileTypesForPath(tab.path)[0]?.icon ??
         fileIcon)
@@ -1148,7 +1158,7 @@ export class WorkspacePanel
       icon: terminalGlyph,
       label: `terminal ${t.name}`,
       code: true,
-      detail: [[[t.process ?? '', '']]],
+      process: t.process,
       title: lines(`terminal ${t.name}`, t.process, when.label),
       when,
       // this window's row or a TERMINALS row activates the tab of its terminal;
@@ -1503,7 +1513,7 @@ export class WorkspacePanel
       void this._openWorkspace(section);
       return;
     }
-    const widget = keys.map(k => this._live.get(k)?.[0]).find(Boolean);
+    const widget = keys.map(k => this._live.get(k)).find(Boolean);
     if (widget) {
       this._app.shell.activateById(widget.id);
     }
@@ -1591,16 +1601,8 @@ export class WorkspacePanel
 
   private async _closeTab(section: ISection, key: string): Promise<void> {
     if (section.current) {
-      // one view at a time: each closes as JupyterLab's own close does, so the
-      // last view of an unsaved document asks; a view still open after its
-      // close is asking, and the rest wait for the user
-      for (const view of this._live.get(key) ?? []) {
-        view.close();
-        await new Promise(resolve => setTimeout(resolve));
-        if (view.isAttached) {
-          return;
-        }
-      }
+      // as JupyterLab's own close: only the last view of an unsaved document asks
+      this._live.get(key)?.close();
       return;
     }
     const id = section.id;
@@ -1811,8 +1813,8 @@ export class WorkspacePanel
   /** the switch read in flight: one at a time */
   private _switching: Promise<void> | null = null;
   private _tabsTimer = 0;
-  /** the views of each open tab key; two views of one document share a key */
-  private _live = new Map<string, Widget[]>();
+  /** the open tab of each key of this window */
+  private _live = new Map<string, Widget>();
   /** the tab a terminal row opened or activated, by terminal name */
   private _terminalTab = new Map<string, Widget>();
   /** colours this page gave to workspaces whose record has none */
@@ -1976,8 +1978,9 @@ const TYPE = `${SHRINK} jp-WorkspaceManager-type`;
 const FOLDER = `${CODE} ${SHRINK} jp-WorkspaceManager-folder`;
 
 /**
- * A row: its type icon, its name, a kernel's state dot and word, its time; selected, the lines of
- * its details under them (DQ-17). Its focus, by a click or the arrow keys, selects it.
+ * A row: its type icon, its name, a terminal's process (DQ-24), a kernel's state dot and word, its
+ * time; selected, the lines of its details under them (DQ-17). Its focus, by a click or the arrow
+ * keys, selects it.
  */
 function row(props: {
   key: string;
@@ -1988,6 +1991,8 @@ function row(props: {
   label: React.ReactNode;
   /** the label is an identifier: the code font */
   code?: boolean;
+  /** a terminal's process: it stands in the line, selected or not (DQ-24) */
+  process?: string | null;
   /** a kernel's state: its word stands in the line, the title and the dot's aria-label (DQ-13) */
   state?: { word: string; dot: string };
   /** the time since the last activity, and its recent or stale emphasis (DQ-09) */
@@ -2067,6 +2072,9 @@ function row(props: {
       >
         {props.label}
       </span>
+      {props.process && (
+        <span className="jp-WorkspaceManager-rowProcess">{props.process}</span>
+      )}
       {state && (
         <span className="jp-WorkspaceManager-state">
           <span className={state.dot} role="img" aria-label={state.word} />

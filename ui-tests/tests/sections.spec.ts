@@ -6,6 +6,7 @@ import {
   cardHeader,
   colourOf,
   COLOURS,
+  countOf,
   deleteWorkspaces,
   displayName,
   expectRefused,
@@ -20,6 +21,7 @@ import {
   layout,
   menuButton,
   menuItem,
+  newTerminalTab,
   only,
   onlyWorkspaces,
   openCard,
@@ -39,14 +41,14 @@ import {
   sectionBody,
   sectionCount,
   sectionHeader,
-  sendToTerminal,
   serverList,
+  SHADES,
   shownElsewhere,
+  sleepInTerminal,
   startSession,
   startTerminal,
   stripColour,
   terminalNames,
-  TOKENS,
   triangle,
   UNDER_LOAD
 } from './helpers';
@@ -552,13 +554,13 @@ test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES (3) opens
   }
 });
 
-test('ACC-ACCORD-15-STRIP: each card shows a 4 px strip, its left border, in the theme token of its workspace colour', async ({
+test('ACC-ACCORD-15-STRIP: each card shows a 4 px strip, its left border, in the value of its workspace colour', async ({
   page
 }) => {
   const current = await setUp(page, 'strip', { a: {}, b: {} });
   const [a, b] = [`${current}-a`, `${current}-b`];
   try {
-    const palette = await Promise.all(TOKENS.map(t => rgb(page, `var(${t})`)));
+    const palette = await Promise.all(SHADES.map(s => rgb(page, s)));
     const strips: number[][] = [];
     for (const id of [a, b]) {
       // the colour the panel gave, stored on the server
@@ -746,6 +748,129 @@ test('ACC-ACCORD-20-AGE: the header shows the age of the workspace, now under 60
   }
 });
 
+/** The numbers of a card's Tabs and Terminals counts and the labels of its groups, with the rows of each. */
+const holds = async (page: Page, id: string) => ({
+  tabs: await countOf(card(page, id), 'Tabs').textContent(),
+  terminals: await countOf(card(page, id), 'Terminals').textContent(),
+  groups: await card(page, id)
+    .locator('.jp-WorkspaceManager-group')
+    .evaluateAll(nodes =>
+      nodes.map(n => [
+        n.querySelector('.jp-WorkspaceManager-groupLabel')!.textContent,
+        n.querySelectorAll('.jp-WorkspaceManager-row').length
+      ])
+    )
+});
+
+test("ACC-ACCORD-70-COUNT-TABS: another workspace's card counts every tab of its saved layout, documents and terminals: 6 terminal tabs show 6; a saved key of a terminal that no longer runs does not count; the groups keep their own rows, so no row is listed twice", async ({
+  page,
+  tmpPath
+}) => {
+  test.setTimeout(120000);
+  const terminals: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    terminals.push(await startTerminal(page));
+  }
+  const ended = await startTerminal(page);
+  await page.request.delete(`/api/terminals/${ended}`);
+  await expect.poll(() => terminalNames(page), UNDER_LOAD).not.toContain(ended);
+  const current = fresh('tabcount');
+  const [six, mixed, kept, gone] = ['six', 'mixed', 'kept', 'gone'].map(
+    s => `${current}-${s}`
+  );
+  const [one] = terminals.map(t => `terminal:${t}`);
+  await putWorkspace(page, six, layout(terminals.map(t => `terminal:${t}`)));
+  await putWorkspace(
+    page,
+    mixed,
+    layout([`editor:${tmpPath}/a.md`, `editor:${tmpPath}/b.txt`, one])
+  );
+  await putWorkspace(page, kept, layout([one, `terminal:${ended}`]));
+  await putWorkspace(page, gone, layout([`terminal:${ended}`]));
+  try {
+    await setUpExisting(page, current);
+    await openCard(page, six);
+    expect(await holds(page, six)).toEqual({
+      tabs: '6',
+      terminals: '6',
+      groups: [['TERMINALS (6)', 6]]
+    });
+    await openCard(page, mixed);
+    expect(await holds(page, mixed)).toEqual({
+      tabs: '3',
+      terminals: '1',
+      groups: [
+        ['TABS (2)', 2],
+        ['TERMINALS (1)', 1]
+      ]
+    });
+    await openCard(page, kept);
+    expect(await holds(page, kept)).toEqual({
+      tabs: '1',
+      terminals: '1',
+      groups: [['TERMINALS (1)', 1]]
+    });
+    await openCard(page, gone);
+    expect(await holds(page, gone)).toEqual({
+      tabs: '0',
+      terminals: '0',
+      groups: []
+    });
+  } finally {
+    await Promise.all(
+      terminals.map(t => page.request.delete(`/api/terminals/${t}`))
+    );
+    await deleteWorkspaces(page, ids(current, 'six', 'mixed', 'kept', 'gone'));
+  }
+});
+
+test("ACC-ACCORD-70-COUNT-TABS: this window's card counts its live tabs, documents and terminals; the kept tab of an ended terminal does not count", async ({
+  page,
+  tmpPath
+}) => {
+  test.setTimeout(120000);
+  const doc = `${tmpPath}/counted.txt`;
+  await page.contents.uploadContent('text', 'text', doc);
+  const current = fresh('livecount');
+  const shown = async () => {
+    await refresh(page);
+    return [
+      await countOf(card(page, current), 'Tabs').textContent(),
+      await countOf(card(page, current), 'Terminals').textContent()
+    ];
+  };
+  const names: string[] = [];
+  try {
+    await setUpExisting(page, current);
+    await openCard(page, current);
+    // the tabs the window opened with, such as the Launcher
+    const [base] = (await shown()).map(Number);
+
+    names.push(await newTerminalTab(page), await newTerminalTab(page));
+    await expect.poll(shown, UNDER_LOAD).toEqual([String(base + 2), '2']);
+    await openDocument(page, doc);
+    await expect.poll(shown, UNDER_LOAD).toEqual([String(base + 3), '2']);
+
+    // the tab outlives its terminal, as a terminal with closeOnExit off does
+    await page.evaluate(name => {
+      const app = (window as any).jupyterapp;
+      Array.from<any>(app.shell.widgets('main'))
+        .find((w: any) => w.content?.session?.name === name)
+        .content.setOption('closeOnExit', false);
+    }, names[0]);
+    await page.request.delete(`/api/terminals/${names[0]}`);
+    await expect
+      .poll(() => terminalNames(page), UNDER_LOAD)
+      .not.toContain(names[0]);
+    await expect.poll(shown, UNDER_LOAD).toEqual([String(base + 2), '1']);
+  } finally {
+    await Promise.all(
+      names.map(t => page.request.delete(`/api/terminals/${t}`))
+    );
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
 test.describe('kernels and sessions of the server', () => {
   // Galata lists only the kernels and sessions its page started; this test starts them by REST
   test.use({ kernels: null, sessions: null });
@@ -792,13 +917,12 @@ test.describe('kernels and sessions of the server', () => {
       expect(await counts(held)).toEqual({});
       expect(await counts(docs)).toEqual({});
       await openCard(page, held);
-      // ACC-ACCORD-22: the notebook tab is a tab too
+      // ACC-ACCORD-70: the notebook tab and the two terminal tabs
       expect(await counts(held)).toEqual({
-        Tabs: '1',
+        Tabs: '3',
         Terminals: '2',
         Kernels: '1'
       });
-      // ACC-ACCORD-70
       await openCard(page, docs);
       expect(await counts(held)).toEqual({});
       expect(await counts(docs)).toEqual({
@@ -820,6 +944,7 @@ test.describe('kernels and sessions of the server', () => {
     page,
     tmpPath
   }) => {
+    test.setTimeout(120000);
     const terminal = await startTerminal(page);
     const notebook = `${tmpPath}/tips.ipynb`;
     await putNotebook(page, notebook);
@@ -835,7 +960,7 @@ test.describe('kernels and sessions of the server', () => {
       ).toHaveAttribute('title', `${tmpPath}/note.md`);
 
       // a terminal row: its name, the process and when it was last active
-      await sendToTerminal(page, terminal, 'sleep 300\n');
+      await sleepInTerminal(page, terminal);
       await openSection(page, 'terminals');
       const terminalRow = rowOf(
         sectionBody(page, 'terminals'),
@@ -1387,7 +1512,7 @@ test('ACC-ACCORD-226-CARD-WASH: the workspace colour given from the card menu wa
       expect(drawn.header, what).not.toBe(plain.header);
       expect(alphas(drawn.card), what).toEqual([0.14, 0.14]);
       expect(alphas(drawn.header), what).toEqual([0.14, 0.14]);
-      // the wash sits over layout colour 1 on the body and 2 on the header; the strip keeps the token
+      // the wash sits over layout colour 1 on the body and 2 on the header; the strip keeps the value
       expect(await rgb(page, drawn.body), what).toEqual(
         await rgb(page, 'var(--jp-layout-color1)')
       );
@@ -1395,7 +1520,7 @@ test('ACC-ACCORD-226-CARD-WASH: the workspace colour given from the card menu wa
         await rgb(page, 'var(--jp-layout-color2)')
       );
       expect(await rgb(page, drawn.strip), what).toEqual(
-        await rgb(page, 'var(--jp-success-color1)')
+        await rgb(page, SHADES[COLOURS.indexOf('mint')])
       );
     }
   } finally {
@@ -1753,13 +1878,14 @@ test.describe('at 4x device scale', () => {
       for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
         await page.theme.setTheme(theme);
         await page.mouse.move(0, 0);
-        const strip = await rgb(page, 'var(--jp-success-color1)');
+        const mint = SHADES[COLOURS.indexOf('mint')];
+        const strip = await rgb(page, mint);
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
         // the header sits under the card's wash (ACC-ACCORD-226-CARD-WASH)
         const header = await rgb(
           page,
-          'color-mix(in srgb, var(--jp-success-color1) 14%, var(--jp-layout-color2))'
+          `color-mix(in srgb, ${mint} 14%, var(--jp-layout-color2))`
         );
 
         // ACC-ACCORD-128: the same strip on both cards; ACC-ACCORD-129: one clipped shape
@@ -1861,7 +1987,7 @@ test.describe('at 4x device scale', () => {
     }
   });
 
-  test("ACC-PANEL-231-OUTLINE-INSIDE: this window's card paints its 2 px brand colour 2 outline inside its own box on all four sides, and its left edge stays flush with the section body", async ({
+  test("ACC-PANEL-231-OUTLINE-INSIDE: this window's card paints its 2 px brand colour 2 outline inside its own box on all four sides, and its left edge stays flush with the panel edge", async ({
     page
   }) => {
     test.setTimeout(120000);
@@ -1876,20 +2002,14 @@ test.describe('at 4x device scale', () => {
       const S = 4; // device pixels per CSS pixel
       const M = 3; // CSS px of panel captured around the card
       const box = (await card(page, current).boundingBox())!;
-      // flush: the card keeps no horizontal margin inside its section body, whose
-      // content edge starts after the list's 2 px gutter for the header focus rim
-      const flush = await card(page, current).evaluate(n => {
-        const body = n.closest(
-          '.jp-WorkspaceManager-sectionBody'
-        ) as HTMLElement;
-        const s = getComputedStyle(body);
-        const b = body.getBoundingClientRect();
-        return (
+      // flush: the card keeps no horizontal margin, so it starts at the panel edge as a band does (DQ-26)
+      const flush = await card(page, current).evaluate(
+        (n, selector) =>
           n.getBoundingClientRect().left -
-          (b.left + parseFloat(s.borderLeftWidth) + parseFloat(s.paddingLeft))
-        );
-      });
-      expect(Math.abs(flush)).toBeLessThanOrEqual(1);
+          document.querySelector(selector)!.getBoundingClientRect().left,
+        PANEL
+      );
+      expect(Math.abs(flush)).toBeLessThanOrEqual(0.5);
 
       const [w, h] = [Math.round(box.width * S), Math.round(box.height * S)];
       const [x0, y0] = [M * S, M * S];
@@ -1898,7 +2018,6 @@ test.describe('at 4x device scale', () => {
         ['right band', x0 + w - 4, y0 + Math.round(h / 2)],
         ['top band', x0 + Math.round(w / 2), y0 + 2],
         ['bottom band', x0 + Math.round(w / 2), y0 + h - 4],
-        ['left outside', x0 - 2, y0 + Math.round(h / 2)],
         ['right outside', x0 + w + 2, y0 + Math.round(h / 2)],
         ['top outside', x0 + Math.round(w / 2), y0 - 2],
         ['bottom outside', x0 + Math.round(w / 2), y0 + h + 2]

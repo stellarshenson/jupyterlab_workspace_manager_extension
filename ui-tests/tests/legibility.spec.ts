@@ -66,7 +66,7 @@ function texts(page: Page): Promise<IText[]> {
         ),
         empty: !!el.closest('.jp-WorkspaceManager-empty'),
         meta: !!el.closest(
-          '.jp-WorkspaceManager-row .jp-WorkspaceManager-age, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail'
+          '.jp-WorkspaceManager-row .jp-WorkspaceManager-age, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowProcess'
         ),
         where: el.getAttribute('class') ?? el.tagName
       };
@@ -593,7 +593,7 @@ test('ACC-PANEL-168-COUNT-BRACKETS: the WORKSPACES count reads (4); the counts b
     await openCard(page, others[0]);
     await expect(
       cardHeader(page, others[0]).locator('.jp-WorkspaceManager-count')
-    ).toHaveText(['1', '1', '0']);
+    ).toHaveText(['2', '1', '0']);
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, ...others]);

@@ -22,14 +22,14 @@ import {
 import { DeleteArm } from '../model/menu';
 import { COLOURS, type Colour } from '../model/palette';
 
-/** The menu labels of the palette colours: the hue of each colour's theme token (DQ-01). */
+/** The menu labels of the palette colours: the names the Tab Colour menu of the colourful tab extension gives them (DQ-27). */
 export const COLOUR_LABELS: Record<Colour, string> = {
   rose: 'Red',
   peach: 'Orange',
-  lemon: 'Amber',
+  lemon: 'Yellow',
   mint: 'Green',
   sky: 'Blue',
-  lavender: 'Cyan'
+  lavender: 'Purple'
 };
 
 const DELETE = 'delete';

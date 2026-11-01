@@ -5,6 +5,7 @@ import {
   activeTab,
   card,
   cardHeader,
+  closeLauncher,
   countOf,
   cut,
   deleteWorkspaces,
@@ -57,6 +58,18 @@ const openPaths = (page: Page): Promise<string[]> =>
       .map((w: any) => w.context?.path)
       .filter(Boolean)
   );
+
+/** The ids of the document tabs of the main area, in the order of their rows. */
+const openIds = (page: Page): Promise<string[]> =>
+  page.evaluate(() =>
+    Array.from((window as any).jupyterapp.shell.widgets('main'))
+      .filter((w: any) => w.context?.path)
+      .map((w: any) => w.id as string)
+  );
+
+/** The id of this window's active tab. */
+const activeId = (page: Page): Promise<string | undefined> =>
+  page.evaluate(() => (window as any).jupyterapp.shell.currentWidget?.id);
 
 /** The number of language server connections in this page's manager. */
 const serverConnections = (page: Page): Promise<number> =>
@@ -743,15 +756,55 @@ test("ACC-LISTS-106-CLOSE-TAB: Close tab on a row of this window's card closes t
   }
 });
 
-test('DEF-PANEL-10-SHARED-VIEW: two views of one document are one row; a click activates a view; Close tab asks once for an unsaved change, then closes both views', async ({
+test('DEF-PANEL-69-TABS-SAMEFILE: an editor and its Markdown preview of one file are two rows, TABS (2) and a tab count of 2; each row activates and closes its own tab', async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('preview');
+  const file = `${tmpPath}/preview.md`;
+  await page.contents.uploadContent('# preview\n', 'text', file);
+  try {
+    await enterWorkspace(page, current);
+    await page.evaluate(async path => {
+      const { commands } = (window as any).jupyterapp;
+      await commands.execute('docmanager:open', { path, factory: 'Editor' });
+      await commands.execute('fileeditor:markdown-preview');
+    }, file);
+    await closeLauncher(page);
+    await expect.poll(() => openPaths(page), UNDER_LOAD).toEqual([file, file]);
+    await cardHeader(page, current).click();
+    const c = card(page, current);
+    const rows = group(c, 'TABS').locator('.jp-WorkspaceManager-row');
+    await expect(rows).toHaveCount(2);
+    await expect(
+      group(c, 'TABS').locator('.jp-WorkspaceManager-groupLabel')
+    ).toHaveText('TABS (2)');
+    await expect(countOf(c, 'Tabs')).toHaveText('2');
+
+    const ids = await openIds(page);
+    expect(new Set(ids).size).toBe(2);
+    for (const i of [0, 1]) {
+      await rows.nth(i).click();
+      await expect.poll(() => activeId(page), UNDER_LOAD).toBe(ids[i]);
+    }
+
+    await fromRowMenu(rows.nth(1), 'Close tab');
+    await expect.poll(() => openIds(page), UNDER_LOAD).toEqual([ids[0]]);
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(rows).toHaveCount(1);
+    await expect(countOf(c, 'Tabs')).toHaveText('1');
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('DEF-PANEL-10-SHARED-VIEW, DEF-PANEL-69-TABS-SAMEFILE: two New View tabs of one document are two rows and a tab count of 2; each row activates and closes its own tab; only the last view of an unsaved document asks', async ({
   page,
   tmpPath
 }) => {
   const current = fresh('views');
-  const [shared, other] = [`${tmpPath}/shared.txt`, `${tmpPath}/other.txt`];
-  for (const path of [shared, other]) {
-    await page.contents.uploadContent('text', 'text', path);
-  }
+  const shared = `${tmpPath}/shared.txt`;
+  await page.contents.uploadContent('text', 'text', shared);
   try {
     await enterWorkspace(page, current);
     await openDocument(page, shared);
@@ -759,36 +812,47 @@ test('DEF-PANEL-10-SHARED-VIEW: two views of one document are one row; a click a
     await page.evaluate(() =>
       (window as any).jupyterapp.commands.execute('docmanager:clone')
     );
-    await openDocument(page, other);
+    await closeLauncher(page);
     await expect
-      .poll(async () => (await openPaths(page)).sort(), UNDER_LOAD)
-      .toEqual([other, shared, shared]);
+      .poll(() => openPaths(page), UNDER_LOAD)
+      .toEqual([shared, shared]);
     await cardHeader(page, current).click();
     const c = card(page, current);
-    await expect(rowOf(c, 'shared.txt')).toHaveCount(1);
+    const rows = rowOf(c, 'shared.txt');
+    await expect(rows).toHaveCount(2);
+    await expect(countOf(c, 'Tabs')).toHaveText('2');
 
-    await rowOf(c, 'shared.txt').click();
-    await expect.poll(() => activeTab(page)).toBe(shared);
+    const ids = await openIds(page);
+    expect(new Set(ids).size).toBe(2);
+    for (const i of [0, 1]) {
+      await rows.nth(i).click();
+      await expect.poll(() => activeId(page), UNDER_LOAD).toBe(ids[i]);
+    }
 
-    // an unsaved change, typed into the view the click activated
-    const view = await page.evaluate(
-      () => (window as any).jupyterapp.shell.currentWidget.id
-    );
-    await page.locator(`[id="${view}"] .cm-content`).click();
+    // an unsaved change, typed into the second view, which the click activated
+    await page.locator(`[id="${ids[1]}"] .cm-content`).click();
     await page.keyboard.type('changed ');
     await expect(
       page.locator('#jp-main-dock-panel .lm-TabBar-tab.jp-mod-dirty')
     ).toHaveCount(2);
-    await fromRowMenu(rowOf(c, 'shared.txt'), 'Close tab');
+
+    // the other view stays open: no question, and only this row's tab closes
+    await fromRowMenu(rows.nth(1), 'Close tab');
+    await expect.poll(() => openIds(page), UNDER_LOAD).toEqual([ids[0]]);
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(rows).toHaveCount(1);
+    await expect(countOf(c, 'Tabs')).toHaveText('1');
+
+    // the last view asks
+    await fromRowMenu(rows.first(), 'Close tab');
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       'Save your work'
     );
     await dialog(page)
       .locator('.jp-Dialog-button', { hasText: 'Discard' })
       .click();
-    await expect.poll(() => openPaths(page), UNDER_LOAD).toEqual([other]);
     await expect(dialog(page)).toHaveCount(0);
-    await expect(rowOf(c, 'shared.txt')).toHaveCount(0);
+    await expect.poll(() => openPaths(page), UNDER_LOAD).toEqual([]);
   } finally {
     await deleteWorkspaces(page, [current]);
   }

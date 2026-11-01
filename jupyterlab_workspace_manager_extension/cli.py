@@ -261,10 +261,13 @@ def _layout_keys(workspace):
     return area_keys((layout.get('main') or {}).get('dock')) + list((layout.get('down') or {}).get('widgets') or [])
 
 
-def _counts(workspace, sessions):
-    """Tabs, terminals and kernels the workspace holds, as the panel counts them."""
+def _counts(workspace, sessions, running):
+    """Tabs, terminals and kernels the workspace holds, as the panel counts them.
+
+    A tab is a document or a terminal tab; a terminal counts only while it runs.
+    """
     keys = _layout_keys(workspace)
-    terminals = {key.split(':', 1)[1] for key in keys if key.startswith('terminal:')}
+    terminals = {key.split(':', 1)[1] for key in keys if key.startswith('terminal:')} & running
     paths = {key.split(':', 1)[1] for key in keys if key.startswith(('notebook:', 'console:'))}
     kernels = {
         session['kernel']['id']
@@ -273,7 +276,8 @@ def _counts(workspace, sessions):
         and session.get('type') in ('notebook', 'console')
         and (session.get('kernel') or {}).get('id')
     }
-    return len({key for key in keys if not key.startswith('terminal:')}), len(terminals), len(kernels)
+    documents = {key for key in keys if not key.startswith('terminal:')}
+    return len(documents) + len(terminals), len(terminals), len(kernels)
 
 
 def _age_days(workspace):
@@ -300,11 +304,12 @@ def _table(header, rows):
 def _workspace_rows(base, token):
     records = _records(base, token)
     sessions = _request(base, token, 'GET', '/api/sessions') or []
+    running = _running(base, token)
     rows = []
     for workspace in _workspaces(base, token):
         name = _name((workspace.get('metadata') or {}).get('id', ''))
         record = _record(records, name)
-        tabs, terminals, kernels = _counts(workspace, sessions)
+        tabs, terminals, kernels = _counts(workspace, sessions, running)
         rows.append(
             {
                 'name': name,
@@ -400,15 +405,13 @@ def _cmd_workspaces_clean(args, base, token):
     if not (args.hidden or args.empty or args.older_than is not None):
         args.parser.error('choose at least one of --hidden, --empty, --older-than')
     records = _records(base, token)
-    sessions = _request(base, token, 'GET', '/api/sessions') or []
     selected = []
     for workspace in _workspaces(base, token):
         name = _name((workspace.get('metadata') or {}).get('id', ''))
         record = _record(records, name)
-        tabs, terminals, kernels = _counts(workspace, sessions)
         if (
             (args.hidden and record.get('hidden'))
-            or (args.empty and not (tabs or terminals or kernels))
+            or (args.empty and not _layout_keys(workspace))
             or (args.older_than is not None and (_age_days(workspace) or 0) > args.older_than)
         ):
             selected.append(name)
@@ -450,6 +453,11 @@ def _cmd_windows_list(args, base, token):
 
 def _terminals(base, token):
     return _request(base, token, 'GET', TERMINALS) or []
+
+
+def _running(base, token):
+    """The names of the terminals that run, from the route the panel reads."""
+    return {item.get('name') for item in _terminals(base, token)}
 
 
 def _cmd_terminals_list(args, base, token):
@@ -562,12 +570,10 @@ def _cmd_kernels_kill(args, base, token):
 
 
 def _tab_rows(workspace):
-    """The document tabs a saved workspace holds, in the order its file saves them; terminals are not tabs."""
+    """The tabs a saved workspace holds, once per key, in the order its file saves them; a terminal tab has no path."""
     data = workspace.get('data') or {}
     rows = []
-    for key in _layout_keys(workspace):
-        if key.startswith('terminal:'):
-            continue
+    for key in dict.fromkeys(_layout_keys(workspace)):
         saved = (data.get(key) or {}).get('data') or {}
         rows.append({'key': key, 'path': saved.get('path')})
     return rows
@@ -581,7 +587,12 @@ def _cmd_tabs_list(args, base, token):
     )
     if workspace is None:
         raise CLIError(f'workspace {name} does not exist')
-    rows = _tab_rows(workspace)
+    running = _running(base, token)
+    rows = [
+        row
+        for row in _tab_rows(workspace)
+        if not row['key'].startswith('terminal:') or row['key'].split(':', 1)[1] in running
+    ]
     if args.json:
         print(json.dumps(rows, indent=2))
         return
@@ -656,7 +667,11 @@ def _parser():
         'list',
         help='print every workspace with its record and counts',
         description='Print one line per workspace: name, purpose, colour, hidden state and the '
-        'number of tabs, terminals and kernels. --json prints the same facts as data.',
+        'number of tabs, terminals and kernels, as the card of the panel counts them: TABS counts the '
+        'documents and the terminal tabs, and a saved terminal key whose terminal no longer runs counts '
+        'in neither TABS nor TERMINALS. The CLI reads only the saved layout, so a tab JupyterLab does not '
+        'restore, such as the Launcher or a second New View of a document, counts only in the card of the '
+        'window that holds it. --json prints the same facts as data.',
         epilog=_examples(
             '  jupyterlab-workspace workspaces list\n  jupyterlab-workspace workspaces list --json'
         ),
@@ -738,7 +753,11 @@ def _parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument('--hidden', action='store_true', help='select workspaces whose record hides them')
-    p.add_argument('--empty', action='store_true', help='select workspaces with no tabs, terminals or kernels')
+    p.add_argument(
+        '--empty',
+        action='store_true',
+        help='select workspaces whose saved layout holds no tab; a saved key of a terminal that no longer runs is a tab here',
+    )
     p.add_argument('--older-than', type=int, metavar='DAYS', help='select workspaces last modified more than DAYS days ago')
     p.add_argument('--yes', action='store_true', help='delete them; without this the command lists and refuses')
     p.set_defaults(handler=_cmd_workspaces_clean, parser=p)
@@ -839,7 +858,10 @@ def _parser():
         'list',
         help='print every tab of a workspace in its saved order',
         description='Print one line per tab of the named workspace, in the order the workspace file '
-        'saves them: the layout key and the document path the tab shows. --json prints the same rows.',
+        'saves them: the layout key and the document path the tab shows. A terminal tab prints its key '
+        'terminal:N with an empty path, null in --json; a saved terminal key whose terminal no longer '
+        'runs prints no line, so the line count equals the TABS column of workspaces list. --json prints '
+        'the same rows.',
         epilog=_examples(
             '  jupyterlab-workspace tabs list fb-review\n  jupyterlab-workspace tabs list fb-review --json'
         ),

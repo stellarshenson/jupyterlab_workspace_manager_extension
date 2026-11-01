@@ -5,8 +5,9 @@
 */
 
 /*
-    Every colour is a --jp-* token, with no light or dark branch (DQ-01); the one
-    colour word is the black of the recessed filter field the design language prescribes
+    Every colour is a --jp-* token, with no light or dark branch (DQ-01), except the six
+    workspace colours (DQ-27); the one colour word is the black of the recessed filter
+    field the design language prescribes
 */
 :root {
   --jp-workspace-manager-filter-background: color-mix(
@@ -158,9 +159,6 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-
-  /* 2 px at the sides leave the room for a full-width header's outside focus rim (DQ-19) */
-  padding: 0 2px;
 }
 
 .jp-WorkspaceManager-section {
@@ -174,6 +172,11 @@
 /* the open section fills the height left by the panel header and the collapsed bands */
 .jp-WorkspaceManager-section.jp-mod-open {
   flex: 1 1 auto;
+}
+
+/* the divider above the first band, as every section ends with one (DQ-26): the title band's --jp-border-color2 line above it shows only in a theme where this one does not */
+.jp-WorkspaceManager-section[data-section='workspaces'] {
+  border-top: var(--jp-border-width) solid var(--jp-border-color3);
 }
 
 /* with all four sections closed no section grows, so this margin docks the lab bands at the panel bottom */
@@ -190,7 +193,7 @@
   flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
-  padding: 4px 8px 4px 2px;
+  padding: 4px 10px 4px 4px;
   background: var(--jp-layout-color2);
   font-size: var(--jp-ui-font-size0);
   letter-spacing: 1px;
@@ -202,12 +205,7 @@
   background: var(--jp-layout-color3);
 }
 
-/* the focused band's outside rim paints over the next band's header, which also carries z-index 1 */
-.jp-WorkspaceManager-sectionHeader:focus-visible {
-  z-index: 2;
-}
-
-/* the caret: a 14 px column on the 2 px left after the list's side gutter, so the label starts at 18 px */
+/* the caret: a 14 px column on the band's 4 px left inset, so the label starts at 18 px */
 .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-caret {
   display: flex;
   flex: none;
@@ -285,8 +283,9 @@
   outline-offset: 1px;
 }
 
-/* a card clips its content: the rim of an element inside it sits 1 px inside the edge (DQ-19) */
-.jp-WorkspaceManager .jp-WorkspaceManager-card :focus-visible,
+/* a band reaches the panel edge, and a section body and a card clip their content (DQ-19, DQ-26): the rim sits 1 px inside the edge */
+.jp-WorkspaceManager .jp-WorkspaceManager-sectionHeader:focus-visible,
+.jp-WorkspaceManager .jp-WorkspaceManager-sectionBody :focus-visible,
 .jp-ThemedContainer
   .jp-WorkspaceManager
   .jp-WorkspaceManager-card
@@ -317,35 +316,39 @@
   background-image: linear-gradient(var(--wm-tint), var(--wm-tint));
 }
 
-/* The workspace colours are theme tokens (DQ-01); the stored names stay */
+/*
+    The workspace colours are the coloured tabs palette's default light active shades,
+    in both themes (DQ-27); the stored names stay.
+    shortcut: copies the default tab palette, a palette edited in the coloured tabs settings is not followed; read that setting when asked
+*/
 .jp-WorkspaceManager-card.jp-mod-rose,
 .jp-WorkspaceManager-swatch.jp-mod-rose {
-  --wm-strip: var(--jp-error-color1);
+  --wm-strip: #e39fb1;
 }
 
 .jp-WorkspaceManager-card.jp-mod-peach,
 .jp-WorkspaceManager-swatch.jp-mod-peach {
-  --wm-strip: var(--jp-warn-color1);
+  --wm-strip: #d2ab82;
 }
 
 .jp-WorkspaceManager-card.jp-mod-lemon,
 .jp-WorkspaceManager-swatch.jp-mod-lemon {
-  --wm-strip: var(--jp-warn-color2);
+  --wm-strip: #bab56d;
 }
 
 .jp-WorkspaceManager-card.jp-mod-mint,
 .jp-WorkspaceManager-swatch.jp-mod-mint {
-  --wm-strip: var(--jp-success-color1);
+  --wm-strip: #87c086;
 }
 
 .jp-WorkspaceManager-card.jp-mod-sky,
 .jp-WorkspaceManager-swatch.jp-mod-sky {
-  --wm-strip: var(--jp-brand-color1);
+  --wm-strip: #77bae0;
 }
 
 .jp-WorkspaceManager-card.jp-mod-lavender,
 .jp-WorkspaceManager-swatch.jp-mod-lavender {
-  --wm-strip: var(--jp-info-color1);
+  --wm-strip: #bfa9da;
 }
 
 /* This window's card: the outline paints inside the card's box, so the flush card keeps every band (DQ-19) */
@@ -365,13 +368,13 @@
 
 /* the header one step up, under the card's wash (DQ-02) */
 .jp-WorkspaceManager-cardHeader {
-  padding: 6px 8px;
+  padding: 6px 10px;
   background: var(--jp-layout-color2);
   background-image: linear-gradient(var(--wm-tint), var(--wm-tint));
   cursor: pointer;
 }
 
-/* This window's card paints its 2 px outline over the header's 1 px rim, so the header's rim sits 2 px further in, clear of it (DQ-19, ACC-PANEL-93-FOCUS) */
+/* This window's card paints its 2 px outline over a 1 px rim at the card's edge, so the rim of its header sits 2 px further in, clear of it (DQ-19, ACC-PANEL-93-FOCUS) */
 .jp-WorkspaceManager
   .jp-WorkspaceManager-card.jp-mod-current
   > .jp-WorkspaceManager-cardHeader:focus-visible {
@@ -423,7 +426,7 @@
   gap: 10px;
 }
 
-/* only the name ellipsises; a basis of 0 never pushes the time onto the detail line */
+/* the name ellipsises, as a terminal's process does first; a basis of 0 never pushes the time onto the detail line */
 .jp-WorkspaceManager-rowLabel {
   flex: 1 1 0;
   min-width: 0;
@@ -538,7 +541,7 @@
 }
 
 .jp-WorkspaceManager-groupLabel {
-  padding: 6px 8px 2px 16px;
+  padding: 6px 10px 2px 18px;
   font-size: var(--jp-ui-font-size0);
   font-weight: 600;
   color: var(--jp-ui-font-color1);
@@ -556,7 +559,7 @@
   align-items: center;
   column-gap: 6px;
   min-height: 24px;
-  padding: 0 8px 0 16px;
+  padding: 0 10px 0 18px;
   cursor: pointer;
 }
 
@@ -567,7 +570,7 @@
 }
 
 .jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row {
-  padding-left: 12px;
+  padding-left: 14px;
 }
 
 .jp-WorkspaceManager-rowIcon {
@@ -582,9 +585,36 @@
   font-family: var(--jp-code-font-family);
 }
 
-/* The row's time, status word and detail lines are meta text at size 0; the card header keeps size 1 (DQ-21) */
+/* A terminal row's process stands in one line between the name and the time (DQ-24): it takes the free width, and shrink shares are proportional to the width, so a factor of 1e5 keeps the name whole until the process has no width left */
+.jp-WorkspaceManager-row:has(> .jp-WorkspaceManager-rowProcess) {
+  flex-wrap: nowrap;
+}
+
+.jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-rowProcess) {
+  flex: 0 1 auto;
+}
+
+.jp-WorkspaceManager-rowProcess {
+  flex: 1 100000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--jp-ui-font-color2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In this window's card a row ends at the inner edge of the 2 px outline, which would cover the right side of its focus ring: the card's 1 px right border gives 1 px, the margin the other, and the right padding gives up the margin, so no content moves (DQ-26, DEF-PANEL-72-RING-ROW) */
+.jp-WorkspaceManager-card.jp-mod-current
+  > .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-row {
+  margin-right: 1px;
+  padding-right: 9px;
+}
+
+/* The row's time, status word, process and detail lines are meta text at size 0; the card header keeps size 1 (DQ-21) */
 .jp-WorkspaceManager-row .jp-WorkspaceManager-age,
 .jp-WorkspaceManager-row .jp-WorkspaceManager-state,
+.jp-WorkspaceManager-rowProcess,
 .jp-WorkspaceManager-rowDetail {
   font-size: var(--jp-ui-font-size0);
 }
@@ -635,7 +665,7 @@
 
 /* the child rows of a language server item, under its icon */
 .jp-WorkspaceManager-row.jp-mod-child {
-  padding-left: 38px;
+  padding-left: 40px;
 }
 
 .jp-WorkspaceManager-empty,
@@ -644,7 +674,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 16px;
+  padding: 4px 18px;
 }
 
 .jp-WorkspaceManager-note {
@@ -660,6 +690,7 @@
 
 /* a failed reload is a banner (DQ-15): a 15 percent error wash inside a 35 percent error border */
 .jp-WorkspaceManager-error {
+  padding: 4px 16px;
   border: var(--jp-border-width) solid
     color-mix(in srgb, var(--jp-error-color1) 35%, transparent);
   background: color-mix(in srgb, var(--jp-error-color1) 15%, transparent);

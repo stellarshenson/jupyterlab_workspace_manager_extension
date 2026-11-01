@@ -335,19 +335,39 @@ describe('model', () => {
     expect(early.kernels[0].label).toBe('python3');
   });
 
-  it('DEF-PANEL-10-SHARED-VIEW: two views of one document are one tab row', () => {
+  it('DEF-PANEL-69-TABS-SAMEFILE: each open tab of this window is a row; a kernel its two views share is one row', () => {
     const k1 = kernel('k1');
-    const view = { key: 'notebook:a.ipynb', path: 'a.ipynb', title: 'a.ipynb' };
+    const view = { path: 'a.ipynb', title: 'a.ipynb' };
     const sections = buildSections(
       input({
         sessions: [session('a.ipynb', k1)],
         kernels: [k1],
-        liveTabs: [view, { key: 'editor:b.md', path: 'b.md' }, { ...view }]
+        liveTabs: [
+          { key: 'notebook:a.ipynb', ...view },
+          { key: 'document:b.md', path: 'b.md' },
+          { key: 'notebook:a.ipynb#2', ...view }
+        ]
       })
     );
     const a = byId(sections, 'default');
-    expect(a.tabs.map(t => t.key)).toEqual(['notebook:a.ipynb', 'editor:b.md']);
+    expect(a.tabs.map(t => t.key)).toEqual([
+      'notebook:a.ipynb',
+      'document:b.md',
+      'notebook:a.ipynb#2'
+    ]);
     expect(a.kernels.map(k => k.id)).toEqual(['k1']);
+  });
+
+  it('DEF-PANEL-69-TABS-SAMEFILE: a saved layout lists a key once per New View of one document, and holds one tab of it', () => {
+    const shared = {
+      type: 'tab-area',
+      widgets: ['editor:a.md', 'editor:a.md']
+    };
+    const data = {
+      'layout-restorer:data': { main: { dock: shared } },
+      'editor:a.md': { data: { path: 'a.md', factory: 'Editor' } }
+    };
+    expect(tabsOf(data).map(t => t.key)).toEqual(['editor:a.md']);
   });
 
   it('ACC-KERNEL-133-STATE-OTHER: every other state takes the unknown dot', () => {

@@ -8,20 +8,20 @@ export const COLOURS = ['rose', 'peach', 'lemon', 'mint', 'sky', 'lavender'];
 export const COLOUR_LABELS = [
   'Red',
   'Orange',
-  'Amber',
+  'Yellow',
   'Green',
   'Blue',
-  'Cyan'
+  'Purple'
 ];
 
-/** The theme token of each palette colour, in the same order (DQ-01). */
-export const TOKENS = [
-  '--jp-error-color1',
-  '--jp-warn-color1',
-  '--jp-warn-color2',
-  '--jp-success-color1',
-  '--jp-brand-color1',
-  '--jp-info-color1'
+/** The value of each palette colour, in the same order (DQ-27). */
+export const SHADES = [
+  '#e39fb1',
+  '#d2ab82',
+  '#bab56d',
+  '#87c086',
+  '#77bae0',
+  '#bfa9da'
 ];
 
 /** The workspace colour of a card: its 4 px left border, as the page draws it. */
@@ -581,6 +581,31 @@ export async function sendToTerminal(
   );
 }
 
+/**
+ * For a program sent to a terminal to reach the foreground of its pty: a new
+ * shell reads its input only once it has started, which at host load takes
+ * longer than UNDER_LOAD. The wait follows the state the server reports.
+ */
+export const PROCESS_START = { timeout: 45000 };
+
+/** The foreground process the server reports for a terminal. */
+export async function processOf(
+  page: Page,
+  name: string
+): Promise<string | null | undefined> {
+  const list = await serverList(
+    page,
+    '/jupyterlab-workspace-manager-extension/terminals'
+  );
+  return list.find(t => t.name === name)?.process;
+}
+
+/** Run `sleep` in a terminal and wait until the server reports it in the foreground. */
+export async function sleepInTerminal(page: Page, name: string): Promise<void> {
+  await sendToTerminal(page, name, 'sleep 600\n');
+  await expect.poll(() => processOf(page, name), PROCESS_START).toBe('sleep');
+}
+
 /** Open a document of the server in a tab of this window. */
 export async function openDocument(page: Page, path: string): Promise<void> {
   // the widget the command returns is not sent back: Playwright cannot serialize it
@@ -589,6 +614,17 @@ export async function openDocument(page: Page, path: string): Promise<void> {
       path
     });
   }, path);
+}
+
+/** Close the Launcher tab, which a new workspace opens with and JupyterLab does not save. */
+export async function closeLauncher(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const w of (window as any).jupyterapp.shell.widgets('main')) {
+      if (w.node.querySelector('.jp-Launcher')) {
+        w.close();
+      }
+    }
+  });
 }
 
 /** Open a new terminal in a tab of this window; its name. */

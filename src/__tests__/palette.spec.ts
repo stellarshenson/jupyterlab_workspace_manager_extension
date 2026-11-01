@@ -11,14 +11,14 @@ const css = () => readFileSync(join(ROOT, 'style', 'base.css'), 'utf8');
 /** A hex, rgb() or hsl() colour. */
 const LITERAL = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i;
 
-/** The theme token of each workspace colour (DQ-01). */
-const TOKENS: Record<string, string> = {
-  rose: '--jp-error-color1',
-  peach: '--jp-warn-color1',
-  lemon: '--jp-warn-color2',
-  mint: '--jp-success-color1',
-  sky: '--jp-brand-color1',
-  lavender: '--jp-info-color1'
+/** The value of each workspace colour: the coloured tabs palette's default light active shade (DQ-27). */
+const SHADES: Record<string, string> = {
+  rose: '#e39fb1',
+  peach: '#d2ab82',
+  lemon: '#bab56d',
+  mint: '#87c086',
+  sky: '#77bae0',
+  lavender: '#bfa9da'
 };
 
 /** The .ts and .tsx files under `dir`, the tests left out. */
@@ -66,7 +66,7 @@ describe('palette', () => {
     expect(next.given).toEqual({ d: 'peach' });
   });
 
-  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its theme token and nothing else, for the strip and the swatch', () => {
+  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its value and nothing else, for the strip and the swatch', () => {
     const text = css();
     for (const colour of COLOURS) {
       const rule = text.match(
@@ -74,7 +74,7 @@ describe('palette', () => {
           `\\.jp-WorkspaceManager-card\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-swatch\\.jp-mod-${colour}\\s*\\{([^}]*)\\}`
         )
       );
-      expect(rule?.[1].trim()).toBe(`--wm-strip: var(${TOKENS[colour]});`);
+      expect(rule?.[1].trim()).toBe(`--wm-strip: ${SHADES[colour]};`);
     }
     expect(text).not.toMatch(
       /--jp-workspace-manager-(rose|peach|lemon|mint|sky|lavender)/
@@ -82,7 +82,7 @@ describe('palette', () => {
     expect(text).not.toContain('--jp-colourful-tab-');
   });
 
-  it('ACC-PANEL-203-TOKENS-ONLY: the stylesheet and the TypeScript hold no literal colour and no light or dark branch', () => {
+  it('ACC-PANEL-203-TOKENS-ONLY: the only literal colours in the stylesheet and the TypeScript are the six values, each once in its workspace colour rule, and there is no light or dark branch', () => {
     const files = [
       join(ROOT, 'style', 'base.css'),
       ...sources(join(ROOT, 'src'))
@@ -97,6 +97,15 @@ describe('palette', () => {
             : []
         )
     );
-    expect(found).toEqual([]);
+    // a seventh literal, or a literal in any other rule, is an entry not in this list
+    const lines = css().split('\n');
+    expect(found.sort()).toEqual(
+      COLOURS.map(colour => {
+        const at = lines.indexOf(
+          `.jp-WorkspaceManager-swatch.jp-mod-${colour} {`
+        );
+        return `style/base.css:${at + 2}: --wm-strip: ${SHADES[colour]};`;
+      }).sort()
+    );
   });
 });

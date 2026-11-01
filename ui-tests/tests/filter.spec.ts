@@ -11,14 +11,15 @@ import {
   openSection,
   PANEL,
   patchMeta,
+  PROCESS_START,
+  processOf,
   putWorkspace,
   refresh,
   rowOf,
   sectionBody,
   sendToTerminal,
   startTerminal,
-  triangle,
-  UNDER_LOAD
+  triangle
 } from './helpers';
 
 // every test reads and writes the workspaces of the server. The test titles
@@ -88,6 +89,7 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching cards and car
   page,
   tmpPath
 }) => {
+  test.setTimeout(120000);
   const [named, plain] = [await startTerminal(page), await startTerminal(page)];
   const current = fresh('rows');
   const held = `${current}-held`;
@@ -112,13 +114,7 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching cards and car
       `ln -s "$(command -v sleep)" ${program} && ${program} 300\r`
     );
     await expect
-      .poll(async () => {
-        const response = await page.request.get(
-          '/jupyterlab-workspace-manager-extension/terminals'
-        );
-        return (await response.json()).find((t: any) => t.name === named)
-          ?.process;
-      }, UNDER_LOAD)
+      .poll(() => processOf(page, named), PROCESS_START)
       .toBe('claude');
     await refresh(page);
 

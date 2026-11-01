@@ -365,6 +365,7 @@ def listed_lab():
             'alpha': {'purpose': 'Review the feedback', 'colour': 'mint'},
             'beta': {'purpose': 'Old work', 'colour': 'sky', 'hidden': True},
         },
+        terminals=[{'name': '7'}, {'name': '1'}],
         sessions=[session('nb.ipynb')],
     )
 
@@ -376,9 +377,9 @@ def test_workspaces_list_prints_every_fact(lab, capsys):
     stdout, _ = out(capsys)
     assert stdout.splitlines() == [
         'NAME\tPURPOSE\tCOLOUR\tHIDDEN\tTABS\tTERMINALS\tKERNELS',
-        'alpha\tReview the feedback\tmint\tno\t2\t1\t1',
+        'alpha\tReview the feedback\tmint\tno\t3\t1\t1',
         'beta\tOld work\tsky\tyes\t0\t0\t0',
-        'gamma\t\t-\tno\t0\t1\t0',
+        'gamma\t\t-\tno\t1\t1\t0',
     ]
 
 
@@ -393,12 +394,12 @@ def test_workspaces_list_json_carries_the_same_facts(lab, capsys):
             'purpose': 'Review the feedback',
             'colour': 'mint',
             'hidden': False,
-            'tabs': 2,
+            'tabs': 3,
             'terminals': 1,
             'kernels': 1,
         },
         {'name': 'beta', 'purpose': 'Old work', 'colour': 'sky', 'hidden': True, 'tabs': 0, 'terminals': 0, 'kernels': 0},
-        {'name': 'gamma', 'purpose': '', 'colour': '', 'hidden': False, 'tabs': 0, 'terminals': 1, 'kernels': 0},
+        {'name': 'gamma', 'purpose': '', 'colour': '', 'hidden': False, 'tabs': 1, 'terminals': 1, 'kernels': 0},
     ]
 
 
@@ -417,10 +418,80 @@ def test_the_list_table_prints_a_cell_on_one_line(lab, capsys):
 def test_list_counts_a_split_main_area_and_clean_keeps_it(lab, capsys):
     """ACC-CLI-171 / ACC-CLI-176: a split main area counts its terminals and kernels, so clean --empty keeps it."""
     lab.workspaces = [split_workspace('split-one')]
+    lab.terminals = [{'name': '1'}]
     lab.sessions = [session('a.ipynb')]
     assert run('workspaces', 'list', '--json') == 0
     row = json.loads(out(capsys)[0])[0]
     assert (row['terminals'], row['kernels']) == (1, 1)
+    assert run('workspaces', 'clean', '--empty', '--yes') == 0
+    assert 'no workspace matches' in out(capsys)[0]
+    assert lab.methods('DELETE') == []
+
+
+# The cases of the panel's Jest test ACC-ACCORD-70-COUNT-TABS, so the CLI and the card keep one rule:
+# the saved keys, the terminals that run, TABS, TERMINALS and the keys `tabs list` prints.
+COUNTED = [
+    (
+        '6 terminal tabs and no document',
+        [f'terminal:{n}' for n in range(1, 7)],
+        [str(n) for n in range(1, 7)],
+        6,
+        6,
+        [f'terminal:{n}' for n in range(1, 7)],
+    ),
+    (
+        'documents and terminals',
+        ['editor:a.md', 'editor:b.md', 'terminal:1'],
+        ['1'],
+        3,
+        1,
+        ['editor:a.md', 'editor:b.md', 'terminal:1'],
+    ),
+    (
+        'a saved key of a terminal that no longer runs',
+        ['terminal:1', 'terminal:2', 'terminal:ended'],
+        ['1', '2'],
+        2,
+        2,
+        ['terminal:1', 'terminal:2'],
+    ),
+    ('only a saved key of a terminal that no longer runs', ['terminal:ended'], ['1'], 0, 0, []),
+    (
+        'two views of one document and of one terminal',
+        ['editor:a.md', 'editor:a.md', 'terminal:1', 'terminal:1'],
+        ['1'],
+        2,
+        1,
+        ['editor:a.md', 'terminal:1'],
+    ),
+]
+
+
+@pytest.mark.parametrize('case, keys, running, tabs, terminals, listed', COUNTED, ids=[case[0] for case in COUNTED])
+def test_list_and_tabs_list_follow_the_rule_of_the_card(lab, capsys, case, keys, running, tabs, terminals, listed):
+    """ACC-CLI-171, ACC-CLI-218: TABS counts documents and running terminal tabs, and tabs list prints that many lines."""
+    lab.workspaces = [workspace('counted', keys=keys)]
+    lab.terminals = [{'name': name} for name in running]
+
+    assert run('workspaces', 'list', '--json') == 0
+    row = json.loads(out(capsys)[0])[0]
+    assert (row['tabs'], row['terminals']) == (tabs, terminals)
+
+    assert run('workspaces', 'list') == 0
+    assert out(capsys)[0].splitlines()[1].split('\t')[4:6] == [str(tabs), str(terminals)]
+
+    assert run('tabs', 'list', 'counted', '--json') == 0
+    rows = json.loads(out(capsys)[0])
+    assert [item['key'] for item in rows] == listed
+    assert len(rows) == tabs
+
+
+def test_clean_empty_keeps_a_workspace_holding_only_a_saved_key_of_an_ended_terminal(lab, capsys):
+    """ACC-CLI-171 / ACC-CLI-176: the list counts an ended terminal in neither column; clean --empty still deletes nothing that holds a saved key."""
+    lab.workspaces = [workspace('ended-only', keys=['terminal:9'])]
+    assert run('workspaces', 'list', '--json') == 0
+    row = json.loads(out(capsys)[0])[0]
+    assert (row['tabs'], row['terminals']) == (0, 0)
     assert run('workspaces', 'clean', '--empty', '--yes') == 0
     assert 'no workspace matches' in out(capsys)[0]
     assert lab.methods('DELETE') == []
@@ -818,6 +889,55 @@ def test_tabs_list_prints_one_line_per_tab_in_saved_order(lab, capsys):
         {'key': 'editor:b.md', 'path': 'b.md'},
         {'key': 'console:c', 'path': 'c'},
     ]
+
+
+def test_tabs_list_prints_a_running_terminal_tab_with_an_empty_path_and_no_ended_one(lab, capsys):
+    """ACC-CLI-218: a terminal tab prints terminal:N with an empty PATH and null in --json; an ended terminal prints no line; tabs activate takes paths only."""
+    lab.workspaces = [workspace('held', keys=['editor:b.md', 'terminal:1', 'terminal:9'])]
+    lab.terminals = [{'name': '1'}]
+
+    assert run('tabs', 'list', 'held') == 0
+    assert out(capsys)[0].splitlines() == [
+        'KEY\tPATH',
+        'editor:b.md\tb.md',
+        'terminal:1\t',
+    ]
+
+    assert run('tabs', 'list', 'held', '--json') == 0
+    assert json.loads(out(capsys)[0]) == [
+        {'key': 'editor:b.md', 'path': 'b.md'},
+        {'key': 'terminal:1', 'path': None},
+    ]
+
+    assert run('tabs', 'activate', 'terminal:1', '--workspace', 'held') == 1
+    assert 'paths saved in it: b.md;' in out(capsys)[1]
+    assert lab.switches == []
+
+
+def test_list_and_tabs_list_help_and_the_skill_state_the_rule_of_the_card(monkeypatch, capsys):
+    """ACC-CLI-171, ACC-CLI-218: the help and the shipped skill say what TABS counts and how a terminal tab prints."""
+    monkeypatch.setenv('PYTHON_COLORS', '0')
+    with pytest.raises(SystemExit):
+        run('workspaces', 'list', '--help')
+    list_help = ' '.join(capsys.readouterr().out.split())
+    assert 'no longer runs counts in neither' in list_help
+    saved_rule = (
+        'The CLI reads only the saved layout, so a tab JupyterLab does not restore, such as the Launcher or a second '
+        'New View of a document, counts only in the card of the window that holds it.'
+    )
+    assert saved_rule in list_help
+    assert 'different kinds' not in list_help
+    with pytest.raises(SystemExit):
+        run('tabs', 'list', '--help')
+    assert 'its key terminal:N with an empty path' in ' '.join(capsys.readouterr().out.split())
+    with pytest.raises(SystemExit):
+        run('workspaces', 'clean', '--help')
+    assert 'whose saved layout holds no tab' in ' '.join(capsys.readouterr().out.split())
+    skill = SKILL.read_text(encoding='utf-8')
+    assert 'documents and terminal tabs' in skill
+    assert saved_rule.rstrip('.') in skill
+    assert 'different kinds' not in skill
+    assert '`terminal:N`' in skill
 
 
 def test_tabs_list_of_an_empty_workspace_prints_no_tabs_and_exits_zero(lab, capsys):

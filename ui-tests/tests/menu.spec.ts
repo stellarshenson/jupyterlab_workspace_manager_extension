@@ -21,8 +21,8 @@ import {
   putWorkspace,
   refresh,
   rgb,
+  SHADES,
   stripColour,
-  TOKENS,
   UNDER_LOAD
 } from './helpers';
 
@@ -197,7 +197,7 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icon
   }
 });
 
-test('ACC-ACCORD-150-COLOUR-SWATCH, MENU-04: the Colour submenu lists Red, Orange, Amber, Green, Blue, Cyan, each after a 12px swatch with 2px corners and a layout colour 4 border filled with its theme token', async ({
+test('ACC-ACCORD-150-COLOUR-SWATCH, MENU-04: the Colour submenu lists Red, Orange, Yellow, Green, Blue, Purple, each after a 12px swatch with 2px corners and a layout colour 4 border filled with its value', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'swatch');
@@ -226,7 +226,7 @@ test('ACC-ACCORD-150-COLOUR-SWATCH, MENU-04: the Colour submenu lists Red, Orang
       expect([s.size, s.radius, s.strokeWidth]).toEqual([[12, 12], '2', '1px']);
       expect(await rgb(page, s.stroke)).toEqual(border);
       expect(await rgb(page, s.fill), COLOURS[i]).toEqual(
-        await rgb(page, `var(${TOKENS[i]})`)
+        await rgb(page, SHADES[i])
       );
     }
   } finally {
@@ -244,7 +244,7 @@ test('ACC-ACCORD-102-COLOUR-CHECK: the Colour submenu marks the present colour',
       '.jp-WorkspaceManager-colourMenu .lm-Menu-item.lm-mod-toggled'
     );
     await expect(toggled).toHaveCount(1);
-    await expect(toggled.locator('.lm-Menu-itemLabel')).toHaveText('Amber');
+    await expect(toggled.locator('.lm-Menu-itemLabel')).toHaveText('Yellow');
     const mark = await toggled
       .locator('.lm-Menu-itemLabel')
       .evaluate(l => getComputedStyle(l, '::after').content);
@@ -259,7 +259,7 @@ test('ACC-ACCORD-30-SET-COLOUR: Colour sets the strip at once, and the colour su
 }) => {
   const { current, other } = await setUp(page, 'colour', 'sky');
   try {
-    const mint = await rgb(page, 'var(--jp-success-color1)');
+    const mint = await rgb(page, SHADES[COLOURS.indexOf('mint')]);
     expect(await strip(page, other)).not.toEqual(mint);
     await openColours(page, other);
     await menuItem(page, 'Green').click();
