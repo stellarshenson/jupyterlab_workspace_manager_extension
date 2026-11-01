@@ -2,6 +2,12 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.30] - 2026-11-01
+
+### Changed
+
+- The canonical Makefile is 1.47: `increment_version` takes a `BUMP` level, so a minor or major release raises the matching number and no longer needs a hand edit
+
 ## [0.8.29] - 2026-11-01
 
 ### Changed
