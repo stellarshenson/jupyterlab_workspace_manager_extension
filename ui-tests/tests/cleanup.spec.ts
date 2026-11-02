@@ -7,6 +7,7 @@ import {
   dialog,
   enterWorkspace,
   fresh,
+  headerButton,
   kernelIds,
   layout,
   listed,
@@ -65,7 +66,7 @@ const cleanRow = (page: Page, id: string) =>
     .locator('.jp-WorkspaceManager-cleanupRow')
     .filter({ has: page.getByText(id, { exact: true }) });
 
-test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE: the WORKSPACES band carries the same 22 px clear-console button as the bands below it, named Clean up workspaces and enabled by a second workspace', async ({
+test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE, EDGE-CLEAN-UP-ICON: the WORKSPACES band carries the same 22 px button as the bands below it, named Clean up workspaces and enabled by a second workspace, with the eraser glyph; the three tally bands carry the power glyph; every band glyph stands under the reload glyph of the WORKBENCH band', async ({
   page
 }: {
   page: IJupyterLabPageFixture;
@@ -79,7 +80,7 @@ test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE: the WORKSPACES b
       exact: true
     });
     await expect(clean).toBeVisible();
-    // the three bands below carry the same clear-console button, 22 px square with a 14 px glyph
+    // the three bands below carry the same 22 px button with a 14 px glyph
     const below = sectionHeader(page, 'kernels').getByRole('button', {
       name: 'Shut down all',
       exact: true
@@ -94,28 +95,61 @@ test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE: the WORKSPACES b
     const glyph = (await clean.locator('svg').boundingBox())!;
     expect(Math.round(glyph.width)).toBe(14);
     expect(Math.round(glyph.height)).toBe(14);
-    // ACC-PANEL-240-CLEAR-CONSOLE: all four band buttons draw the Clear console glyph of the Chrome developer tools, a circle and one diagonal stroke
+    // EDGE-CLEAN-UP-ICON: the clean-up control draws an eraser, the three Shut down all
+    // controls the power symbol; each is 14 px with 5 px above and below inside the 24 px band
     const band = (section: string, name: string) =>
       sectionHeader(page, section)
         .getByRole('button', { name, exact: true })
         .locator('svg');
-    for (const [section, name] of [
-      ['workspaces', 'Clean up workspaces'],
-      ['kernels', 'Shut down all'],
-      ['terminals', 'Shut down all'],
-      ['servers', 'Shut down all']
-    ] as const) {
-      const parts = await band(section, name).evaluate(svg => ({
+    const strokes = async (section: string, name: string) =>
+      band(section, name).evaluate(svg => ({
+        viewBox: svg.getAttribute('viewBox'),
         circles: svg.querySelectorAll('circle').length,
-        paths: svg.querySelectorAll('path').length,
-        diagonal: svg.querySelector('path')?.getAttribute('d') ?? ''
+        paths: Array.from(svg.querySelectorAll('path')).map(p =>
+          p.getAttribute('d')
+        )
       }));
-      expect(parts, section).toEqual({
-        circles: 1,
-        paths: 1,
-        diagonal: 'M3.8 12.2L12.2 3.8'
+    // the glyphs of the section bands stand in one column under the reload glyph
+    const centre = (b: { x: number; width: number }) => b.x + b.width / 2;
+    const reload = centre(
+      (await headerButton(page, 'Refresh').locator('svg').boundingBox())!
+    );
+    expect(await strokes('workspaces', 'Clean up workspaces')).toEqual({
+      viewBox: '0 0 24 24',
+      circles: 0,
+      paths: ['M14.5 4.5 19.5 9.5 9.5 19.5 4.5 14.5z', 'M11.5 7.5 16.5 12.5']
+    });
+    for (const section of ['kernels', 'terminals', 'servers']) {
+      expect(await strokes(section, 'Shut down all')).toEqual({
+        viewBox: '0 0 24 24',
+        circles: 0,
+        paths: ['M12 3v8', 'M7.7 5.86A7.5 7.5 0 1 0 16.3 5.86']
       });
+      // the 14 px glyph sits 5 px from the band's top edge and 5 px from its bottom edge
+      const tallyGlyph = (await band(section, 'Shut down all').boundingBox())!;
+      const tallyBand = (await sectionHeader(page, section).boundingBox())!;
+      expect(centre(tallyGlyph), section).toBeCloseTo(reload, 1);
+      expect(Math.round(tallyGlyph.width)).toBe(14);
+      expect(Math.round(tallyGlyph.height)).toBe(14);
+      expect(Math.round(tallyGlyph.y - tallyBand.y)).toBe(5);
+      expect(
+        Math.round(
+          tallyBand.y + tallyBand.height - tallyGlyph.y - tallyGlyph.height
+        )
+      ).toBe(5);
     }
+    expect(centre(glyph)).toBeCloseTo(reload, 1);
+    const cleanBox = (await clean.boundingBox())!;
+    const cleanGlyph = (await clean.locator('svg').boundingBox())!;
+    expect(Math.round(cleanGlyph.height)).toBe(14);
+    expect(Math.round(cleanGlyph.y - cleanBox.y)).toBe(4);
+    const cleanBand = (await sectionHeader(page, 'workspaces').boundingBox())!;
+    expect(Math.round(cleanGlyph.y - cleanBand.y)).toBe(5);
+    expect(
+      Math.round(
+        cleanBand.y + cleanBand.height - cleanGlyph.y - cleanGlyph.height
+      )
+    ).toBe(5);
 
     await putWorkspace(page, other);
     await refresh(page);
@@ -123,6 +157,87 @@ test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE: the WORKSPACES b
   } finally {
     await deleteWorkspaces(page, [current, other]);
   }
+});
+
+test.describe('at 4x device scale', () => {
+  test.use({ deviceScaleFactor: 4 });
+
+  test('ACC-PANEL-247-ICONS: the ink of the eraser glyph, read from pixels, stands as far from the top of the WORKSPACES band as from its bottom, within one device pixel', async ({
+    page
+  }: {
+    page: IJupyterLabPageFixture;
+  }) => {
+    const current = fresh('eraserink');
+    const other = `${current}-other`;
+    try {
+      await putWorkspace(page, other);
+      await enterWorkspace(page, current);
+      const band = sectionHeader(page, 'workspaces');
+      const clean = band.getByRole('button', {
+        name: 'Clean up workspaces',
+        exact: true
+      });
+      await expect(clean).toBeEnabled();
+      await page.mouse.move(0, 0);
+      const S = 4; // device pixels per CSS pixel
+      const bandBox = (await band.boundingBox())!;
+      const glyph = (await clean.locator('svg').boundingBox())!;
+      // the glyph's columns over the band's whole height
+      const png = await page.screenshot({
+        clip: {
+          x: glyph.x,
+          y: bandBox.y,
+          width: glyph.width,
+          height: bandBox.height
+        }
+      });
+      const px = await page.evaluate(async b64 => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${b64}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(image, 0, 0);
+        return {
+          width: image.width,
+          height: image.height,
+          data: Array.from(
+            ctx.getImageData(0, 0, image.width, image.height).data
+          )
+        };
+      }, png.toString('base64'));
+      expect(px.height).toBe(Math.round(bandBox.height * S));
+      // each pixel row's strongest channel difference from the band's top-left pixel
+      const rows = Array.from({ length: px.height }, (_, y) => {
+        let strongest = 0;
+        for (let x = 0; x < px.width; x++) {
+          for (let c = 0; c < 3; c++) {
+            strongest = Math.max(
+              strongest,
+              Math.abs(px.data[(y * px.width + x) * 4 + c] - px.data[c])
+            );
+          }
+        }
+        return strongest;
+      });
+      // ink is every pixel row at a fifth of the strongest difference or more
+      const strongest = Math.max(...rows);
+      expect(strongest).toBeGreaterThan(0);
+      const inked = rows.flatMap((d, y) => (d >= strongest / 5 ? [y] : []));
+      const above = inked[0];
+      const below = px.height - 1 - inked[inked.length - 1];
+      expect(above).toBeGreaterThan(0);
+      expect(below).toBeGreaterThan(0);
+      expect(
+        Math.abs(above - below),
+        `${above} device px above the ink, ${below} below`
+      ).toBeLessThanOrEqual(1);
+    } finally {
+      await deleteWorkspaces(page, [current, other]);
+    }
+  });
 });
 
 test('ACC-ACCORD-223-CLEAN-ACTION: the WORKSPACES clear-console button deletes every workspace but this one, empties this one, and keeps the one another window shows', async ({

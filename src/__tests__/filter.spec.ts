@@ -110,7 +110,9 @@ describe('filter', () => {
     expect(rowsFor('claude')).toEqual([['alpha', [], ['7'], []]]); // process name
     expect(rowsFor('terminal 8')).toEqual([['alpha', [], ['8'], []]]); // terminal name
     expect(rowsFor('flux capacitor')).toEqual([['alpha', [], ['7'], []]]); // tab title
-    expect(rowsFor('julia')).toEqual([['alpha', [], [], ['k1']]]); // kernel name
+    expect(rowsFor('julia')).toEqual([
+      ['alpha', ['model.ipynb'], [], ['k1']] // a kernel name keeps its notebook's tab
+    ]);
     expect(rowsFor('model.ipynb')).toEqual([
       ['alpha', ['model.ipynb'], [], ['k1']] // the notebook, as a tab and as a kernel's notebook
     ]);
@@ -153,7 +155,7 @@ describe('filter', () => {
     const all = sections();
     const { cards, unmatched } = filterSections(all, 'claude', false);
     expect(cards.map(c => [c.section.id, c.shown, c.total])).toEqual([
-      ['alpha', 1, 6]
+      ['alpha', 1, 5]
     ]);
     expect(unmatched).toBe(1);
     expect(filterSections(all, 'zzzz', false)).toEqual({
@@ -161,7 +163,7 @@ describe('filter', () => {
       unmatched: 2
     });
     expect(filterSections(all, '', false).cards.map(c => c.shown)).toEqual([
-      6, 0
+      5, 0
     ]);
   });
 });

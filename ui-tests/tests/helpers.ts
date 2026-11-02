@@ -14,16 +14,12 @@ export const COLOUR_LABELS = [
   'Purple'
 ];
 
-/** A palette shade as the page draws it: the extension's --wm-<colour>[-active] (DQ-28). */
-export const shade = (
-  page: Page,
-  colour: string,
-  active = false
-): Promise<string> =>
-  // on the body: the theme sets data-jp-theme-light there, so the dark block resolves
+/** A palette hue as the page draws it: the extension's --wm-<colour> (DQ-28). */
+export const shade = (page: Page, colour: string): Promise<string> =>
+  // on the body, where the panel's inheritance starts
   page.evaluate(
     name => getComputedStyle(document.body).getPropertyValue(name).trim(),
-    `--wm-${colour}${active ? '-active' : ''}`
+    `--wm-${colour}`
   );
 
 /** The workspace colour of a card: its 4 px left border, as the page draws it. */
@@ -470,14 +466,6 @@ export const rowOf = (c: Locator, text: string): Locator =>
   c
     .locator('.jp-WorkspaceManager-row')
     .filter({ has: c.page().getByText(text, { exact: true }) });
-
-/** The group of an open card under the label `name`: TABS, TERMINALS or KERNELS. */
-export const group = (c: Locator, name: string): Locator =>
-  c.locator('.jp-WorkspaceManager-group').filter({
-    has: c.page().locator('.jp-WorkspaceManager-groupLabel', {
-      hasText: new RegExp(`^${name}\\b`)
-    })
-  });
 
 /** The count of a card header titled `title`: Tabs, Terminals or Kernels. */
 export const countOf = (c: Locator, title: string): Locator =>

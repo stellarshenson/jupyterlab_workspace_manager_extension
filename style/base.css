@@ -6,14 +6,14 @@
 
 /*
     Every colour is a --jp-* token, with no light or dark branch (DQ-01), except the six
-    workspace colours (DQ-28) and their one dark-theme block below; the one colour word is
-    the black of the recessed filter field the design language prescribes.
+    workspace hues (DQ-28); the one colour word is the black of the recessed filter field
+    the design language prescribes.
 
-    The workspace palette (DQ-28): the coloured tabs extension's default palette at 1.4
-    saturation, with rose 2 degrees pinker, peach 3 points darker, lemon 1 point lighter
-    and 2 degrees cooler, and mint 2 points darker, so rose and peach stop reading as one
-    pair. A card takes the muted shade as its header and 4 px strip; this window's card
-    takes the active shade. The stored colour names stay unchanged.
+    The workspace palette (DQ-28): the coloured tabs extension's default palette, rose 2
+    degrees pinker, peach 3 points darker, lemon 1 point lighter and 2 degrees cooler, and
+    mint 2 points darker, so rose and peach stop reading as one pair. A workspace card
+    mixes its hue over the theme's layout colour 1: 30 % for the header, 12 % for the
+    body, and the full hue for the 4 px strip. The stored colour names stay unchanged.
 */
 :root {
   --jp-workspace-manager-filter-background: color-mix(
@@ -21,18 +21,12 @@
     var(--jp-layout-color1) 96%,
     black
   );
-  --wm-rose: #f1b2c4;
-  --wm-rose-active: #f191ae;
-  --wm-peach: #e5ba90;
-  --wm-peach-active: #dfa465;
-  --wm-lemon: #d5cea2;
-  --wm-lemon-active: #cbc061;
-  --wm-mint: #a7cfa5;
-  --wm-mint-active: #73c973;
-  --wm-sky: #98cff2;
-  --wm-sky-active: #62c0f5;
-  --wm-lavender: #cebbe7;
-  --wm-lavender-active: #be9fe4;
+  --wm-rose: #f191ae;
+  --wm-peach: #dfa465;
+  --wm-lemon: #cbc061;
+  --wm-mint: #73c973;
+  --wm-sky: #62c0f5;
+  --wm-lavender: #be9fe4;
 }
 
 /*
@@ -202,7 +196,7 @@
   margin-top: auto;
 }
 
-/* A section header is a band on layout colour 2 (DQ-03): 6 px above and below the text, no shadow */
+/* A section header is a band on layout colour 2 (DQ-03): 6 px above and below the text, no shadow; the 5 px right padding stands the band's 22 px button under the WORKBENCH reload glyph */
 .jp-WorkspaceManager-sectionHeader {
   position: sticky;
   top: 0;
@@ -211,7 +205,7 @@
   flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
-  padding: 4px 10px 4px 4px;
+  padding: 4px 5px 4px 4px;
   background: var(--jp-layout-color2);
   font-size: var(--jp-ui-font-size0);
   letter-spacing: 1px;
@@ -254,9 +248,6 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-
-  /* the reference panel keeps the gutter: rows line up across sections, scrollbar or not */
-  scrollbar-gutter: stable;
   padding: 2px 0;
 }
 
@@ -316,87 +307,69 @@
 }
 
 /*
-    A card (DQ-02, DQ-28): 2 px corners that clip the header, a plain layout colour 1
-    body and a border colour 1 border; the 4 px strip is its left border, and the
-    header carries the workspace's muted shade from the palette below, which this
-    window's card replaces with the active shade; a card with no colour paints the
-    plain surfaces. The stored colour names stay unchanged.
+    A card (DQ-02, DQ-28): an edge tab 2 px from the panel's left edge, its left corners
+    square and its right corners 2 px; the 4 px full-strength hue strip is its left
+    border, the header carries the 30 % tint and the body the 12 % tint, and a 1 px hue
+    rule joins them; a card with no colour paints the plain surfaces. The stored colour
+    names stay unchanged.
 */
 .jp-WorkspaceManager-card {
+  --wm-hue: transparent;
   --wm-shade: var(--jp-layout-color2);
-  --wm-strip: transparent;
+  --wm-rows: var(--jp-layout-color1);
 
   position: relative;
-  margin: 4px 0;
-  border: var(--jp-border-width) solid var(--jp-border-color1);
-  border-left: 4px solid var(--wm-strip);
-  border-radius: var(--jp-border-radius);
+  margin: 4px 2px;
+  border-left: 4px solid var(--wm-hue);
+  border-radius: 0 2px 2px 0;
   overflow: hidden;
-  background: var(--jp-layout-color1);
-}
-
-/* The same hues for a dark theme; the theme sets this attribute on the body */
-[data-jp-theme-light='false'] {
-  --wm-rose: #542b36;
-  --wm-rose-active: #3f1e26;
-  --wm-peach: #4a3827;
-  --wm-peach-active: #342a1d;
-  --wm-lemon: #57512e;
-  --wm-lemon-active: #423e23;
-  --wm-mint: #294d30;
-  --wm-mint-active: #1d3924;
-  --wm-sky: #213854;
-  --wm-sky-active: #182a3d;
-  --wm-lavender: #402c54;
-  --wm-lavender-active: #30213e;
+  background: var(--wm-rows);
 }
 
 .jp-WorkspaceManager-card.jp-mod-rose,
 .jp-WorkspaceManager-swatch.jp-mod-rose {
-  --wm-shade: var(--wm-rose);
-  --wm-shade-active: var(--wm-rose-active);
-  --wm-strip: var(--wm-shade);
+  --wm-hue: var(--wm-rose);
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-peach,
 .jp-WorkspaceManager-swatch.jp-mod-peach {
-  --wm-shade: var(--wm-peach);
-  --wm-shade-active: var(--wm-peach-active);
-  --wm-strip: var(--wm-shade);
+  --wm-hue: var(--wm-peach);
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-lemon,
 .jp-WorkspaceManager-swatch.jp-mod-lemon {
-  --wm-shade: var(--wm-lemon);
-  --wm-shade-active: var(--wm-lemon-active);
-  --wm-strip: var(--wm-shade);
+  --wm-hue: var(--wm-lemon);
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-mint,
 .jp-WorkspaceManager-swatch.jp-mod-mint {
-  --wm-shade: var(--wm-mint);
-  --wm-shade-active: var(--wm-mint-active);
-  --wm-strip: var(--wm-shade);
+  --wm-hue: var(--wm-mint);
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-sky,
 .jp-WorkspaceManager-swatch.jp-mod-sky {
-  --wm-shade: var(--wm-sky);
-  --wm-shade-active: var(--wm-sky-active);
-  --wm-strip: var(--wm-shade);
+  --wm-hue: var(--wm-sky);
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-lavender,
 .jp-WorkspaceManager-swatch.jp-mod-lavender {
-  --wm-shade: var(--wm-lavender);
-  --wm-shade-active: var(--wm-lavender-active);
-  --wm-strip: var(--wm-shade);
+  --wm-hue: var(--wm-lavender);
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
-/* This window's card takes the active shade, and its outline paints inside the card's box, so the flush card keeps every band (DQ-19) */
+/* This window's card keeps its 2 px outline, painted inside the card's box (DQ-19, DQ-26) */
 .jp-WorkspaceManager-card.jp-mod-current {
-  --wm-shade: var(--wm-shade-active, var(--jp-layout-color2));
-
   outline: 2px solid var(--jp-brand-color2);
   outline-offset: -2px;
 }
@@ -410,27 +383,12 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header carries the card's shade (DQ-02, DQ-28) */
+/* the header carries the card's 30 % tint, joined to the body by a 1 px hue rule (DQ-02, DQ-28); the 6 px left padding starts the name and the purpose at the row label's left edge */
 .jp-WorkspaceManager-cardHeader {
-  padding: 6px 10px;
+  padding: 6px 10px 6px 6px;
+  border-bottom: 1px solid var(--wm-hue);
   background: var(--wm-shade);
   cursor: pointer;
-}
-
-/* On a coloured card header the brand ring falls under 3:1 in the light theme; colour 1 measures 7.94-10.83:1 light, 6.53-11.55:1 dark and 3.25-6.03:1 in the Steel theme; plain cards, rows, section bands and the panel header keep the brand ring (DQ-19, ACC-PANEL-93-FOCUS) */
-.jp-WorkspaceManager-card.jp-mod-coloured
-  > .jp-WorkspaceManager-cardHeader:focus-visible,
-.jp-WorkspaceManager-card.jp-mod-coloured
-  .jp-WorkspaceManager-cardHeader
-  button:focus-visible {
-  outline-color: var(--jp-ui-font-color1);
-}
-
-/* This window's card paints its 2 px outline over a 1 px rim at the card's edge, so the rim of its header sits 2 px further in, clear of it (DQ-19, ACC-PANEL-93-FOCUS) */
-.jp-WorkspaceManager
-  .jp-WorkspaceManager-card.jp-mod-current
-  > .jp-WorkspaceManager-cardHeader:focus-visible {
-  outline-offset: -3px;
 }
 
 .jp-WorkspaceManager-headerLine {
@@ -525,6 +483,11 @@
   cursor: pointer;
 }
 
+/* The icon's span holds the 14 px SVG alone: the text line box's descender would lift it 1 px */
+.jp-WorkspaceManager-iconButton > span {
+  display: flex;
+}
+
 /* The buttons of a card header are 24 px square */
 .jp-WorkspaceManager-cardHeader .jp-WorkspaceManager-iconButton {
   flex-basis: 24px;
@@ -545,10 +508,10 @@
 
 /*
  * The Shut down all of a section header is the panel's 22 px icon button at the band's end (DQ-20): a 14 px
- * glyph, its -4 px margins keeping the band at its own height
+ * glyph, its -3 px margins making the 24 px band and leaving 5 px above and below the glyph (ACC-PANEL-247-ICONS)
  */
 .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-iconButton {
-  margin: -4px 0 -4px auto;
+  margin: -3px 0 -3px auto;
 }
 
 .jp-WorkspaceManager-iconButton:hover:not(:disabled),
@@ -589,18 +552,6 @@
 
 .jp-WorkspaceManager-cardBody {
   padding: 4px 0 8px;
-}
-
-.jp-WorkspaceManager-groupLabel {
-  padding: 6px 10px 2px 18px;
-  font-size: var(--jp-ui-font-size0);
-  font-weight: 600;
-  color: var(--jp-ui-font-color1);
-}
-
-/* the count of a group is meta text */
-.jp-WorkspaceManager-groupLabel > span {
-  color: var(--jp-ui-font-color2);
 }
 
 /* a selected row's detail line wraps under its name */
@@ -654,23 +605,55 @@
   white-space: nowrap;
 }
 
-/* In this window's card a row ends at the inner edge of the 2 px outline, which would cover the right side of its focus ring: the card's 1 px right border gives 1 px, the margin the other, and the right padding gives up the margin, so no content moves (DQ-26, DEF-PANEL-72-RING-ROW) */
+/* In this window's card the 2 px outline is painted inside the card's edge, where it would cover the right side of a row's focus ring: the row ends 2 px short of the edge, at the outline's inner edge, with a 2 px right margin in place of the removed right border, and the right padding gives up 2 px so no content moves (DQ-26, DEF-PANEL-72-RING-ROW) */
 .jp-WorkspaceManager-card.jp-mod-current
   > .jp-WorkspaceManager-cardBody
   .jp-WorkspaceManager-row {
-  margin-right: 1px;
-  padding-right: 9px;
+  margin-right: 2px;
+  padding-right: 8px;
 }
 
-/* The row's time, status word, process and detail lines are meta text at size 0; the card header keeps size 1 (DQ-21) */
-.jp-WorkspaceManager-row .jp-WorkspaceManager-age,
+/* In a coloured card the surface keeps the card's hue: the hue at 12 % over layout colour 2 (DQ-10) */
+.jp-WorkspaceManager-card.jp-mod-coloured .jp-WorkspaceManager-row:hover,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-row.jp-mod-selected {
+  background: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color2));
+}
+
+/* The brand ring falls under 3:1 on the lemon, mint and sky header tints in the dark theme (2.86-2.97:1) and to 2.34:1 on the sky surface of a selected row, the surface a focused row always stands on; the inverse layout colour 0 keeps at least 6.40:1 on every 30 % tint (Steel, Dark, Light), so a coloured card's header, its buttons and its rows take it; plain cards, section rows, section bands and the panel header keep the brand ring (DQ-19, ACC-PANEL-93-FOCUS) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  > .jp-WorkspaceManager-cardHeader:focus-visible,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  button:focus-visible,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-row:focus-visible {
+  outline-color: var(--jp-inverse-layout-color0);
+}
+
+/* This window's card paints its 2 px outline over a 1 px rim at the card's edge, so the rim of its header sits 2 px further in, clear of it (DQ-19, ACC-PANEL-93-FOCUS) */
+.jp-WorkspaceManager
+  .jp-WorkspaceManager-card.jp-mod-current
+  > .jp-WorkspaceManager-cardHeader:focus-visible {
+  outline-offset: -3px;
+}
+
+/* The time, on a row and in a card header, a hidden card's word, and a row's status word, process and detail lines are meta text at size 0; the workspace name and the rest of the header keep size 1 (DQ-21) */
+.jp-WorkspaceManager-age,
+.jp-WorkspaceManager-hiddenWord,
 .jp-WorkspaceManager-row .jp-WorkspaceManager-state,
 .jp-WorkspaceManager-rowProcess,
 .jp-WorkspaceManager-rowDetail {
   font-size: var(--jp-ui-font-size0);
 }
 
-/* On a coloured card header the meta text, the count and action glyphs and the caret keep the primary font colour: the shade costs no contrast, and the inverse glyph colour falls under 3:1 on the active shade in the light theme; a section caret and a plain card's caret stay at colour 2 (DQ-07, DQ-28, ACC-PANEL-202) */
+/* On a coloured card the header ink takes the theme's inverse layout colours: colour 1 measures 4.82:1 on the Steel base and 2.60:1 on a 30 % lemon tint, under the 4.5:1 floor, while inverse colours 0 and 1 measure at least 6.40:1 in Galaxa Steel, 8.06:1 in JupyterLab Dark and 12.80:1 in JupyterLab Light on the same tints; the name, the count and action glyphs and the caret take inverse colour 0, the meta text colour 1; plain cards, tally sections, menus and dialogs keep font colours 1 and 2 (DQ-07, DQ-28, ACC-PANEL-202) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-name {
+  color: var(--jp-inverse-layout-color0);
+}
+
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-age,
@@ -686,7 +669,7 @@
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-hiddenWord {
-  color: var(--jp-ui-font-color1);
+  color: var(--jp-inverse-layout-color1);
 }
 
 .jp-WorkspaceManager-card.jp-mod-coloured
@@ -697,7 +680,7 @@
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-cardActions
   [class*='jp-icon'][fill] {
-  fill: var(--jp-ui-font-color1);
+  fill: var(--jp-inverse-layout-color0);
 }
 
 .jp-WorkspaceManager-card.jp-mod-coloured
@@ -708,7 +691,24 @@
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-cardActions
   [class*='jp-icon'][stroke] {
-  stroke: var(--jp-ui-font-color1);
+  stroke: var(--jp-inverse-layout-color0);
+}
+
+/* The body ink of a coloured card takes the inverse layout colours: the row labels inverse colour 0, the time, state word, process, detail and empty line inverse colour 1; a tally section keeps font colours 1 and 2 (DQ-07, DQ-21, ACC-PANEL-202) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-rowLabel {
+  color: var(--jp-inverse-layout-color0);
+}
+
+/* A stale label at 0.65 falls to 4.15:1 on the lemon surface, so it takes full opacity in these two states (DQ-09) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-row:hover
+  .jp-WorkspaceManager-rowLabel,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-row.jp-mod-selected
+  .jp-WorkspaceManager-rowLabel {
+  opacity: 1;
 }
 
 /* The detail lines of the selected row, under the name: the parts marked to shrink give way first (KERN-02) */
@@ -780,6 +780,25 @@
   font-style: italic;
 }
 
+/* The meta ink of a coloured card's body, the rest of the body ink rule above; it follows the plain rowDetail and empty rules for no-descending-specificity (DQ-07, DQ-21) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-age,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-state,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-rowProcess,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-rowDetail,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-empty {
+  color: var(--jp-inverse-layout-color1);
+}
+
 /* a failed reload is a banner (DQ-15): a 15 percent error wash inside a 35 percent error border */
 .jp-WorkspaceManager-error {
   padding: 4px 16px;
@@ -788,9 +807,9 @@
   background: color-mix(in srgb, var(--jp-error-color1) 15%, transparent);
 }
 
-/* Menus: swatches as the colourful tab extension draws them, filled with the workspace colour; the red bin */
+/* Menus: swatches as the colourful tab extension draws them, filled with the workspace hue; the red bin */
 .jp-WorkspaceManager-swatch {
-  fill: var(--wm-strip);
+  fill: var(--wm-hue);
   stroke: var(--jp-layout-color4);
   stroke-width: 1;
 }
@@ -806,12 +825,12 @@
   fill: var(--jp-error-color1);
 }
 
-/* A coloured card header's caret is one of its colour-1 glyphs (DQ-07, DQ-28, ACC-PANEL-239) */
+/* A coloured card header's caret is one of its inverse-colour-0 glyphs (DQ-07, DQ-28, ACC-PANEL-239) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-caret
   .jp-icon3[fill] {
-  fill: var(--jp-ui-font-color1);
+  fill: var(--jp-inverse-layout-color0);
 }
 
 /* The present colour keeps its swatch and takes a check after its name */

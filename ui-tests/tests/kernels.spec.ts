@@ -12,7 +12,6 @@ import {
   enterWorkspace,
   fresh,
   fromRowMenu,
-  group,
   kernelIds,
   layout,
   NEXT_POLL,
@@ -53,7 +52,7 @@ async function sessionOf(page: Page, path: string): Promise<any> {
   return session;
 }
 
-test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a kernel row shows its notebook, its state and its age, its details in its tooltip and, selected, the display name of its kernelspec and the path; Shut down kernel ends it and the notebook stays open', async ({
+test('ACC-KERNEL-48-ROW, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a card document row shows its notebook, its kernel state word and dot, and its age and, selected, its folder; Shut down kernel ends the kernel and the notebook stays open', async ({
   page,
   tmpPath
 }) => {
@@ -66,15 +65,8 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-49-STATE, ACC-K
     const session = await sessionOf(page, notebook);
     await refresh(page);
     await cardHeader(page, current).click();
-    const kernels = group(card(page, current), 'KERNELS');
-    const row = kernels.locator(ROW);
+    const row = rowOf(card(page, current), 'kernelled.ipynb');
     await expect(row).toHaveCount(1);
-    const display = await displayName(page, session.kernel.name);
-    expect(display).not.toBe(session.kernel.name);
-    await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-      'kernelled.ipynb'
-    );
-    // ACC-PANEL-185: the display name, the session path and the state, one per line
     await expect
       .poll(() => serverList(page, '/api/kernels'), UNDER_LOAD)
       .toEqual(
@@ -86,20 +78,22 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-49-STATE, ACC-K
         ])
       );
     await refresh(page);
-    await expect(row).toHaveAttribute('title', `${display}\n${notebook}\nidle`);
-    // DQ-17, DQ-13: the line holds the notebook, the state word and the age only; the dot carries the word
+    await expect(row).toHaveAttribute('title', notebook);
+    // DQ-13: the line holds the notebook, the state word and the age; the word is also the state span's title and the dot's aria-label
     await expect(row).toHaveText('kernelled.ipynbidlenow');
-    await expect(row.locator('.jp-WorkspaceManager-dot')).toHaveAttribute(
-      'aria-label',
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveAttribute(
+      'title',
       'idle'
     );
-    await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
-    // selected, the detail line: the kernel type and the path
+    await expect(
+      row.locator('.jp-WorkspaceManager-state .jp-WorkspaceManager-dot')
+    ).toHaveAttribute('aria-label', 'idle');
+    // selected, the detail line: the folder
     await row.focus();
     await expect(row).toHaveClass(/jp-mod-selected/);
     await expect(
       row.locator('.jp-WorkspaceManager-rowDetail > span')
-    ).toHaveText([display, `${tmpPath}/`, 'kernelled.ipynb']);
+    ).toHaveText([tmpPath]);
     // at the 250 px sidebar the name shows its first characters, the age whole
     expect(await panelWidth(page)).toBe(250);
     const name = await shows(row, '.jp-WorkspaceManager-rowLabel');
@@ -135,8 +129,12 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-49-STATE, ACC-K
     await expect
       .poll(() => kernelIds(page), UNDER_LOAD)
       .not.toContain(session.kernel.id);
-    await expect(kernels).toHaveCount(0, NEXT_POLL);
-    // the notebook tab stays, without a kernel, and nothing asks to close it
+    // the notebook row stays, without a state dot, and nothing asks to close it
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveCount(
+      0,
+      NEXT_POLL
+    );
+    await expect(row).toBeVisible();
     await expect
       .poll(
         () =>
@@ -155,9 +153,6 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-49-STATE, ACC-K
       )
       .toBe('no kernel');
     await expect(dialog(page)).toHaveCount(0);
-    await expect(
-      rowOf(group(card(page, current), 'TABS'), 'kernelled.ipynb')
-    ).toBeVisible();
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -348,21 +343,18 @@ test.describe('kernels and sessions of the server', () => {
       // the tab of B runs on the kernel of its session
       expect((await sessionOf(page, b)).kernel.id).toBe(sessionB.kernel.id);
 
-      // B is a live tab now: its kernel row is in this window's card too
+      // B is a live tab now: its document row is in this window's card too
       await refresh(page);
       await openSection(page, 'workspaces');
       await cardHeader(page, current).click();
-      const kernels = group(card(page, current), 'KERNELS');
-      await expect(rowOf(kernels, `${tag}-b.ipynb`)).toBeVisible();
-      await rowOf(kernels, `${tag}-a.ipynb`).focus();
+      const c = card(page, current);
+      await expect(rowOf(c, `${tag}-b.ipynb`)).toBeVisible();
+      await rowOf(c, `${tag}-a.ipynb`).focus();
       await page.keyboard.press('Enter');
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(a);
 
       await triangle(page, other).click();
-      await rowOf(
-        group(card(page, other), 'KERNELS'),
-        `${tag}-c.ipynb`
-      ).click();
+      await rowOf(card(page, other), `${tag}-c.ipynb`).click();
       await expect(page).toHaveURL(
         new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
       );
@@ -440,7 +432,7 @@ test.describe('kernels and sessions of the server', () => {
     const [a, b] = [`${current}-a`, `${current}-b`];
     await putWorkspace(page, a, layout([`notebook:${notebook}`]));
     await putWorkspace(page, b, layout([`notebook:${notebook}`]));
-    const row = () => rowOf(group(card(page, a), 'KERNELS'), 'shared.ipynb');
+    const row = () => rowOf(card(page, a), 'shared.ipynb');
     try {
       await enterWorkspace(page, current);
       await triangle(page, a).click();

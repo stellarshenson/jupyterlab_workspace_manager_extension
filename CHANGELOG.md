@@ -2,6 +2,25 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.33] - 2026-11-02
+
+### Added
+
+- A row in a workspace card has a context menu: Close tab on every row, Stop terminal on a terminal row, and Shut down kernel on a document with a running kernel, naming each kernel when the document runs more than one
+
+### Changed
+
+- A workspace card is an edge tab 2 px from the panel's edges, square at the left with a 2 px right radius; its header carries the workspace hue at 30 % and its rows at 12 %, with a 4 px full-strength strip and a 1 px hue rule between them, so the colour reads as the same hue in the light and the dark theme
+- An open card lists its tabs in one flat list with no TABS, TERMINALS or KERNELS label: a terminal is a row with its icon and process, and a document shows its kernel's state word, dot and time
+- The KERNELS, TERMINALS and LANGUAGE SERVERS sections stay, so a background terminal or a headless kernel with no tab stays listed and can be shut down there
+- The clean-up button is an eraser and the three sections' Shut down all is a power symbol, each with equal space above and below in its band and in one column under the reload button
+- Text, icons, caret and focus ring on a coloured card use the theme's inverse colours, which keep at least 4.5:1 on every tint in JupyterLab Light, JupyterLab Dark and Galaxa Steel
+- A section list reserves no scrollbar strip until it overflows, so a card ends 2 px from the right edge
+- The header age is the size of a row's time, and the workspace name starts at the left edge of the row labels below it
+- A hovered or selected row in a coloured card keeps the workspace hue
+- A terminal name in a card uses the UI font, and the TERMINALS section keeps the code font
+- The filter matches a kernel through its document's row, and the card's count covers only the rows it shows
+
 ## [0.8.31] - 2026-11-02
 
 ### Added

@@ -167,14 +167,14 @@ test('ACC-PANEL-92-ROW-KEYS: ArrowDown moves to the next row, Enter activates it
   expect(labels[1]).not.toBe(labels[0]);
 });
 
-test('ACC-PANEL-93-FOCUS: keyboard focus shows a 1px colour 1 outline on a coloured card header, a click none', async ({
+test('ACC-PANEL-93-FOCUS: keyboard focus shows a 1px inverse layout colour 0 outline on a coloured card header, a click none', async ({
   page
 }) => {
   await page.goto();
   await openPanel(page);
-  const colour1 = await page.evaluate(() => {
+  const inverse0 = await page.evaluate(() => {
     const probe = document.createElement('div');
-    probe.style.color = 'var(--jp-ui-font-color1)';
+    probe.style.color = 'var(--jp-inverse-layout-color0)';
     document.body.appendChild(probe);
     const colour = getComputedStyle(probe).color;
     probe.remove();
@@ -187,7 +187,7 @@ test('ACC-PANEL-93-FOCUS: keyboard focus shows a 1px colour 1 outline on a colou
     });
 
   const header = await tabToCardHeader(page);
-  expect(await outline(header)).toEqual(['solid', '1px', colour1]);
+  expect(await outline(header)).toEqual(['solid', '1px', inverse0]);
 
   const clicked = card(page, 'default').locator(
     '.jp-WorkspaceManager-cardHeader'

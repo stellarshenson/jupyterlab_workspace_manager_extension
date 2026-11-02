@@ -340,7 +340,7 @@ test.describe('with the workspaces of the server', () => {
             h.top
           ];
         });
-        expect(drawn, name).toEqual(['auto', '0px', 'stable', 'sticky', '0px']);
+        expect(drawn, name).toEqual(['auto', '0px', 'auto', 'sticky', '0px']);
         // no ancestor of a list scrolls on its axis
         const scrolling = await sectionBody(page, name).evaluate(n => {
           const found: string[] = [];
@@ -437,7 +437,7 @@ test.describe('with the workspaces of the server', () => {
   test.describe('with a real kernel', () => {
     test.use({ kernels: null });
 
-    test('ACC-PANEL-227-FLUSH-WIDTH: a workspace card and a KERNELS, TERMINALS and LANGUAGE SERVERS row each span its section body to both edges', async ({
+    test('ACC-PANEL-227-FLUSH-WIDTH: a workspace card keeps its 2 px edge inset (EDGE-TAB), and a KERNELS, TERMINALS and LANGUAGE SERVERS row spans its section body to both edges', async ({
       page
     }) => {
       test.setTimeout(120000);
@@ -516,8 +516,10 @@ test.describe('with the workspaces of the server', () => {
               right: right - r.right
             };
           });
-          expect(Math.abs(drawn.left), name).toBeLessThanOrEqual(1);
-          expect(Math.abs(drawn.right), name).toBeLessThanOrEqual(1);
+          // the edge tab sits 2 px from the body's edges (EDGE-TAB); a tally row reaches them
+          const inset = name === 'workspaces' ? 2 : 1;
+          expect(Math.abs(drawn.left), name).toBeLessThanOrEqual(inset);
+          expect(Math.abs(drawn.right), name).toBeLessThanOrEqual(inset);
         }
       } finally {
         await page.request.delete(`/api/kernels/${kernel}`);

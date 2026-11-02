@@ -346,11 +346,6 @@ const header = (panel: Widget, key: string) =>
 /** The triangle of a card: it opens or closes the card. */
 const triangle = (panel: Widget, key: string) =>
   header(panel, key).querySelector<HTMLElement>('.jp-WorkspaceManager-caret')!;
-/** The TABS, TERMINALS or KERNELS group of an open card. */
-const group = (root: HTMLElement, label: string) =>
-  Array.from(
-    root.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-group')
-  ).find(g => g.firstElementChild!.textContent!.startsWith(label))!;
 /** A section of the panel: workspaces, kernels, terminals or servers. */
 const section = (panel: Widget, key: string) =>
   $(panel, `[data-section="${key}"]`);
@@ -1753,13 +1748,15 @@ describe('panel', () => {
 
     triangle(panel, 'w:auto-6').click();
     expect(counts()).toEqual(['2', '1', '0']);
-    expect(
+    // one flat list of the card's tabs, no group labels
+    const rows = () =>
       Array.from(
         card(panel, 'w:auto-6').querySelectorAll(
-          '.jp-WorkspaceManager-groupLabel'
+          '.jp-WorkspaceManager-rowLabel'
         )
-      ).map(l => l.textContent)
-    ).toEqual(['TABS (1)', 'TERMINALS (1)']);
+      ).map(r => r.textContent);
+    expect(rows()).toEqual(['README.md', 'terminal 1']);
+    expect($(panel, '.jp-WorkspaceManager-groupLabel')).toBeNull();
 
     $(panel, 'button[aria-label="Filter"]')!.click();
     const input = $(panel, '.jp-WorkspaceManager-filterInput')!;
@@ -1776,34 +1773,87 @@ describe('panel', () => {
     ).toBe('(1 of 2)');
   });
 
+  it('ACC-KERNEL-156-DISPLAY-NAME, ACC-PANEL-168-COUNT-BRACKETS: a query that matches only a kernel shows its document row, and the filtered count counts the rows drawn', async () => {
+    const server = standard();
+    server.kernels = [
+      {
+        id: 'k1',
+        name: 'julia-1.10',
+        last_activity: iso(5),
+        execution_state: 'idle',
+        connections: 0
+      }
+    ];
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:1',
+      'notebook:a.ipynb'
+    ]);
+    const { panel } = await mount(server);
+    $(panel, 'button[aria-label="Filter"]')!.click();
+    const input = $(panel, '.jp-WorkspaceManager-filterInput')!;
+    // React reads a typed value through the input event
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )!.set!.call(input, 'julia-1.10');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // the kernel matches, so its notebook's tab is the one row drawn; no kernel row and no empty card
+    const rows = card(panel, 'w:auto-6').querySelectorAll(
+      '.jp-WorkspaceManager-row'
+    );
+    expect(rows).toHaveLength(1);
+    expect(
+      rows[0].querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+    ).toBe('a.ipynb');
+    expect(
+      header(panel, 'w:auto-6').querySelector('.jp-WorkspaceManager-counts')!
+        .textContent
+    ).toBe('(1 of 2)');
+  });
+
   it.each([
     [
       '6 terminal tabs and no document',
       ['1', '2', '3', '4', '5', '6'].map(n => `terminal:${n}`),
       ['6', '6', '0'],
-      ['TERMINALS (6)']
+      [
+        'terminal 1',
+        'terminal 2',
+        'terminal 3',
+        'terminal 4',
+        'terminal 5',
+        'terminal 6'
+      ]
     ],
     [
       'documents and terminals',
       ['editor:a.md', 'editor:b.md', 'terminal:1'],
       ['3', '1', '0'],
-      ['TABS (2)', 'TERMINALS (1)']
+      ['a.md', 'b.md', 'terminal 1']
     ],
     [
       'a key the layout repeats for a second New View of one document',
       ['editor:a.md', 'editor:a.md'],
       ['1', '0', '0'],
-      ['TABS (1)']
+      ['a.md']
     ],
     [
       'a saved key of a terminal that no longer runs',
       ['terminal:1', 'terminal:2', 'terminal:ended'],
       ['2', '2', '0'],
-      ['TERMINALS (2)']
+      ['terminal 1', 'terminal 2']
     ]
   ])(
     'ACC-ACCORD-70-COUNT-TABS: the tab count of a saved layout with %s',
-    async (_, keys, shown, groups) => {
+    async (_, keys, shown, flat) => {
       const server = standard();
       server.workspaces[1] = workspace('auto-6', 60, keys);
       server.terminals = ['1', '2', '3', '4', '5', '6'].map(name => ({
@@ -1823,10 +1873,10 @@ describe('panel', () => {
       expect(
         Array.from(
           card(panel, 'w:auto-6').querySelectorAll(
-            '.jp-WorkspaceManager-groupLabel'
+            '.jp-WorkspaceManager-rowLabel'
           )
         ).map(l => l.textContent)
-      ).toEqual(groups);
+      ).toEqual(flat);
     }
   );
 
@@ -1903,7 +1953,7 @@ describe('panel', () => {
     ).toBe('ui-components:kernel');
   });
 
-  it('ACC-LISTS-209-ROW-LINE, ACC-TERM-42-PROCESS, ACC-KERNEL-49-STATE: an unselected tab, terminal or kernel row shows its name, a terminal its process, a kernel its state word, and the time only; the state word is in the line, the title and the dot aria-label, in a card and in KERNELS', async () => {
+  it('ACC-LISTS-209-ROW-LINE, ACC-TERM-42-PROCESS, ACC-KERNEL-49-STATE: an unselected tab, terminal or kernel row shows its name, a terminal its process, a kernel its state word, and the time only; a card document row shows its kernel state word and dot, in a card and in KERNELS', async () => {
     const server = standard();
     server.sessions.push({
       id: 's1',
@@ -1926,11 +1976,28 @@ describe('panel', () => {
       ).map(r => r.textContent);
     expect(text(card(panel, 'w:auto-6'))).toEqual([
       'README.md',
-      'a.ipynb',
-      'terminal 1claudenow',
-      'a.ipynbidle5m ago'
+      'a.ipynbidle5m ago',
+      'terminal 1claudenow'
     ]);
     expect($(panel, '.jp-WorkspaceManager-rowDetail')).toBeNull();
+    // a card document row: the state word in the line, the state span's title and the dot's aria-label
+    const document = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title === 'work/a.ipynb')!;
+    const dot = document.querySelector('.jp-WorkspaceManager-dot')!;
+    expect(
+      document.querySelector('.jp-WorkspaceManager-state')!.textContent
+    ).toBe('idle');
+    expect(
+      document
+        .querySelector('.jp-WorkspaceManager-state')!
+        .getAttribute('title')
+    ).toBe('idle');
+    expect(dot.getAttribute('role')).toBe('img');
+    expect(dot.getAttribute('aria-label')).toBe('idle');
+    expect(dot.classList).toContain('jp-mod-idle');
     // ACC-KERNEL-49-STATE: the word in the line, the title and the dot's aria-label
     const state = (root: HTMLElement) => {
       const row = root.querySelector<HTMLElement>('.jp-WorkspaceManager-row')!;
@@ -1943,7 +2010,6 @@ describe('panel', () => {
       expect(dot.getAttribute('aria-label')).toBe('idle');
       expect(dot.classList).toContain('jp-mod-idle');
     };
-    state(group(card(panel, 'w:auto-6'), 'KERNELS'));
     // one section open at a time: KERNELS is opened, then TERMINALS
     expect(text(openSection(panel, 'kernels'))).toEqual(['a.ipynbidle5m ago']);
     state(sectionBody(panel, 'kernels'));
@@ -2009,7 +2075,7 @@ describe('panel', () => {
     expect(selected()).toEqual([]);
   });
 
-  it('ACC-KERNEL-196-KERNEL-DETAILS: a selected KERNELS row shows the display name, the session path, the memory and the CPU, refreshed by the poll; figures the server cannot read show a dash; a kernel with no session shows no path; a card kernel row shows its file name, state and age', async () => {
+  it('ACC-KERNEL-196-KERNEL-DETAILS: a selected KERNELS row shows the display name, the session path, the memory and the CPU, refreshed by the poll; figures the server cannot read show a dash; a kernel with no session shows no path; a card document row shows its file name, its kernel state word and dot, and age', async () => {
     const server = standard();
     server.kernels.push({
       ...server.kernels[0],
@@ -2079,19 +2145,14 @@ describe('panel', () => {
       card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
         '.jp-WorkspaceManager-row'
       )
-    ).find(r => r.title.startsWith(PYTHON))!;
+    ).find(r => r.title === 'work/a.ipynb')!;
     expect(cardRow.textContent).toBe('a.ipynbidle5m ago');
     cardRow.focus();
-    const selectedCardRow = Array.from(
-      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
-        '.jp-WorkspaceManager-row'
-      )
-    ).find(r => r.title.startsWith(PYTHON))!;
-    const cardType = selectedCardRow.querySelector(
+    const cardDetail = cardRow.querySelector(
       '.jp-WorkspaceManager-rowDetail > span'
     )!;
-    expect(cardType.className).toBe('jp-mod-shrink');
-    expect(cardType.textContent).toBe(PYTHON);
+    expect(cardDetail.className).toBe('jp-WorkspaceManager-code');
+    expect(cardDetail.textContent).toBe('work');
   });
 
   it('ACC-LISTS-37-TWO-WORKSPACES, ACC-KERNEL-196-KERNEL-DETAILS: no terminal or kernel row, in a section or a card, shows an also in mark, and no hover text names another workspace', async () => {
@@ -2134,8 +2195,7 @@ describe('panel', () => {
       PYTHON,
       'terminal 1',
       'a.ipynb',
-      'terminal 1',
-      PYTHON
+      'terminal 1'
     ]);
     for (const r of rows) {
       expect(r.textContent).not.toContain('also in');
@@ -2228,11 +2288,16 @@ describe('panel', () => {
     const { panel, app } = await mount(server);
     openSection(panel, 'workspaces');
     triangle(panel, 'w:auto-6').click();
-    const shutDown = (path: string, root = card(panel, 'w:auto-6')) => {
+    const shutDown = (
+      path: string,
+      root = card(panel, 'w:auto-6'),
+      // a card document row lists Close tab first; a KERNELS row its one action
+      index = 1
+    ) => {
       Array.from(root.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row'))
-        .find(r => r.title === `${PYTHON}\n${path}\nidle`)!
+        .find(r => r.title === path || r.title === `${PYTHON}\n${path}\nidle`)!
         .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-      chooseMenuItem(0); // Shut down kernel
+      chooseMenuItem(index); // Shut down kernel
     };
 
     shutDown('a.ipynb');
@@ -2257,7 +2322,7 @@ describe('panel', () => {
     ]);
 
     // the same kernel from the KERNELS section: auto-6 alone holds it
-    shutDown('b.ipynb', openSection(panel, 'kernels'));
+    shutDown('b.ipynb', openSection(panel, 'kernels'), 0);
     await settle();
     expect(dialogText()).toBeUndefined();
     expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([
@@ -2267,7 +2332,7 @@ describe('panel', () => {
     ]);
 
     // the shared kernel from the KERNELS section: neither holder is this window's, both are named
-    shutDown('a.ipynb', openSection(panel, 'kernels'));
+    shutDown('a.ipynb', openSection(panel, 'kernels'), 0);
     await waitForDialog();
     const text = dialogText();
     await dismissDialog(); // before the assertion, so a failure leaves no dialog open
@@ -2338,11 +2403,100 @@ describe('panel', () => {
     )
       .find(r => r.title.startsWith('terminal 4\n'))!
       .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-    chooseMenuItem(0); // Shut down terminal
+    chooseMenuItem(1); // Stop terminal, after Close tab
     await waitForDialog();
     const three = dialogBody();
     await dismissDialog();
     expect(three).toBe('Workspaces auto-7 and auto-8 also hold this terminal.');
+  });
+
+  it('EDGE-ROW-MENU: a card document row lists Close tab then Shut down kernel, naming each kernel when the document runs more than one; a terminal row lists Close tab then Stop terminal', async () => {
+    const server = standard();
+    server.kernels.push({ ...server.kernels[0], id: 'k2', name: 'ir' });
+    server.sessions.push(
+      {
+        id: 's1',
+        name: 'a.ipynb',
+        path: 'a.ipynb',
+        type: 'notebook',
+        kernel: server.kernels[0]
+      },
+      {
+        id: 's2',
+        name: 'a.ipynb',
+        path: 'a.ipynb',
+        type: 'notebook',
+        kernel: server.kernels[1]
+      }
+    );
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'notebook:a.ipynb',
+      'terminal:1'
+    ]);
+    const { panel, app, log } = await mount(server);
+    openSection(panel, 'workspaces');
+    if (!card(panel, 'w:auto-6').classList.contains('jp-mod-open')) {
+      triangle(panel, 'w:auto-6').click();
+    }
+    const rows = () =>
+      Array.from(
+        card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      );
+    const labels = () =>
+      Array.from(
+        document.querySelectorAll(
+          '.jp-WorkspaceManager-menu .lm-Menu-itemLabel'
+        )
+      ).map(l => l.textContent);
+    const open = (title: string) => {
+      rows()
+        .find(r => r.title.split('\n')[0] === title)!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    };
+
+    // the document runs two kernels: each entry names its kernel
+    open('a.ipynb');
+    expect(labels()).toEqual([
+      'Close tab',
+      `Shut down kernel ${PYTHON}`,
+      'Shut down kernel ir'
+    ]);
+    chooseMenuItem(1);
+    await settle();
+    expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k1']]);
+
+    // the terminal tab: Close tab first, then Stop terminal
+    open('terminal 1');
+    expect(labels()).toEqual(['Close tab', 'Stop terminal']);
+    chooseMenuItem(1); // Stop terminal
+    await settle();
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
+
+    log.length = 0;
+    open('terminal 1');
+    chooseMenuItem(0); // Close tab
+    await settle();
+    expect(log.filter(l => l.startsWith('PUT'))).toEqual([
+      'PUT /lab/api/workspaces/auto-6'
+    ]);
+  });
+
+  it('EDGE-CLEAN-UP-ICON: the WORKSPACES header carries the eraser glyph, and the KERNELS, TERMINALS and LANGUAGE SERVERS headers the power glyph', async () => {
+    const { panel } = await mount(standard());
+    const glyph = (key: string) =>
+      sectionHeader(panel, key)
+        .querySelector('.jp-WorkspaceManager-iconButton svg')!
+        .getAttribute('data-icon');
+    expect(glyph('workspaces')).toBe(
+      '@stellarshenson/jupyterlab-workspace-manager-extension:eraser'
+    );
+    for (const key of ['kernels', 'terminals', 'servers']) {
+      expect(glyph(key)).toBe(
+        '@stellarshenson/jupyterlab-workspace-manager-extension:power'
+      );
+    }
   });
 
   it('ACC-TERM-200-ROW-LEAVES: the panel keeps no map of shut-down terminals, so the route decides: a load that still lists a shut-down terminal keeps its row, whatever its fingerprint; the row and the card Terminals count leave when the route drops it; a new terminal of the same name shows; a failed shutdown keeps the row', async () => {

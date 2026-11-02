@@ -42,11 +42,12 @@ import {
   workspaces
 } from '../api';
 import {
-  clearIcon,
   closeTabsIcon,
+  eraserIcon,
   eyeIcon,
   eyeOffIcon,
   openIcon,
+  powerIcon,
   terminalGlyph
 } from '../icons';
 import { age, type IAge } from '../model/age';
@@ -855,10 +856,10 @@ export class WorkspacePanel
   }
 
   /**
-   * One section: the header carries the label, the count and its clear-console
-   * button - Work spaces cleans up, the three below shut down all; an open
-   * section shows its body, which scrolls on its own, and one of those three
-   * with nothing in it says so.
+   * One section: the header carries the label, the count and its action button -
+   * Work spaces cleans up, the three below shut down all; an open section shows
+   * its body, which scrolls on its own, and one of those three with nothing in it
+   * says so.
    */
   private _renderSection(
     key: string,
@@ -900,7 +901,7 @@ export class WorkspacePanel
           {shutdown &&
             (shutdown === 'workspaces'
               ? iconButton(
-                  clearIcon,
+                  eraserIcon,
                   'Clean up workspaces',
                   () => void this._cleanUp(),
                   this._nothingToClean(),
@@ -909,7 +910,7 @@ export class WorkspacePanel
                   true // pointerFocus
                 )
               : iconButton(
-                  clearIcon,
+                  powerIcon,
                   'Shut down all',
                   () => void this._shutDownSection(shutdown),
                   !n,
@@ -1061,24 +1062,8 @@ export class WorkspacePanel
         </div>
         {open && (
           <div className="jp-WorkspaceManager-cardBody">
-            {card.tabs.length > 0 &&
-              this._group(
-                'TABS',
-                card.tabs.length,
-                card.tabs.map(t => this._tabRow(section, t))
-              )}
-            {card.terminals.length > 0 &&
-              this._group(
-                'TERMINALS',
-                card.terminals.length,
-                card.terminals.map(t => this._terminalRow(section, t, now))
-              )}
-            {card.kernels.length > 0 &&
-              this._group(
-                'KERNELS',
-                card.kernels.length,
-                card.kernels.map(k => this._kernelRow(section, k, now))
-              )}
+            {card.tabs.map(t => this._tabRow(section, t, now))}
+            {card.terminals.map(t => this._terminalRow(section, t, now))}
             {card.total === 0 && (
               <div className="jp-WorkspaceManager-empty">
                 {this._translation.__('No tabs, terminals or kernels')}
@@ -1086,21 +1071,6 @@ export class WorkspacePanel
             )}
           </div>
         )}
-      </div>
-    );
-  }
-
-  private _group(
-    label: string,
-    n: number,
-    rows: React.ReactElement[]
-  ): React.ReactElement {
-    return (
-      <div className="jp-WorkspaceManager-group" key={label}>
-        <div className="jp-WorkspaceManager-groupLabel">
-          {label} <span>({n})</span>
-        </div>
-        {rows}
       </div>
     );
   }
@@ -1119,7 +1089,11 @@ export class WorkspacePanel
     };
   }
 
-  private _tabRow(section: ISection, tab: ITabRow): React.ReactElement {
+  private _tabRow(
+    section: ISection,
+    tab: ITabRow,
+    now: number
+  ): React.ReactElement {
     const live = section.current ? this._live.get(tab.key) : undefined;
     const icon = tab.path
       ? (this._app.docRegistry.getFileTypesForPath(tab.path)[0]?.icon ??
@@ -1127,6 +1101,16 @@ export class WorkspacePanel
       : live?.title.icon instanceof LabIcon
         ? live.title.icon
         : fileIcon;
+    // a document with a running kernel shows its state dot; a document with more
+    // than one kernel names each in its menu
+    const kernels = tab.path
+      ? section.kernels.filter(k => k.path === tab.path)
+      : [];
+    const kernel = kernels[0];
+    const when =
+      kernel && kernel.lastActivity
+        ? age(kernel.lastActivity, now, this._translation)
+        : undefined;
     return row({
       key: tab.key,
       ...this._selection(keyOf(section), tab.key),
@@ -1134,13 +1118,26 @@ export class WorkspacePanel
       label: tab.label,
       detail: [[[dirname(tab.path), CODE]]],
       title: tab.path ?? '',
+      when,
+      state: kernel
+        ? { word: kernel.state ?? 'unknown', dot: kernel.dotClass }
+        : undefined,
       open: () => this._openRow(section, tab.key),
       menu: [
         {
           label: this._translation.__('Close tab'),
           icon: closeIcon,
           execute: () => void this._closeTab(section, tab.key)
-        }
+        },
+        ...kernels.map(k => ({
+          label:
+            kernels.length > 1
+              ? `${this._translation.__('Shut down kernel')} ${k.label}`
+              : this._translation.__('Shut down kernel'),
+          icon: closeIcon,
+          danger: true,
+          execute: () => void this._shutDownKernel(k, section)
+        }))
       ]
     });
   }
@@ -1155,12 +1152,13 @@ export class WorkspacePanel
   ): React.ReactElement {
     const when = age(t.lastActivity, now, this._translation);
     const key = `terminal:${t.name}`;
+    const inCard = section !== null && !listed;
     return row({
       key,
       ...this._selection(listed ? 'terminals' : keyOf(section!), key),
       icon: terminalGlyph,
       label: `terminal ${t.name}`,
-      code: true,
+      code: listed,
       process: t.process,
       title: lines(`terminal ${t.name}`, t.process, when.label),
       when,
@@ -1170,14 +1168,30 @@ export class WorkspacePanel
         section !== null && !listed && !section.current
           ? this._openRow(section, key)
           : void this._openTerminal(t.name),
-      menu: [
-        {
-          label: this._translation.__('Shut down terminal'),
-          icon: closeIcon,
-          danger: true,
-          execute: () => void this._shutDownTerminal(t, section)
-        }
-      ]
+      // a card row closes the tab or stops the terminal; the TERMINALS section
+      // row of a terminal in no workspace only stops it
+      menu: inCard
+        ? [
+            {
+              label: this._translation.__('Close tab'),
+              icon: closeIcon,
+              execute: () => void this._closeTab(section!, key)
+            },
+            {
+              label: this._translation.__('Stop terminal'),
+              icon: closeIcon,
+              danger: true,
+              execute: () => void this._shutDownTerminal(t, section)
+            }
+          ]
+        : [
+            {
+              label: this._translation.__('Shut down terminal'),
+              icon: closeIcon,
+              danger: true,
+              execute: () => void this._shutDownTerminal(t, section)
+            }
+          ]
     });
   }
 
@@ -2078,7 +2092,7 @@ function row(props: {
         <span className="jp-WorkspaceManager-rowProcess">{props.process}</span>
       )}
       {state && (
-        <span className="jp-WorkspaceManager-state">
+        <span className="jp-WorkspaceManager-state" title={state.word}>
           <span className={state.dot} role="img" aria-label={state.word} />
           {state.word}
         </span>

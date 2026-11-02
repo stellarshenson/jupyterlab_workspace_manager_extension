@@ -10,12 +10,10 @@ import {
   cut,
   deleteWorkspaces,
   dialog,
-  displayName,
   enterWorkspace,
   expectRefused,
   fresh,
   fromRowMenu,
-  group,
   kernelIds,
   languageServer,
   layout,
@@ -37,6 +35,7 @@ import {
   sectionBody,
   sectionCount,
   sectionHeader,
+  serverList,
   shows,
   sidebarTo,
   startSession,
@@ -84,7 +83,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
   // Galata lists only what its page started; these tests start terminals and kernels by REST
   test.use({ kernels: null, sessions: null, terminals: null });
 
-  test('ACC-LISTS-33-ORDER, ACC-LISTS-134-GROUP-COUNT: an open card lists tabs, then terminals, then kernels, each group under its name and count', async ({
+  test('ACC-LISTS-33-ORDER, ACC-LISTS-134-GROUP-COUNT: an open card lists its documents, then its terminals, as one flat list with no group labels; the counts stay in the header and the notebook shows its kernel state dot', async ({
     page,
     tmpPath
   }) => {
@@ -96,7 +95,7 @@ test.describe('terminals, kernels and sessions of the server', () => {
     const session = await startSession(page, notebook);
     const current = fresh('order');
     const other = `${current}-other`;
-    // the saved layout mixes the kinds; the card groups them
+    // the saved layout mixes the kinds; the card lists them flat
     await putWorkspace(
       page,
       other,
@@ -112,30 +111,32 @@ test.describe('terminals, kernels and sessions of the server', () => {
       await enterWorkspace(page, current);
       await triangle(page, other).click();
       const c = card(page, other);
-      await expect(c.locator('.jp-WorkspaceManager-groupLabel')).toHaveText([
-        'TABS (3)',
-        'TERMINALS (5)',
-        'KERNELS (1)'
+      // no group labels: one list of rows
+      await expect(c.locator('.jp-WorkspaceManager-groupLabel')).toHaveCount(0);
+      await expect(c.locator('.jp-WorkspaceManager-group')).toHaveCount(0);
+      await expect(c.locator('.jp-WorkspaceManager-rowLabel')).toHaveText([
+        'grouped.ipynb',
+        'a.md',
+        'b.txt',
+        ...terminals.map(t => `terminal ${t}`)
       ]);
-      // each row is in the group of its kind; the notebook tab is a tab
-      await expect(
-        group(c, 'TABS').locator('.jp-WorkspaceManager-rowLabel')
-      ).toHaveText(['grouped.ipynb', 'a.md', 'b.txt']);
-      for (const t of terminals) {
-        await expect(rowOf(group(c, 'TERMINALS'), `terminal ${t}`)).toHaveCount(
-          1
-        );
-      }
-      await expect(group(c, 'KERNELS').locator(ROW)).toHaveCount(1);
-      // the kernel row is named by its notebook; selected, its detail line starts with the kernel type
-      const kernel = rowOf(group(c, 'KERNELS'), 'grouped.ipynb');
-      await expect(kernel.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-        'grouped.ipynb'
+      // the counts stay in the card header: Tabs counts documents and terminals (DQ-24)
+      await expect(countOf(c, 'Tabs')).toHaveText('8');
+      await expect(countOf(c, 'Terminals')).toHaveText('5');
+      await expect(countOf(c, 'Kernels')).toHaveText('1');
+      // the notebook's running kernel shows as its state dot and word; the word is also the
+      // state span's title; a session made by REST with no client keeps the server's `starting` state
+      const notebookRow = rowOf(c, 'grouped.ipynb');
+      const state = notebookRow.locator('.jp-WorkspaceManager-state');
+      await expect(state.locator('.jp-WorkspaceManager-dot')).toHaveCount(
+        1,
+        NEXT_POLL
       );
-      await kernel.focus();
-      await expect(
-        kernel.locator('.jp-WorkspaceManager-rowDetail > span').first()
-      ).toHaveText(await displayName(page, session.kernel.name));
+      const word = (await serverList(page, '/api/sessions')).find(
+        s => s.id === session.id
+      )?.kernel?.execution_state;
+      expect(word).toBeTruthy();
+      await expect(state).toHaveAttribute('title', word, NEXT_POLL);
     } finally {
       await page.request.delete(`/api/sessions/${session.id}`);
       await page.request.delete(`/api/kernels/${session.kernel.id}`);
@@ -365,7 +366,7 @@ test.describe('a kernel of the server in a narrow row', () => {
   // Galata lists only the kernels and sessions its page started; this test starts one by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-LISTS-154-TAB-SHRINK: at a 300 px panel a terminal row of two workspaces with a long name keeps the first characters of its name and its time whole in the row, with no also in mark; a selected tab row in a deep folder shows its file name whole and cuts its folder; a selected kernel row whose kernel type is longer than the row shows its file name whole and cuts the type and the folder', async ({
+  test('ACC-LISTS-154-TAB-SHRINK: at a 300 px panel a terminal row of two workspaces with a long name keeps the first characters of its name and its time whole in the row, with no also in mark; a selected tab row in a deep folder shows its file name whole and cuts its folder; a selected notebook row whose kernel runs shows the state dot, its file name whole and its folder cut', async ({
     page,
     tmpPath
   }) => {
@@ -392,15 +393,6 @@ test.describe('a kernel of the server in a narrow row', () => {
       ])
     );
     await putWorkspace(page, b, layout([`terminal:${terminal}`]));
-    // the kernelspecs the page loads give every kernel a display name longer than the row
-    await page.route(/\/api\/kernelspecs(\?.*)?$/, async route => {
-      const answer = await route.fetch();
-      const json = await answer.json();
-      for (const k of Object.values<any>(json.kernelspecs)) {
-        k.spec.display_name += ' with a display name longer than the row';
-      }
-      await route.fulfill({ response: answer, json });
-    });
     try {
       await enterWorkspace(page, current);
       await sidebarTo(page, 300);
@@ -431,21 +423,20 @@ test.describe('a kernel of the server in a narrow row', () => {
         folder
       ]);
 
-      // selected, the kernel row shows the kernel type, cut, and the path: the folder cut, the file name whole
-      const kernel = group(card(page, a), 'KERNELS').locator(ROW);
-      await expect(kernel.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-        'shrunk.ipynb',
-        NEXT_POLL
-      );
+      // selected, the notebook row shows its kernel state dot and its folder, cut; its file name stays whole
+      const kernel = rowOf(card(page, a), 'shrunk.ipynb');
+      await expect(kernel).toBeVisible();
+      // the notebook's kernel shows as its state dot, whatever state the server reports
+      await expect(
+        kernel.locator('.jp-WorkspaceManager-state .jp-WorkspaceManager-dot')
+      ).toHaveCount(1, NEXT_POLL);
       await kernel.focus();
       const parts = kernel.locator('.jp-WorkspaceManager-rowDetail > span');
-      await expect(parts).toHaveText(
-        [/ longer than the row$/, `${tmpPath}/`, 'shrunk.ipynb'],
-        NEXT_POLL
-      );
+      await expect(parts).toHaveText([tmpPath], NEXT_POLL);
+      expect(await cut(kernel, '.jp-WorkspaceManager-rowLabel')).toEqual([]);
       expect(
         await cut(kernel, '.jp-WorkspaceManager-rowDetail > span')
-      ).toEqual([await parts.first().textContent(), `${tmpPath}/`]);
+      ).toEqual([tmpPath]);
       expect(await shows(kernel, '.jp-WorkspaceManager-age')).toMatchObject({
         inside: true,
         whole: true
@@ -527,7 +518,7 @@ test('ACC-LISTS-41-EMPTY: the open card of a workspace without tabs shows one em
   }
 });
 
-test('ACC-LISTS-104-ROW-MENU: row actions open by right-click or the context-menu key; tab, terminal and kernel rows hold no button, in a card and in KERNELS and TERMINALS; a language server row holds its shutdown button', async ({
+test('ACC-LISTS-104-ROW-MENU: row actions open by right-click or the context-menu key; tab and terminal rows hold no button, in a card and in KERNELS and TERMINALS; a language server row holds its shutdown button', async ({
   page,
   tmpPath
 }) => {
@@ -545,9 +536,11 @@ test('ACC-LISTS-104-ROW-MENU: row actions open by right-click or the context-men
     const c = card(page, current);
     await expect(rowOf(c, `terminal ${terminal}`)).toBeVisible();
     await expect(rowOf(c, 'menu.txt')).toBeVisible();
-    await expect(rowOf(group(c, 'KERNELS'), 'menu.ipynb')).toBeVisible(
-      UNDER_LOAD
-    );
+    await expect(rowOf(c, 'menu.ipynb')).toBeVisible(UNDER_LOAD);
+    // the running kernel of the notebook shows as its state dot
+    await expect(
+      rowOf(c, 'menu.ipynb').locator('.jp-WorkspaceManager-state')
+    ).toHaveCount(1, UNDER_LOAD);
     const buttons = `${ROW} button, ${ROW} [role="button"]`;
     await expect(c.locator(buttons)).toHaveCount(0);
     for (const name of ['kernels', 'terminals']) {
@@ -569,9 +562,16 @@ test('ACC-LISTS-104-ROW-MENU: row actions open by right-click or the context-men
     await page.keyboard.press('Escape');
     await expect(labels).toHaveCount(0);
 
+    // the notebook runs a kernel: Close tab first, then Shut down kernel
+    await rowOf(c, 'menu.ipynb').click({ button: 'right' });
+    await expect(labels).toHaveText(['Close tab', 'Shut down kernel']);
+    await page.keyboard.press('Escape');
+    await expect(labels).toHaveCount(0);
+
+    // a terminal row: Close tab first, then Stop terminal
     await rowOf(c, `terminal ${terminal}`).focus();
     await page.keyboard.press('ContextMenu');
-    await expect(labels).toHaveText(['Shut down terminal']);
+    await expect(labels).toHaveText(['Close tab', 'Stop terminal']);
     await page.keyboard.press('Escape');
     await expect(labels).toHaveCount(0);
   } finally {
@@ -580,7 +580,7 @@ test('ACC-LISTS-104-ROW-MENU: row actions open by right-click or the context-men
   }
 });
 
-test('MENU-08 ACC-LISTS-212-DANGER-ENTRIES: Shut down terminal and Shut down kernel are destructive entries; Close tab is an ordinary entry', async ({
+test('MENU-08 ACC-LISTS-212-DANGER-ENTRIES: Stop terminal and Shut down kernel are destructive entries; Close tab is an ordinary entry', async ({
   page,
   tmpPath
 }) => {
@@ -596,9 +596,9 @@ test('MENU-08 ACC-LISTS-212-DANGER-ENTRIES: Shut down terminal and Shut down ker
     const terminal = await newTerminalTab(page);
     await cardHeader(page, current).click();
     const c = card(page, current);
-    await expect(rowOf(group(c, 'KERNELS'), 'danger.ipynb')).toBeVisible(
-      UNDER_LOAD
-    );
+    await expect(
+      rowOf(c, 'danger.ipynb').locator('.jp-WorkspaceManager-state')
+    ).toHaveCount(1, UNDER_LOAD);
     const error = JSON.stringify(await rgb(page, 'var(--jp-error-color1)'));
     const layout2 = await page.evaluate(() => {
       const probe = document.createElement('div');
@@ -637,15 +637,17 @@ test('MENU-08 ACC-LISTS-212-DANGER-ENTRIES: Shut down terminal and Shut down ker
       };
     };
     for (const [row, label] of [
-      [rowOf(c, `terminal ${terminal}`), 'Shut down terminal'],
-      [rowOf(group(c, 'KERNELS'), 'danger.ipynb'), 'Shut down kernel']
+      [rowOf(c, `terminal ${terminal}`), 'Stop terminal'],
+      [rowOf(c, 'danger.ipynb'), 'Shut down kernel']
     ] as [Locator, string][]) {
       await row.click({ button: 'right' });
       const entry = await read(label);
       expect(entry.danger, label).toBe(true);
       expect(entry.label, label).toBe(error);
       expect(entry.fill, label).toBe(error);
-      // selected by the arrow keys: the error colour on the menu's selection background
+      // selected by the arrow keys: the error colour on the menu's selection background;
+      // the entry is the second of its menu, after Close tab
+      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
       await expect(entry.item).toHaveClass(/lm-mod-active/);
       expect(
@@ -678,7 +680,7 @@ test('MENU-08 ACC-LISTS-212-DANGER-ENTRIES: Shut down terminal and Shut down ker
   }
 });
 
-test('ACC-LISTS-105-DOC-ICON: rows under Tabs show the file-type icon of the document registry', async ({
+test('ACC-LISTS-105-DOC-ICON: a card document row shows the file-type icon of the document registry', async ({
   page,
   tmpPath
 }) => {
@@ -695,7 +697,7 @@ test('ACC-LISTS-105-DOC-ICON: rows under Tabs show the file-type icon of the doc
     await openDocument(page, markdown);
     await cardHeader(page, current).click();
     const icon = (label: string) =>
-      rowOf(group(card(page, current), 'TABS'), label).locator(
+      rowOf(card(page, current), label).locator(
         '.jp-WorkspaceManager-rowIcon svg'
       );
     await expect(icon('iconic.ipynb')).toHaveAttribute(
@@ -756,7 +758,7 @@ test("ACC-LISTS-106-CLOSE-TAB: Close tab on a row of this window's card closes t
   }
 });
 
-test('DEF-PANEL-69-TABS-SAMEFILE: an editor and its Markdown preview of one file are two rows, TABS (2) and a tab count of 2; each row activates and closes its own tab', async ({
+test('DEF-PANEL-69-TABS-SAMEFILE: an editor and its Markdown preview of one file are two rows, no group labels and a tab count of 2; each row activates and closes its own tab', async ({
   page,
   tmpPath
 }) => {
@@ -774,11 +776,9 @@ test('DEF-PANEL-69-TABS-SAMEFILE: an editor and its Markdown preview of one file
     await expect.poll(() => openPaths(page), UNDER_LOAD).toEqual([file, file]);
     await cardHeader(page, current).click();
     const c = card(page, current);
-    const rows = group(c, 'TABS').locator('.jp-WorkspaceManager-row');
+    const rows = c.locator('.jp-WorkspaceManager-row');
     await expect(rows).toHaveCount(2);
-    await expect(
-      group(c, 'TABS').locator('.jp-WorkspaceManager-groupLabel')
-    ).toHaveText('TABS (2)');
+    await expect(c.locator('.jp-WorkspaceManager-groupLabel')).toHaveCount(0);
     await expect(countOf(c, 'Tabs')).toHaveText('2');
 
     const ids = await openIds(page);

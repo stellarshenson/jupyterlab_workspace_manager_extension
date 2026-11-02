@@ -39,12 +39,13 @@ interface IText {
   colour: string;
   size: number;
   style: string;
-  group: boolean;
   /** the panel title, a section label, a section count or the section caret glyph */
   heading: boolean;
   /** an empty-state line */
   empty: boolean;
-  /** a row's time, status word or detail value */
+  /** the text sits in a coloured card */
+  coloured: boolean;
+  /** a time, on a row or in a card header, a hidden card's word, or a row's status word or detail value */
   meta: boolean;
   /** the class of the element that draws the text */
   where: string;
@@ -60,13 +61,13 @@ function texts(page: Page): Promise<IText[]> {
         colour,
         size: parseFloat(style.fontSize),
         style: style.fontStyle,
-        group: !!el.closest('.jp-WorkspaceManager-groupLabel'),
         heading: !!el.closest(
           '.jp-WorkspaceManager-title, .jp-WorkspaceManager-sectionLabel, .jp-WorkspaceManager-sectionCount, .jp-WorkspaceManager-sectionHeader .jp-WorkspaceManager-caret'
         ),
         empty: !!el.closest('.jp-WorkspaceManager-empty'),
+        coloured: !!el.closest('.jp-WorkspaceManager-card.jp-mod-coloured'),
         meta: !!el.closest(
-          '.jp-WorkspaceManager-row .jp-WorkspaceManager-age, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowProcess'
+          '.jp-WorkspaceManager-age, .jp-WorkspaceManager-hiddenWord, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowProcess'
         ),
         where: el.getAttribute('class') ?? el.tagName
       };
@@ -187,7 +188,7 @@ async function textsOfOpenCards(
   return found;
 }
 
-test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a card name, the section and group labels and a row name are colour 1; a row detail, a note, the section count, the carets and the empty lines are colour 2; a coloured card keeps its time, purpose and counts at colour 1; no text is colour 3', async ({
+test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a section label and a row name are colour 1; a row detail, a note, the section count, the carets and the empty lines are colour 2; a coloured card keeps its name and row text at inverse layout colour 0 and its time, purpose and counts at inverse layout colour 1; no text is colour 3', async ({
   page
 }) => {
   test.setTimeout(150000);
@@ -214,10 +215,12 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
     await openSection(page, 'workspaces');
     for (const theme of [DARK, LIGHT]) {
       await page.theme.setTheme(theme);
-      const [colour1, colour2, colour3] = [
+      const [colour1, colour2, colour3, inverse0, inverse1] = [
         await rgba(page, 'var(--jp-ui-font-color1)'),
         await rgba(page, 'var(--jp-ui-font-color2)'),
-        await rgba(page, 'var(--jp-ui-font-color3)')
+        await rgba(page, 'var(--jp-ui-font-color3)'),
+        await rgba(page, 'var(--jp-inverse-layout-color0)'),
+        await rgba(page, 'var(--jp-inverse-layout-color1)')
       ];
       const colourOf = async (l: Locator, property = 'color') =>
         rgba(
@@ -229,22 +232,22 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         colour1
       );
 
-      // the aged card: a coloured card keeps its name, its time, its purpose and its counts at colour 1
+      // the aged card: a coloured card keeps its name at inverse layout colour 0 and its time, purpose and counts at inverse layout colour 1
       await openCard(page, aged);
       const header = cardHeader(page, aged);
       await expect(header.locator('.jp-WorkspaceManager-age')).toHaveText(
         '3h ago'
       );
       const checks: [string, Locator, number[]][] = [
-        ['name', header.locator('.jp-WorkspaceManager-name'), colour1],
+        ['name', header.locator('.jp-WorkspaceManager-name'), inverse0],
         [
           'time',
           header.locator(
             '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
           ),
-          colour1
+          inverse1
         ],
-        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), colour1],
+        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), inverse1],
         [
           'section label',
           sectionHeader(page, 'workspaces').locator(
@@ -262,7 +265,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
       for (const c of await header
         .locator('.jp-WorkspaceManager-count')
         .all()) {
-        checks.push(['count', c, colour1]);
+        checks.push(['count', c, inverse1]);
       }
       // read while the aged card is open; another card may be open beside it (ACC-ACCORD-241-MANY-OPEN)
       const check = async () => {
@@ -271,29 +274,19 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         }
       };
       await check();
-      // the first coloured card: a group label colour 1, its count colour 2; a row name colour 1, its detail colour 2
+      // the first coloured card's rows sit on its 12% tint: a row name inverse layout colour 0, its detail inverse layout colour 1
       await openCard(page, ids.coloured[0]);
       const body = card(page, ids.coloured[0]);
       const tab = body.locator('.jp-WorkspaceManager-row').first();
       await tab.focus();
       checks.push(
-        [
-          'group label',
-          body.locator('.jp-WorkspaceManager-groupLabel').first(),
-          colour1
-        ],
-        [
-          'group count',
-          body.locator('.jp-WorkspaceManager-groupLabel > span').first(),
-          colour2
-        ],
-        ['row name', tab.locator('.jp-WorkspaceManager-rowLabel'), colour1],
-        ['detail', tab.locator('.jp-WorkspaceManager-rowDetail'), colour2]
+        ['row name', tab.locator('.jp-WorkspaceManager-rowLabel'), inverse0],
+        ['detail', tab.locator('.jp-WorkspaceManager-rowDetail'), inverse1]
       );
       await check();
       // the design system's hover pair paints a hovered glyph colour 1: measure with the pointer off the triangle openCard clicked
       await page.mouse.move(0, 0);
-      // the carets: the section's text glyph takes colour 2, and a coloured card's SVG fill colour 1 (DQ-07, ACC-PANEL-239)
+      // the carets: the section's text glyph takes colour 2, and a coloured card's SVG fill inverse layout colour 0 (DQ-07, ACC-PANEL-239)
       const carets: [Locator, string, number[]][] = [
         [
           sectionHeader(page, 'workspaces').locator(
@@ -305,7 +298,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         [
           triangle(page, ids.coloured[0]).locator('.jp-icon3[fill]'),
           'fill',
-          colour1
+          inverse0
         ]
       ];
       for (const [caret, property, expected] of carets) {
@@ -350,7 +343,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
   }
 });
 
-test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section labels and counts, the group labels, the empty states and the row time, status word and detail values at font size 0, every other text at size 1 or more; the empty-state lines are italic and colour 2, no other text is italic', async ({
+test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section labels and counts, the empty states, the time on a row and in a card header and the status word and detail values of a row at font size 0, every other text at size 1 or more; the empty-state lines are italic, colour 2 in a section and inverse layout colour 1 in a coloured card, no other text is italic', async ({
   page
 }) => {
   const ids = await populate(page);
@@ -386,10 +379,7 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
       found.push(...(await shown()));
       await openSection(page, 'servers');
       found.push(...(await shown()));
-      const small = found.filter(
-        t => t.group || t.heading || t.empty || t.meta
-      );
-      expect(found.filter(t => t.group).length).toBeGreaterThan(0);
+      const small = found.filter(t => t.heading || t.empty || t.meta);
       // a row's time, status word and detail values are measured too
       expect(found.filter(t => t.meta).length).toBeGreaterThan(0);
       // WORKBENCH, four section labels and four counts in each pass
@@ -400,9 +390,7 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
       ).toEqual([]);
       expect(
         found
-          .filter(
-            t => !t.group && !t.heading && !t.empty && !t.meta && t.size < size1
-          )
+          .filter(t => !t.heading && !t.empty && !t.meta && t.size < size1)
           .map(t => `${t.text}: ${t.size}`),
         theme
       ).toEqual([]);
@@ -416,12 +404,15 @@ test('ACC-PANEL-74-TEXT-SIZE, ACC-PANEL-75-NO-ITALIC: the title, the section lab
           'Nothing matches'
         ])
       );
-      const colour2 = await rgba(page, 'var(--jp-ui-font-color2)');
+      const [colour2, inverse1] = [
+        await rgba(page, 'var(--jp-ui-font-color2)'),
+        await rgba(page, 'var(--jp-inverse-layout-color1)')
+      ];
       for (const t of empty) {
         expect.soft(t.style, `${theme} ${t.text}`).toBe('italic');
         expect
           .soft(await rgba(page, t.colour), `${theme} ${t.text}`)
-          .toEqual(colour2);
+          .toEqual(t.coloured ? inverse1 : colour2);
       }
       expect(
         found.filter(t => !t.empty && t.style === 'italic').map(t => t.text),

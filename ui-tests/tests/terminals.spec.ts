@@ -143,7 +143,7 @@ const processIs = (page: Page, process: (name: string) => string | null) =>
     }
   );
 
-test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a terminal row, in a card and in TERMINALS, shows terminal <n>, the process the server reports and its age with no selection, the process in colour 2 at the size of the time; selecting the row adds no text; another program shows at the next reload', async ({
+test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a terminal row, in a card and in TERMINALS, shows terminal <n>, the process the server reports and its age with no selection, the process in inverse layout colour 1 at the size of the time; selecting the row adds no text; another program shows at the next reload', async ({
   page
 }) => {
   // a shell starts and then runs a program, twice over
@@ -165,7 +165,7 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
     });
     await expect(row.locator(DETAIL)).toHaveCount(0);
     expect(await rgba(page, await css(process, 'color'))).toEqual(
-      await rgba(page, 'var(--jp-ui-font-color2)')
+      await rgba(page, 'var(--jp-inverse-layout-color1)')
     );
     expect(await css(process, 'fontSize')).toBe(
       await css(row.locator(AGE), 'fontSize')
@@ -356,7 +356,7 @@ test('ACC-PANEL-185-ROW-TOOLTIP: the tooltip of a terminal row is its name, the 
   }
 });
 
-test('ACC-TERM-111-SHUTDOWN: Shut down terminal ends the terminal, and its row leaves every card', async ({
+test('ACC-TERM-111-SHUTDOWN: Stop terminal ends the terminal, and its row leaves every card', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -368,7 +368,7 @@ test('ACC-TERM-111-SHUTDOWN: Shut down terminal ends the terminal, and its row l
     await triangle(page, other).click();
     await fromRowMenu(
       rowOf(card(page, other), `terminal ${terminal}`),
-      'Shut down terminal'
+      'Stop terminal'
     );
     // the route leaves out the ended pty, so the row leaves at the load after the DELETE
     await expect(
@@ -399,7 +399,7 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
     await enterWorkspace(page, current);
     await triangle(page, a).click();
 
-    await fromRowMenu(row(), 'Shut down terminal');
+    await fromRowMenu(row(), 'Stop terminal');
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       `Shut down terminal ${terminal}?`
     );
@@ -412,7 +412,7 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
     await expect(dialog(page)).toHaveCount(0);
     expect(await terminalNames(page)).toContain(terminal);
 
-    await fromRowMenu(row(), 'Shut down terminal');
+    await fromRowMenu(row(), 'Stop terminal');
     await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
     // the route leaves out the ended pty at the load after the DELETE
     await expect(

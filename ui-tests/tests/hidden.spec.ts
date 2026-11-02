@@ -1,5 +1,5 @@
 import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   card,
@@ -91,9 +91,14 @@ test("ACC-HIDDEN-52-SHOW-HIDDEN, ACC-HIDDEN-53-UNHIDE: the header eye shows hidd
     await expect(cardHeader(page, hidden)).toHaveAccessibleName(
       `${hidden} hidden`
     );
-    await expect(
-      card(page, hidden).locator('.jp-WorkspaceManager-hiddenWord')
-    ).toHaveText('hidden');
+    const word = card(page, hidden).locator('.jp-WorkspaceManager-hiddenWord');
+    await expect(word).toHaveText('hidden');
+    // the word takes the meta size of a row's age, under the name's size (DQ-21)
+    const size = (l: Locator) =>
+      l.evaluate(n => parseFloat(getComputedStyle(n).fontSize));
+    expect(await size(word)).toBeLessThan(
+      await size(card(page, hidden).locator('.jp-WorkspaceManager-name'))
+    );
     const again = card(page, hidden).locator(
       'button[aria-label="Show workspace again"]'
     );

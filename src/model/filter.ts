@@ -31,9 +31,9 @@ export interface ICard {
   tabs: ITabRow[];
   terminals: ITerminalRow[];
   kernels: IKernelRow[];
-  /** N of the header's N of M: the rows the card shows */
+  /** N of the header's N of M: the rows the card draws, tabs and terminals */
   shown: number;
-  /** M: the rows the section holds */
+  /** M: the tabs and terminals the section holds */
   total: number;
 }
 
@@ -76,11 +76,22 @@ export function filterSections(
       k.detail,
       k.path
     ]);
-    const shown = tabs.length + terminals.length + kernels.length;
+    // a matched kernel keeps its document's tab: the card draws tabs and terminals, no kernel rows
+    const kernelPaths = new Set(kernels.map(k => k.path));
+    const cardTabs = section.tabs.filter(
+      t => tabs.includes(t) || (!!t.path && kernelPaths.has(t.path))
+    );
+    const shown = cardTabs.length + terminals.length;
     if (all || shown) {
-      const total =
-        section.tabs.length + section.terminals.length + section.kernels.length;
-      cards.push({ section, tabs, terminals, kernels, shown, total });
+      const total = section.tabs.length + section.terminals.length;
+      cards.push({
+        section,
+        tabs: cardTabs,
+        terminals,
+        kernels,
+        shown,
+        total
+      });
     } else {
       unmatched += 1;
     }

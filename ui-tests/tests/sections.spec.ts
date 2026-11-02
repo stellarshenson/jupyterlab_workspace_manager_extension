@@ -779,21 +779,18 @@ test('ACC-ACCORD-20-AGE: the header shows the age of the workspace, now under 60
   }
 });
 
-/** The numbers of a card's Tabs and Terminals counts and the labels of its groups, with the rows of each. */
+/** The numbers of a card's Tabs and Terminals counts, with the labels of its flat rows. */
 const holds = async (page: Page, id: string) => ({
   tabs: await countOf(card(page, id), 'Tabs').textContent(),
   terminals: await countOf(card(page, id), 'Terminals').textContent(),
-  groups: await card(page, id)
-    .locator('.jp-WorkspaceManager-group')
-    .evaluateAll(nodes =>
-      nodes.map(n => [
-        n.querySelector('.jp-WorkspaceManager-groupLabel')!.textContent,
-        n.querySelectorAll('.jp-WorkspaceManager-row').length
-      ])
-    )
+  rows: (
+    await card(page, id)
+      .locator('.jp-WorkspaceManager-rowLabel')
+      .allTextContents()
+  ).sort()
 });
 
-test("ACC-ACCORD-70-COUNT-TABS: another workspace's card counts every tab of its saved layout, documents and terminals: 6 terminal tabs show 6; a saved key of a terminal that no longer runs does not count; the groups keep their own rows, so no row is listed twice", async ({
+test("ACC-ACCORD-70-COUNT-TABS: another workspace's card counts every tab of its saved layout, documents and terminals: 6 terminal tabs show 6; a saved key of a terminal that no longer runs does not count; the flat rows list each tab once", async ({
   page,
   tmpPath
 }) => {
@@ -824,28 +821,25 @@ test("ACC-ACCORD-70-COUNT-TABS: another workspace's card counts every tab of its
     expect(await holds(page, six)).toEqual({
       tabs: '6',
       terminals: '6',
-      groups: [['TERMINALS (6)', 6]]
+      rows: terminals.map(t => `terminal ${t}`).sort()
     });
     await openCard(page, mixed);
     expect(await holds(page, mixed)).toEqual({
       tabs: '3',
       terminals: '1',
-      groups: [
-        ['TABS (2)', 2],
-        ['TERMINALS (1)', 1]
-      ]
+      rows: ['a.md', 'b.txt', `terminal ${terminals[0]}`].sort()
     });
     await openCard(page, kept);
     expect(await holds(page, kept)).toEqual({
       tabs: '1',
       terminals: '1',
-      groups: [['TERMINALS (1)', 1]]
+      rows: [`terminal ${terminals[0]}`]
     });
     await openCard(page, gone);
     expect(await holds(page, gone)).toEqual({
       tabs: '0',
       terminals: '0',
-      groups: []
+      rows: []
     });
   } finally {
     await Promise.all(
@@ -1389,7 +1383,7 @@ test('ACC-SERVER-64-PRESENCE: a window that moves to another workspace no longer
   }
 });
 
-test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, open or closed, has 2 px corners, a 1 px border colour 1 border, a header in the card's shade of ACC-PANEL-239-HEADER-SHADE and a body on layout colour 1", async ({
+test("ACC-ACCORD-69-CARD, EDGE-TAB-SURFACE: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, the header on the hue's 30% tint, the body on its 12% tint, and a 1 px hue rule between them", async ({
   page
 }) => {
   const current = fresh('card');
@@ -1400,15 +1394,17 @@ test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, 
   await patchMeta(page, current, { colour: 'sky' });
   await patchMeta(page, a, { colour: 'mint' });
   await patchMeta(page, b, { colour: 'lavender' });
+  const hues: Record<string, string> = {
+    [current]: 'sky',
+    [a]: 'mint',
+    [b]: 'lavender'
+  };
+  const tint = (colour: string, percent: number) =>
+    `color-mix(in srgb, var(--wm-${colour}) ${percent}%, var(--jp-layout-color1))`;
   try {
     await setUpExisting(page, current);
     for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
       await page.theme.setTheme(theme);
-      const [border, layout1] = await Promise.all(
-        ['--jp-border-color1', '--jp-layout-color1'].map(t =>
-          rgb(page, `var(${t})`)
-        )
-      );
       // two cards open at once: this window's card from its header, another from its triangle
       await cardHeader(page, current).click();
       await expect(card(page, current)).toHaveClass(/jp-mod-open/);
@@ -1418,42 +1414,52 @@ test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, 
       for (const id of [current, a, b]) {
         const s = await card(page, id).evaluate(n => {
           const c = getComputedStyle(n);
+          const header = getComputedStyle(
+            n.querySelector('.jp-WorkspaceManager-cardHeader')!
+          );
           const body = n.querySelector('.jp-WorkspaceManager-cardBody');
           return {
             radius: c.borderRadius,
-            widths: [c.borderTopWidth, c.borderRightWidth, c.borderBottomWidth],
-            colours: [
-              c.borderTopColor,
-              c.borderRightColor,
-              c.borderBottomColor
+            margins: [c.marginLeft, c.marginRight],
+            widths: [
+              c.borderLeftWidth,
+              c.borderTopWidth,
+              c.borderRightWidth,
+              c.borderBottomWidth
             ],
-            header: getComputedStyle(
-              n.querySelector('.jp-WorkspaceManager-cardHeader')!
-            ).backgroundColor,
+            strip: c.borderLeftColor,
             card: c.backgroundColor,
+            header: header.backgroundColor,
+            rule: [
+              header.borderBottomWidth,
+              header.borderBottomStyle,
+              header.borderBottomColor
+            ],
             body: body && getComputedStyle(body).backgroundColor
           };
         });
         const what = `${theme} ${id}${id === b ? ' closed' : ' open'}`;
-        expect([s.radius, ...s.widths], what).toEqual([
-          '2px',
-          '1px',
-          '1px',
-          '1px'
-        ]);
-        for (const colour of s.colours) {
-          expect(await rgb(page, colour), what).toEqual(border);
-        }
-        // the header takes this window's active shade, every other card its muted one
-        const wanted =
-          id === current
-            ? await shade(page, 'sky', true)
-            : await shade(page, id === a ? 'mint' : 'lavender');
-        expect(await rgb(page, s.header), what).toEqual(
-          await rgb(page, wanted)
+        // an edge tab 2 px from the panel edge: square at the left, a 2 px radius at the right
+        expect(s.margins, what).toEqual(['2px', '2px']);
+        expect(s.radius, what).toBe('0px 2px 2px 0px');
+        // the one border is the 4 px full-strength hue strip on the left
+        expect(s.widths, what).toEqual(['4px', '0px', '0px', '0px']);
+        expect(await rgb(page, s.strip), what).toEqual(
+          await rgb(page, `var(--wm-${hues[id]})`)
         );
-        expect(await rgb(page, s.card), what).toEqual(layout1);
-        // an open card's body paints nothing over the card's layout colour 1
+        // the header takes the hue at 30 %, the body's surface at 12 %
+        expect(await rgb(page, s.header), what).toEqual(
+          await rgb(page, tint(hues[id], 30))
+        );
+        expect(await rgb(page, s.card), what).toEqual(
+          await rgb(page, tint(hues[id], 12))
+        );
+        // a 1 px hue rule joins the header to the body
+        expect(s.rule.slice(0, 2), what).toEqual(['1px', 'solid']);
+        expect(await rgb(page, s.rule[2]), what).toEqual(
+          await rgb(page, s.strip)
+        );
+        // an open card's body paints nothing over the 12 % surface; a closed card has no body
         expect(s.body, what).toBe(id === b ? null : 'rgba(0, 0, 0, 0)');
       }
       // close both again: every theme starts from no open card
@@ -1466,7 +1472,7 @@ test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, 
   }
 });
 
-test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the muted shade on its header and 4 px strip, this window's card the active shade, the body the plain layout colour 1, and a card with no colour keeps the plain header and a transparent strip", async ({
+test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the hue on its 4 px strip, the hue's 30% tint on its header and 12% tint on its body, the same for this window's card and the others, and a card with no colour keeps the plain header and a transparent strip", async ({
   page
 }) => {
   const current = fresh('shade');
@@ -1491,19 +1497,16 @@ test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a colo
     await menuItem(page, 'Green').click();
     await expect(card(page, other)).toHaveClass(/jp-mod-mint/);
 
-    // the muted shade lands on the card: a stylesheet that arrives after the card renders must not read as plain
+    // the hue lands on the card: a stylesheet that arrives after the card renders must not read as plain
     const mint = await rgb(page, await shade(page, 'mint'));
     await expect
       .poll(async () => rgb(page, (await surfaces(other)).strip), UNDER_LOAD)
       .toEqual(mint);
 
+    const tint = (colour: string, percent: number) =>
+      `color-mix(in srgb, var(--wm-${colour}) ${percent}%, var(--jp-layout-color1))`;
     for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
       await page.theme.setTheme(theme);
-      const [muted, active] = await Promise.all([
-        shade(page, 'mint'),
-        shade(page, 'sky', true)
-      ]);
-      const layout1 = 'var(--jp-layout-color1)';
       const layout2 = 'var(--jp-layout-color2)';
       // a card with no colour: the class alone, no colour class (a reload gives every listed workspace a colour)
       const plain = await page.locator(PANEL).evaluate(panel => {
@@ -1526,15 +1529,21 @@ test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a colo
         other: await surfaces(other),
         current: await surfaces(current)
       };
-      for (const [id, s, band, strip] of [
-        [other, drawn.other, muted, muted],
-        [current, drawn.current, active, active]
+      for (const [id, s, colour] of [
+        [other, drawn.other, 'mint'],
+        [current, drawn.current, 'sky']
       ] as const) {
         const what = `${theme} ${id}`;
-        expect(await rgb(page, s.header), what).toEqual(await rgb(page, band));
-        expect(await rgb(page, s.strip), what).toEqual(await rgb(page, strip));
-        expect(await rgb(page, s.card), what).toEqual(await rgb(page, layout1));
-        // no wash: the header carries the shade as its flat colour
+        expect(await rgb(page, s.header), what).toEqual(
+          await rgb(page, tint(colour, 30))
+        );
+        expect(await rgb(page, s.strip), what).toEqual(
+          await rgb(page, `var(--wm-${colour})`)
+        );
+        expect(await rgb(page, s.card), what).toEqual(
+          await rgb(page, tint(colour, 12))
+        );
+        // no wash: the header carries the tint as its flat colour
         expect(s.image, what).toBe('none');
       }
       // the plain card: layout colour 2 and a transparent strip
@@ -1544,6 +1553,58 @@ test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a colo
     }
   } finally {
     await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test("TINTS-CONTRAST: the inverse layout colours on every hue's 30% header tint, 12% body tint and 12% over layout colour 2 surface of a hovered or selected row keep at least 4.5:1 in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel", async ({
+  page
+}) => {
+  const current = await setUp(page, 'contrast');
+  // WCAG relative luminance of a colour as the page draws it
+  const luminance = (colour: number[]) => {
+    const [r, g, b] = colour.map(v => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: number[], b: number[]) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  try {
+    for (const theme of [
+      'JupyterLab Light',
+      'JupyterLab Dark',
+      'Galaxa Dark Theme - Steel'
+    ]) {
+      await page.theme.setTheme(theme);
+      // In JupyterLab Light the meta ink is --jp-inverse-layout-color1, #212121 (it was rgba(0, 0, 0, .54)); the name and row label take --jp-inverse-layout-color0, #111
+      const inks = [
+        await rgb(page, 'var(--jp-inverse-layout-color0)'),
+        await rgb(page, 'var(--jp-inverse-layout-color1)')
+      ];
+      for (const colour of COLOURS) {
+        for (const [percent, base] of [
+          [30, 1],
+          [12, 1],
+          [12, 2]
+        ]) {
+          const tint = await rgb(
+            page,
+            `color-mix(in srgb, var(--wm-${colour}) ${percent}%, var(--jp-layout-color${base}))`
+          );
+          for (const ink of inks) {
+            expect(
+              contrast(ink, tint),
+              `${theme} ${colour} at ${percent}% over layout colour ${base}: ${ink} on ${tint}`
+            ).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      }
+    }
+  } finally {
+    await deleteWorkspaces(page, [current]);
   }
 });
 
@@ -1794,12 +1855,11 @@ test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, wit
         0
       );
     }
-    // the last row ends the card
+    // the last row ends the card: the flat list puts the rows in the body itself, with no
+    // group container or button after them
     expect(
       await body.evaluate(n =>
-        n.lastElementChild?.lastElementChild?.classList.contains(
-          'jp-WorkspaceManager-row'
-        )
+        n.lastElementChild?.classList.contains('jp-WorkspaceManager-row')
       )
     ).toBe(true);
     for (const name of ['Open workspace', 'Close all tabs']) {
@@ -1858,8 +1918,8 @@ test.describe('at 4x device scale', () => {
 
   /**
    * The device pixels of a region around a card's top-left corner, with the
-   * card's corner at (0, `margin`) CSS px of the region: the card has no
-   * horizontal margin, so its strip sits on the panel edge.
+   * card's corner at (0, `margin`) CSS px of the region: the region starts at
+   * the card's left edge, 2 CSS px from the panel edge.
    */
   async function cornerPixels(page: Page, id: string, margin: number) {
     const box = (await card(page, id).boundingBox())!;
@@ -1883,7 +1943,7 @@ test.describe('at 4x device scale', () => {
     }, png.toString('base64'));
   }
 
-  test("ACC-ACCORD-128-STRIP-PLAIN, ACC-ACCORD-129-FLUSH: the strip and the header stay inside the card's 2 px corners; the outline lies against it; this window's strip shows its inner 2 px under its own 2 px outline", async ({
+  test("ACC-ACCORD-128-STRIP-PLAIN, ACC-ACCORD-129-FLUSH: the strip and the header stay inside the card's square left corners, 2 px from the panel edge; the outline lies against it; this window's strip shows its inner 2 px under its own 2 px outline", async ({
     page
   }) => {
     const current = fresh('fit');
@@ -1897,9 +1957,12 @@ test.describe('at 4x device scale', () => {
       for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
         await page.theme.setTheme(theme);
         await page.mouse.move(0, 0);
-        // this window's card carries the active shade, the other the muted one (ACC-PANEL-239-HEADER-SHADE)
-        const active = await rgb(page, await shade(page, 'mint', true));
-        const muted = await rgb(page, await shade(page, 'mint'));
+        // both cards carry the same hue; the header its 30 % tint (ACC-PANEL-239-HEADER-SHADE)
+        const strip = await rgb(page, await shade(page, 'mint'));
+        const header = await rgb(
+          page,
+          'color-mix(in srgb, var(--wm-mint) 30%, var(--jp-layout-color1))'
+        );
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
 
@@ -1916,21 +1979,21 @@ test.describe('at 4x device scale', () => {
           });
         const mine = await shape(current);
         const theirs = await shape(other);
-        expect(mine.slice(2)).toEqual(['2px', 'hidden']);
+        // square at the left, a 2 px radius at the right; both cards carry the same hue
+        expect(mine.slice(2)).toEqual(['0px 2px 2px 0px', 'hidden']);
         expect(mine[0]).toBe('4px');
-        // the same strip geometry, each card in its own shade
         expect([theirs[0], ...theirs.slice(2)]).toEqual([
           mine[0],
           ...mine.slice(2)
         ]);
         expect([await rgb(page, mine[1]), await rgb(page, theirs[1])]).toEqual([
-          active,
-          muted
+          strip,
+          strip
         ]);
 
         const S = 4; // device pixels per CSS pixel
         const W = 2 * S; // the outline width
-        const R = 2; // the card's corner radius in CSS px
+        const R = 0; // the card's corner radius on the left, where the region is captured
         const at = (
           px: { width: number; data: number[] },
           x: number,
@@ -1944,8 +2007,6 @@ test.describe('at 4x device scale', () => {
           [current, true],
           [other, false]
         ] as const) {
-          const strip = outlined ? active : muted;
-          const header = strip;
           const px = await cornerPixels(page, id, M);
           const wrong: string[] = [];
           for (let y = 0; y < px.width; y++) {
@@ -1964,7 +2025,7 @@ test.describe('at 4x device scale', () => {
               if (!outlined) {
                 continue;
               }
-              // the 2 px corner arc turns the band inward: its pixels are not the straight band
+              // the left corner is square: skip only the 1 px seam where the screenshot anti-aliases against the panel
               if (x + 0.5 < R * S + 1 && y + 0.5 - M * S < R * S + 1) {
                 continue;
               }
@@ -2012,7 +2073,7 @@ test.describe('at 4x device scale', () => {
     }
   });
 
-  test("ACC-PANEL-231-OUTLINE-INSIDE: this window's card paints its 2 px brand colour 2 outline inside its own box on all four sides, and its left edge stays flush with the panel edge", async ({
+  test("ACC-PANEL-231-OUTLINE-INSIDE: this window's card paints its 2 px brand colour 2 outline inside its own box on all four sides, and its left edge sits 2 px from the panel edge", async ({
     page
   }) => {
     test.setTimeout(120000);
@@ -2027,14 +2088,14 @@ test.describe('at 4x device scale', () => {
       const S = 4; // device pixels per CSS pixel
       const M = 3; // CSS px of panel captured around the card
       const box = (await card(page, current).boundingBox())!;
-      // flush: the card keeps no horizontal margin, so it starts at the panel edge as a band does (DQ-26)
-      const flush = await card(page, current).evaluate(
+      // the edge tab sits 2 px from the panel edge, off the section bands' full width (DQ-28)
+      const gap = await card(page, current).evaluate(
         (n, selector) =>
           n.getBoundingClientRect().left -
           document.querySelector(selector)!.getBoundingClientRect().left,
         PANEL
       );
-      expect(Math.abs(flush)).toBeLessThanOrEqual(0.5);
+      expect(Math.round(gap)).toBe(2);
 
       const [w, h] = [Math.round(box.width * S), Math.round(box.height * S)];
       const [x0, y0] = [M * S, M * S];

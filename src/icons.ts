@@ -35,12 +35,23 @@ export const openIcon = new LabIcon({
   )
 });
 
-/** Clear console: a circle outline with one diagonal stroke, as the Chrome developer tools glyph. */
-export const clearIcon = new LabIcon({
-  name: `${NS}:clear`,
+/** Clean up workspaces: an eraser. */
+export const eraserIcon = new LabIcon({
+  name: `${NS}:eraser`,
   svgstr: svg(
-    line('<circle cx="8" cy="8" r="6"/>') +
-      line('<path d="M3.8 12.2L12.2 3.8"/>')
+    line('<path d="M14.5 4.5 19.5 9.5 9.5 19.5 4.5 14.5z"/>', 2) +
+      line('<path d="M11.5 7.5 16.5 12.5"/>', 2),
+    24
+  )
+});
+
+/** Shut down all: the power symbol. */
+export const powerIcon = new LabIcon({
+  name: `${NS}:power`,
+  svgstr: svg(
+    line('<path d="M12 3v8"/>', 2) +
+      line('<path d="M7.7 5.86A7.5 7.5 0 1 0 16.3 5.86"/>', 2),
+    24
   )
 });
 
