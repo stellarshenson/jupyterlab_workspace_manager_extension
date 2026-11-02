@@ -6,8 +6,14 @@
 
 /*
     Every colour is a --jp-* token, with no light or dark branch (DQ-01), except the six
-    workspace colours (DQ-27); the one colour word is the black of the recessed filter
-    field the design language prescribes
+    workspace colours (DQ-28) and their one dark-theme block below; the one colour word is
+    the black of the recessed filter field the design language prescribes.
+
+    The workspace palette (DQ-28): the coloured tabs extension's default palette at 1.4
+    saturation, with rose 2 degrees pinker, peach 3 points darker, lemon 1 point lighter
+    and 2 degrees cooler, and mint 2 points darker, so rose and peach stop reading as one
+    pair. A card takes the muted shade as its header and 4 px strip; this window's card
+    takes the active shade. The stored colour names stay unchanged.
 */
 :root {
   --jp-workspace-manager-filter-background: color-mix(
@@ -15,6 +21,18 @@
     var(--jp-layout-color1) 96%,
     black
   );
+  --wm-rose: #f1b2c4;
+  --wm-rose-active: #f191ae;
+  --wm-peach: #e5ba90;
+  --wm-peach-active: #dfa465;
+  --wm-lemon: #d5cea2;
+  --wm-lemon-active: #cbc061;
+  --wm-mint: #a7cfa5;
+  --wm-mint-active: #73c973;
+  --wm-sky: #98cff2;
+  --wm-sky-active: #62c0f5;
+  --wm-lavender: #cebbe7;
+  --wm-lavender-active: #be9fe4;
 }
 
 /*
@@ -298,13 +316,15 @@
 }
 
 /*
-    A card (DQ-02): 2 px corners that clip the header, a layout colour 1 body and a
-    border colour 1 border; the 4 px strip in the workspace colour is its left border,
-    and the same colour washes the body and the header at 14 %
+    A card (DQ-02, DQ-28): 2 px corners that clip the header, a plain layout colour 1
+    body and a border colour 1 border; the 4 px strip is its left border, and the
+    header carries the workspace's muted shade from the palette below, which this
+    window's card replaces with the active shade; a card with no colour paints the
+    plain surfaces. The stored colour names stay unchanged.
 */
 .jp-WorkspaceManager-card {
+  --wm-shade: var(--jp-layout-color2);
   --wm-strip: transparent;
-  --wm-tint: color-mix(in srgb, var(--wm-strip) 14%, transparent);
 
   position: relative;
   margin: 4px 0;
@@ -313,46 +333,70 @@
   border-radius: var(--jp-border-radius);
   overflow: hidden;
   background: var(--jp-layout-color1);
-  background-image: linear-gradient(var(--wm-tint), var(--wm-tint));
 }
 
-/*
-    The workspace colours are the coloured tabs palette's default light active shades,
-    in both themes (DQ-27); the stored names stay.
-    shortcut: copies the default tab palette, a palette edited in the coloured tabs settings is not followed; read that setting when asked
-*/
+/* The same hues for a dark theme; the theme sets this attribute on the body */
+[data-jp-theme-light='false'] {
+  --wm-rose: #542b36;
+  --wm-rose-active: #3f1e26;
+  --wm-peach: #4a3827;
+  --wm-peach-active: #342a1d;
+  --wm-lemon: #57512e;
+  --wm-lemon-active: #423e23;
+  --wm-mint: #294d30;
+  --wm-mint-active: #1d3924;
+  --wm-sky: #213854;
+  --wm-sky-active: #182a3d;
+  --wm-lavender: #402c54;
+  --wm-lavender-active: #30213e;
+}
+
 .jp-WorkspaceManager-card.jp-mod-rose,
 .jp-WorkspaceManager-swatch.jp-mod-rose {
-  --wm-strip: #e39fb1;
+  --wm-shade: var(--wm-rose);
+  --wm-shade-active: var(--wm-rose-active);
+  --wm-strip: var(--wm-shade);
 }
 
 .jp-WorkspaceManager-card.jp-mod-peach,
 .jp-WorkspaceManager-swatch.jp-mod-peach {
-  --wm-strip: #d2ab82;
+  --wm-shade: var(--wm-peach);
+  --wm-shade-active: var(--wm-peach-active);
+  --wm-strip: var(--wm-shade);
 }
 
 .jp-WorkspaceManager-card.jp-mod-lemon,
 .jp-WorkspaceManager-swatch.jp-mod-lemon {
-  --wm-strip: #bab56d;
+  --wm-shade: var(--wm-lemon);
+  --wm-shade-active: var(--wm-lemon-active);
+  --wm-strip: var(--wm-shade);
 }
 
 .jp-WorkspaceManager-card.jp-mod-mint,
 .jp-WorkspaceManager-swatch.jp-mod-mint {
-  --wm-strip: #87c086;
+  --wm-shade: var(--wm-mint);
+  --wm-shade-active: var(--wm-mint-active);
+  --wm-strip: var(--wm-shade);
 }
 
 .jp-WorkspaceManager-card.jp-mod-sky,
 .jp-WorkspaceManager-swatch.jp-mod-sky {
-  --wm-strip: #77bae0;
+  --wm-shade: var(--wm-sky);
+  --wm-shade-active: var(--wm-sky-active);
+  --wm-strip: var(--wm-shade);
 }
 
 .jp-WorkspaceManager-card.jp-mod-lavender,
 .jp-WorkspaceManager-swatch.jp-mod-lavender {
-  --wm-strip: #bfa9da;
+  --wm-shade: var(--wm-lavender);
+  --wm-shade-active: var(--wm-lavender-active);
+  --wm-strip: var(--wm-shade);
 }
 
-/* This window's card: the outline paints inside the card's box, so the flush card keeps every band (DQ-19) */
+/* This window's card takes the active shade, and its outline paints inside the card's box, so the flush card keeps every band (DQ-19) */
 .jp-WorkspaceManager-card.jp-mod-current {
+  --wm-shade: var(--wm-shade-active, var(--jp-layout-color2));
+
   outline: 2px solid var(--jp-brand-color2);
   outline-offset: -2px;
 }
@@ -366,12 +410,20 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header one step up, under the card's wash (DQ-02) */
+/* the header carries the card's shade (DQ-02, DQ-28) */
 .jp-WorkspaceManager-cardHeader {
   padding: 6px 10px;
-  background: var(--jp-layout-color2);
-  background-image: linear-gradient(var(--wm-tint), var(--wm-tint));
+  background: var(--wm-shade);
   cursor: pointer;
+}
+
+/* On a coloured card header the brand ring falls under 3:1 in the light theme; colour 1 measures 7.94-10.83:1 light, 6.53-11.55:1 dark and 3.25-6.03:1 in the Steel theme; plain cards, rows, section bands and the panel header keep the brand ring (DQ-19, ACC-PANEL-93-FOCUS) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  > .jp-WorkspaceManager-cardHeader:focus-visible,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  button:focus-visible {
+  outline-color: var(--jp-ui-font-color1);
 }
 
 /* This window's card paints its 2 px outline over a 1 px rim at the card's edge, so the rim of its header sits 2 px further in, clear of it (DQ-19, ACC-PANEL-93-FOCUS) */
@@ -435,8 +487,7 @@
   white-space: nowrap;
 }
 
-/* Over 7 days the name alone at 0.65; recency is otherwise the time label's (DQ-09, DQ-21) */
-.jp-mod-stale .jp-WorkspaceManager-name,
+/* Over 7 days the row label alone at 0.65: it still shows recency, while the card name stays at full strength (DQ-09, DQ-21) */
 .jp-mod-stale .jp-WorkspaceManager-rowLabel {
   opacity: 0.65;
 }
@@ -619,6 +670,47 @@
   font-size: var(--jp-ui-font-size0);
 }
 
+/* On a coloured card header the meta text, the count and action glyphs and the caret keep the primary font colour: the shade costs no contrast, and the inverse glyph colour falls under 3:1 on the active shade in the light theme; a section caret and a plain card's caret stay at colour 2 (DQ-07, DQ-28, ACC-PANEL-202) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-age,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-counts,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-count,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-purpose,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-hiddenWord {
+  color: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-count
+  [class*='jp-icon'][fill],
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-cardActions
+  [class*='jp-icon'][fill] {
+  fill: var(--jp-ui-font-color1);
+}
+
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-count
+  [class*='jp-icon'][stroke],
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-cardActions
+  [class*='jp-icon'][stroke] {
+  stroke: var(--jp-ui-font-color1);
+}
+
 /* The detail lines of the selected row, under the name: the parts marked to shrink give way first (KERN-02) */
 .jp-WorkspaceManager-rowDetail {
   display: flex;
@@ -712,6 +804,14 @@
   .lm-Menu-item.jp-WorkspaceManager-danger
   .jp-icon3[fill] {
   fill: var(--jp-error-color1);
+}
+
+/* A coloured card header's caret is one of its colour-1 glyphs (DQ-07, DQ-28, ACC-PANEL-239) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-caret
+  .jp-icon3[fill] {
+  fill: var(--jp-ui-font-color1);
 }
 
 /* The present colour keeps its swatch and takes a check after its name */

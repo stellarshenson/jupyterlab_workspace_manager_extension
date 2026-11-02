@@ -65,7 +65,7 @@ const cleanRow = (page: Page, id: string) =>
     .locator('.jp-WorkspaceManager-cleanupRow')
     .filter({ has: page.getByText(id, { exact: true }) });
 
-test('ACC-ACCORD-221-CLEAN-BUTTON: the WORKSPACES band carries the same 22 px broom as the bands below it, named Clean up workspaces and enabled by a second workspace', async ({
+test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE: the WORKSPACES band carries the same 22 px clear-console button as the bands below it, named Clean up workspaces and enabled by a second workspace', async ({
   page
 }: {
   page: IJupyterLabPageFixture;
@@ -74,36 +74,58 @@ test('ACC-ACCORD-221-CLEAN-BUTTON: the WORKSPACES band carries the same 22 px br
   const other = `${current}-other`;
   try {
     await enterWorkspace(page, current);
-    const broom = sectionHeader(page, 'workspaces').getByRole('button', {
+    const clean = sectionHeader(page, 'workspaces').getByRole('button', {
       name: 'Clean up workspaces',
       exact: true
     });
-    await expect(broom).toBeVisible();
-    // the three bands below carry the same broom, 22 px square with a 14 px glyph
+    await expect(clean).toBeVisible();
+    // the three bands below carry the same clear-console button, 22 px square with a 14 px glyph
     const below = sectionHeader(page, 'kernels').getByRole('button', {
       name: 'Shut down all',
       exact: true
     });
-    const box = (await broom.boundingBox())!;
+    const box = (await clean.boundingBox())!;
     const belowBox = (await below.boundingBox())!;
     expect([Math.round(box.width), Math.round(box.height)]).toEqual([
       Math.round(belowBox.width),
       Math.round(belowBox.height)
     ]);
     expect([Math.round(box.width), Math.round(box.height)]).toEqual([22, 22]);
-    const glyph = (await broom.locator('svg').boundingBox())!;
+    const glyph = (await clean.locator('svg').boundingBox())!;
     expect(Math.round(glyph.width)).toBe(14);
     expect(Math.round(glyph.height)).toBe(14);
+    // ACC-PANEL-240-CLEAR-CONSOLE: all four band buttons draw the Clear console glyph of the Chrome developer tools, a circle and one diagonal stroke
+    const band = (section: string, name: string) =>
+      sectionHeader(page, section)
+        .getByRole('button', { name, exact: true })
+        .locator('svg');
+    for (const [section, name] of [
+      ['workspaces', 'Clean up workspaces'],
+      ['kernels', 'Shut down all'],
+      ['terminals', 'Shut down all'],
+      ['servers', 'Shut down all']
+    ] as const) {
+      const parts = await band(section, name).evaluate(svg => ({
+        circles: svg.querySelectorAll('circle').length,
+        paths: svg.querySelectorAll('path').length,
+        diagonal: svg.querySelector('path')?.getAttribute('d') ?? ''
+      }));
+      expect(parts, section).toEqual({
+        circles: 1,
+        paths: 1,
+        diagonal: 'M3.8 12.2L12.2 3.8'
+      });
+    }
 
     await putWorkspace(page, other);
     await refresh(page);
-    await expect(broom).toBeEnabled();
+    await expect(clean).toBeEnabled();
   } finally {
     await deleteWorkspaces(page, [current, other]);
   }
 });
 
-test('ACC-ACCORD-223-CLEAN-ACTION: the WORKSPACES broom deletes every workspace but this one, empties this one, and keeps the one another window shows', async ({
+test('ACC-ACCORD-223-CLEAN-ACTION: the WORKSPACES clear-console button deletes every workspace but this one, empties this one, and keeps the one another window shows', async ({
   page,
   tmpPath
 }: {
@@ -143,12 +165,12 @@ test('ACC-ACCORD-223-CLEAN-ACTION: the WORKSPACES broom deletes every workspace 
       page.locator('#jp-main-dock-panel .lm-TabBar-tab.jp-mod-dirty')
     ).toHaveCount(0);
 
-    const broom = sectionHeader(page, 'workspaces').getByRole('button', {
+    const clean = sectionHeader(page, 'workspaces').getByRole('button', {
       name: 'Clean up workspaces',
       exact: true
     });
-    await expect(broom).toBeVisible();
-    await broom.click();
+    await expect(clean).toBeVisible();
+    await clean.click();
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       'Clean up workspaces'
     );

@@ -35,6 +35,7 @@ import {
   putWorkspace,
   refresh,
   rgb,
+  rgba,
   rowOf,
   saved,
   secondWindow,
@@ -42,7 +43,7 @@ import {
   sectionCount,
   sectionHeader,
   serverList,
-  SHADES,
+  shade,
   shownElsewhere,
   sleepInTerminal,
   startSession,
@@ -231,7 +232,7 @@ test("ACC-ACCORD-68-START-CLOSED: no card is open at load, this window's include
   }
 });
 
-test("ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: one card open at a time; the triangle of another workspace's card opens and closes it and never switches; the triangle follows", async ({
+test('ACC-ACCORD-241-MANY-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: two cards open in turn and both stay open; a triangle closes only its own card and never switches; the caret follows', async ({
   page
 }) => {
   const current = await setUp(page, 'one', { a: {} });
@@ -249,6 +250,7 @@ test("ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: one 
       'ui-components:caret-right'
     );
 
+    // this window's card still opens from its own header
     await cardHeader(page, current).click();
     await expect(cardHeader(page, current)).toHaveAttribute(
       'aria-expanded',
@@ -260,23 +262,24 @@ test("ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: one 
     );
     await expect(openCards(page)).toHaveCount(1);
 
-    // ACC-ACCORD-11: opening another closes the open one
+    // ACC-ACCORD-241: another card's triangle opens it and the first stays open
     await triangle(page, other).click();
     await expect(card(page, other)).toHaveClass(/jp-mod-open/);
     await expect(triangle(page, other)).toHaveAttribute(
       'aria-expanded',
       'true'
     );
-    await expect(card(page, current)).not.toHaveClass(/jp-mod-open/);
+    await expect(card(page, current)).toHaveClass(/jp-mod-open/);
     await expect(caret(current)).toHaveAttribute(
       'data-icon',
-      'ui-components:caret-right'
+      'ui-components:caret-down'
     );
-    await expect(openCards(page)).toHaveCount(1);
+    await expect(openCards(page)).toHaveCount(2);
 
-    // ACC-ACCORD-162: a click on the open card's triangle leaves none open
+    // ACC-ACCORD-162: a click on a triangle closes that card alone; the other stays open
     await triangle(page, other).click();
-    await expect(openCards(page)).toHaveCount(0);
+    await expect(openCards(page)).toHaveCount(1);
+    await expect(card(page, current)).toHaveClass(/jp-mod-open/);
     await expect(triangle(page, other)).toHaveAttribute(
       'aria-expanded',
       'false'
@@ -288,6 +291,31 @@ test("ACC-ACCORD-11-ONE-OPEN, ACC-ACCORD-162-TRIANGLE, ACC-ACCORD-77-CARET: one 
     // the window stays in its workspace; a switch would have loaded another page
     await page.waitForTimeout(1000);
     expect(page.url()).toBe(url);
+  } finally {
+    await deleteWorkspaces(page, ids(current, 'a'));
+  }
+});
+
+test('ACC-ACCORD-241-MANY-OPEN: deleting a workspace closes its card and leaves no open state for its id', async ({
+  page
+}) => {
+  const current = await setUp(page, 'deleteopen', { a: {} });
+  const other = `${current}-a`;
+  try {
+    await triangle(page, other).click();
+    await expect(card(page, other)).toHaveClass(/jp-mod-open/);
+    await menuButton(page, other).click();
+    await menuItem(page, 'Delete workspace').click();
+    // the first click arms; the menu stays
+    await expect(menuItem(page, 'Confirm delete')).toBeVisible();
+    await page.waitForTimeout(700);
+    await menuItem(page, 'Confirm delete').click();
+    await expect(card(page, other)).toHaveCount(0, UNDER_LOAD);
+    // the id's open state is gone too: saved again under the same id, the workspace shows closed
+    await putWorkspace(page, other);
+    await refresh(page);
+    await expect(card(page, other)).toBeVisible();
+    await expect(card(page, other)).not.toHaveClass(/jp-mod-open/);
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
   }
@@ -560,7 +588,9 @@ test('ACC-ACCORD-15-STRIP: each card shows a 4 px strip, its left border, in the
   const current = await setUp(page, 'strip', { a: {}, b: {} });
   const [a, b] = [`${current}-a`, `${current}-b`];
   try {
-    const palette = await Promise.all(SHADES.map(s => rgb(page, s)));
+    const palette = await Promise.all(
+      COLOURS.map(async colour => rgb(page, await shade(page, colour)))
+    );
     const strips: number[][] = [];
     for (const id of [a, b]) {
       // the colour the panel gave, stored on the server
@@ -697,6 +727,7 @@ test('ACC-ACCORD-18-PURPOSE: the purpose shows while its card is open, on the ca
       card(page, a).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('Review of the feature branch');
     await openCard(page, b);
+    await triangle(page, a).click();
     await expect(
       card(page, a).locator('.jp-WorkspaceManager-purpose')
     ).toHaveCount(0);
@@ -924,6 +955,7 @@ test.describe('kernels and sessions of the server', () => {
         Kernels: '1'
       });
       await openCard(page, docs);
+      await triangle(page, held).click();
       expect(await counts(held)).toEqual({});
       expect(await counts(docs)).toEqual({
         Tabs: '2',
@@ -1357,7 +1389,7 @@ test('ACC-SERVER-64-PRESENCE: a window that moves to another workspace no longer
   }
 });
 
-test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, open or closed, has 2 px corners, a 1 px border colour 1 border, a header on layout colour 2 and a body on layout colour 1", async ({
+test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, open or closed, has 2 px corners, a 1 px border colour 1 border, a header in the card's shade of ACC-PANEL-239-HEADER-SHADE and a body on layout colour 1", async ({
   page
 }) => {
   const current = fresh('card');
@@ -1372,82 +1404,85 @@ test("ACC-ACCORD-69-CARD: in Light and Dark every card, this window's included, 
     await setUpExisting(page, current);
     for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
       await page.theme.setTheme(theme);
-      const [border, layout1, layout2] = await Promise.all(
-        ['--jp-border-color1', '--jp-layout-color1', '--jp-layout-color2'].map(
-          t => rgb(page, `var(${t})`)
+      const [border, layout1] = await Promise.all(
+        ['--jp-border-color1', '--jp-layout-color1'].map(t =>
+          rgb(page, `var(${t})`)
         )
       );
-      // the test can tell the header from the body
-      expect(layout2, theme).not.toEqual(layout1);
-      // one card opens at a time: this window's card, then another
-      for (const opened of [current, a]) {
-        if (opened === current) {
-          await cardHeader(page, current).click();
-        } else {
-          await triangle(page, a).click();
-        }
-        await expect(card(page, opened)).toHaveClass(/jp-mod-open/);
-        await page.mouse.move(0, 0);
-        for (const id of [current, a, b]) {
-          const s = await card(page, id).evaluate(n => {
-            const c = getComputedStyle(n);
-            const body = n.querySelector('.jp-WorkspaceManager-cardBody');
-            return {
-              radius: c.borderRadius,
-              widths: [
-                c.borderTopWidth,
-                c.borderRightWidth,
-                c.borderBottomWidth
-              ],
-              colours: [
-                c.borderTopColor,
-                c.borderRightColor,
-                c.borderBottomColor
-              ],
-              header: getComputedStyle(
-                n.querySelector('.jp-WorkspaceManager-cardHeader')!
-              ).backgroundColor,
-              card: c.backgroundColor,
-              body: body && getComputedStyle(body).backgroundColor
-            };
-          });
-          const what = `${theme} ${id}${id === opened ? ' open' : ''}`;
-          expect([s.radius, ...s.widths], what).toEqual([
-            '2px',
-            '1px',
-            '1px',
-            '1px'
-          ]);
-          for (const colour of s.colours) {
-            expect(await rgb(page, colour), what).toEqual(border);
-          }
-          expect(await rgb(page, s.header), what).toEqual(layout2);
-          expect(await rgb(page, s.card), what).toEqual(layout1);
-          // an open card's body paints nothing over the card's layout colour 1
-          expect(s.body, what).toBe(id === opened ? 'rgba(0, 0, 0, 0)' : null);
-        }
-      }
-      // close a again for the next theme
+      // two cards open at once: this window's card from its header, another from its triangle
+      await cardHeader(page, current).click();
+      await expect(card(page, current)).toHaveClass(/jp-mod-open/);
       await triangle(page, a).click();
-      await expect(card(page, a)).not.toHaveClass(/jp-mod-open/);
+      await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+      await page.mouse.move(0, 0);
+      for (const id of [current, a, b]) {
+        const s = await card(page, id).evaluate(n => {
+          const c = getComputedStyle(n);
+          const body = n.querySelector('.jp-WorkspaceManager-cardBody');
+          return {
+            radius: c.borderRadius,
+            widths: [c.borderTopWidth, c.borderRightWidth, c.borderBottomWidth],
+            colours: [
+              c.borderTopColor,
+              c.borderRightColor,
+              c.borderBottomColor
+            ],
+            header: getComputedStyle(
+              n.querySelector('.jp-WorkspaceManager-cardHeader')!
+            ).backgroundColor,
+            card: c.backgroundColor,
+            body: body && getComputedStyle(body).backgroundColor
+          };
+        });
+        const what = `${theme} ${id}${id === b ? ' closed' : ' open'}`;
+        expect([s.radius, ...s.widths], what).toEqual([
+          '2px',
+          '1px',
+          '1px',
+          '1px'
+        ]);
+        for (const colour of s.colours) {
+          expect(await rgb(page, colour), what).toEqual(border);
+        }
+        // the header takes this window's active shade, every other card its muted one
+        const wanted =
+          id === current
+            ? await shade(page, 'sky', true)
+            : await shade(page, id === a ? 'mint' : 'lavender');
+        expect(await rgb(page, s.header), what).toEqual(
+          await rgb(page, wanted)
+        );
+        expect(await rgb(page, s.card), what).toEqual(layout1);
+        // an open card's body paints nothing over the card's layout colour 1
+        expect(s.body, what).toBe(id === b ? null : 'rgba(0, 0, 0, 0)');
+      }
+      // close both again: every theme starts from no open card
+      await cardHeader(page, current).click();
+      await triangle(page, a).click();
+      await expect(openCards(page)).toHaveCount(0);
     }
   } finally {
     await deleteWorkspaces(page, [current, a, b]);
   }
 });
 
-test('ACC-ACCORD-226-CARD-WASH: the workspace colour given from the card menu washes the card body and its header at 14 %, and a card with no colour keeps the plain surfaces', async ({
+test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the muted shade on its header and 4 px strip, this window's card the active shade, the body the plain layout colour 1, and a card with no colour keeps the plain header and a transparent strip", async ({
   page
 }) => {
-  const current = fresh('wash');
+  const current = fresh('shade');
   const other = `${current}-a`;
   await putWorkspace(page, current);
   await putWorkspace(page, other);
-  // linear-gradient(rgba(r, g, b, a), rgba(r, g, b, a)) or color(srgb r g b / a): the washes of the image
-  const alphas = (image: string) =>
-    [...image.matchAll(/(?:rgba?|color)\(([^)]+)\)/g)].map(m => {
-      const parts = m[1].replace(/^srgb\s+/, '').split(/[,\s/]+/);
-      return parts.length === 4 ? Number(parts[3]) : 1;
+  await patchMeta(page, current, { colour: 'sky' });
+  const surfaces = (id: string) =>
+    card(page, id).evaluate(n => {
+      const header = n.querySelector('.jp-WorkspaceManager-cardHeader')!;
+      return {
+        card: getComputedStyle(n).backgroundColor,
+        strip: getComputedStyle(n).borderLeftColor,
+        header: getComputedStyle(header).backgroundColor,
+        image: getComputedStyle(header).backgroundImage
+      };
     });
   try {
     await setUpExisting(page, current);
@@ -1456,72 +1491,56 @@ test('ACC-ACCORD-226-CARD-WASH: the workspace colour given from the card menu wa
     await menuItem(page, 'Green').click();
     await expect(card(page, other)).toHaveClass(/jp-mod-mint/);
 
-    // the surfaces the criterion names, polled until the rendered card carries the wash:
-    // a stylesheet that lands after the card renders must not make the plain card read as none
-    const surfaces = (id: string) =>
-      card(page, id).evaluate(n => {
-        const header = n.querySelector('.jp-WorkspaceManager-cardHeader')!;
-        return [
-          getComputedStyle(n).backgroundImage,
-          getComputedStyle(header).backgroundImage
-        ];
-      });
+    // the muted shade lands on the card: a stylesheet that arrives after the card renders must not read as plain
+    const mint = await rgb(page, await shade(page, 'mint'));
     await expect
-      .poll(
-        () => surfaces(other).then(([c, h]) => [alphas(c), alphas(h)]),
-        UNDER_LOAD
-      )
-      .toEqual([
-        [0.14, 0.14],
-        [0.14, 0.14]
-      ]);
-
-    // a card with no colour: the class alone, no colour class, --wm-strip transparent
-    // (a reload gives every listed workspace a colour, so the plain card is the class alone)
-    const plain = await page.locator(PANEL).evaluate(panel => {
-      const probe = document.createElement('div');
-      probe.className = 'jp-WorkspaceManager-card';
-      const header = document.createElement('div');
-      header.className = 'jp-WorkspaceManager-cardHeader';
-      probe.appendChild(header);
-      panel.appendChild(probe);
-      const drawn = {
-        card: getComputedStyle(probe).backgroundImage,
-        header: getComputedStyle(header).backgroundImage
-      };
-      probe.remove();
-      return drawn;
-    });
-    expect(alphas(plain.card)).toEqual([0, 0]);
-    expect(alphas(plain.header)).toEqual([0, 0]);
+      .poll(async () => rgb(page, (await surfaces(other)).strip), UNDER_LOAD)
+      .toEqual(mint);
 
     for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
       await page.theme.setTheme(theme);
-      const drawn = await card(page, other).evaluate(n => {
-        const header = n.querySelector('.jp-WorkspaceManager-cardHeader')!;
-        return {
-          card: getComputedStyle(n).backgroundImage,
-          header: getComputedStyle(header).backgroundImage,
-          body: getComputedStyle(n).backgroundColor,
-          band: getComputedStyle(header).backgroundColor,
-          strip: getComputedStyle(n).borderLeftColor
+      const [muted, active] = await Promise.all([
+        shade(page, 'mint'),
+        shade(page, 'sky', true)
+      ]);
+      const layout1 = 'var(--jp-layout-color1)';
+      const layout2 = 'var(--jp-layout-color2)';
+      // a card with no colour: the class alone, no colour class (a reload gives every listed workspace a colour)
+      const plain = await page.locator(PANEL).evaluate(panel => {
+        const probe = document.createElement('div');
+        probe.className = 'jp-WorkspaceManager-card';
+        const header = document.createElement('div');
+        header.className = 'jp-WorkspaceManager-cardHeader';
+        probe.appendChild(header);
+        panel.appendChild(probe);
+        const drawn = {
+          strip: getComputedStyle(probe).borderLeftColor,
+          header: getComputedStyle(header).backgroundColor,
+          image: getComputedStyle(header).backgroundImage
         };
+        probe.remove();
+        return drawn;
       });
-      const what = `${theme} ${other}`;
-      expect(drawn.card, what).not.toBe(plain.card);
-      expect(drawn.header, what).not.toBe(plain.header);
-      expect(alphas(drawn.card), what).toEqual([0.14, 0.14]);
-      expect(alphas(drawn.header), what).toEqual([0.14, 0.14]);
-      // the wash sits over layout colour 1 on the body and 2 on the header; the strip keeps the value
-      expect(await rgb(page, drawn.body), what).toEqual(
-        await rgb(page, 'var(--jp-layout-color1)')
-      );
-      expect(await rgb(page, drawn.band), what).toEqual(
-        await rgb(page, 'var(--jp-layout-color2)')
-      );
-      expect(await rgb(page, drawn.strip), what).toEqual(
-        await rgb(page, SHADES[COLOURS.indexOf('mint')])
-      );
+
+      const drawn = {
+        other: await surfaces(other),
+        current: await surfaces(current)
+      };
+      for (const [id, s, band, strip] of [
+        [other, drawn.other, muted, muted],
+        [current, drawn.current, active, active]
+      ] as const) {
+        const what = `${theme} ${id}`;
+        expect(await rgb(page, s.header), what).toEqual(await rgb(page, band));
+        expect(await rgb(page, s.strip), what).toEqual(await rgb(page, strip));
+        expect(await rgb(page, s.card), what).toEqual(await rgb(page, layout1));
+        // no wash: the header carries the shade as its flat colour
+        expect(s.image, what).toBe('none');
+      }
+      // the plain card: layout colour 2 and a transparent strip
+      expect(await rgb(page, plain.header)).toEqual(await rgb(page, layout2));
+      expect(await rgba(page, plain.strip)).toEqual([0, 0, 0, 0]);
+      expect(plain.image).toBe('none');
     }
   } finally {
     await deleteWorkspaces(page, [current, other]);
@@ -1878,15 +1897,11 @@ test.describe('at 4x device scale', () => {
       for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
         await page.theme.setTheme(theme);
         await page.mouse.move(0, 0);
-        const mint = SHADES[COLOURS.indexOf('mint')];
-        const strip = await rgb(page, mint);
+        // this window's card carries the active shade, the other the muted one (ACC-PANEL-239-HEADER-SHADE)
+        const active = await rgb(page, await shade(page, 'mint', true));
+        const muted = await rgb(page, await shade(page, 'mint'));
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
-        // the header sits under the card's wash (ACC-ACCORD-226-CARD-WASH)
-        const header = await rgb(
-          page,
-          `color-mix(in srgb, ${mint} 14%, var(--jp-layout-color2))`
-        );
 
         // ACC-ACCORD-128: the same strip on both cards; ACC-ACCORD-129: one clipped shape
         const shape = (id: string) =>
@@ -1900,10 +1915,18 @@ test.describe('at 4x device scale', () => {
             ];
           });
         const mine = await shape(current);
+        const theirs = await shape(other);
         expect(mine.slice(2)).toEqual(['2px', 'hidden']);
         expect(mine[0]).toBe('4px');
-        expect(await shape(other)).toEqual(mine);
-        expect(await rgb(page, mine[1])).toEqual(strip);
+        // the same strip geometry, each card in its own shade
+        expect([theirs[0], ...theirs.slice(2)]).toEqual([
+          mine[0],
+          ...mine.slice(2)
+        ]);
+        expect([await rgb(page, mine[1]), await rgb(page, theirs[1])]).toEqual([
+          active,
+          muted
+        ]);
 
         const S = 4; // device pixels per CSS pixel
         const W = 2 * S; // the outline width
@@ -1921,6 +1944,8 @@ test.describe('at 4x device scale', () => {
           [current, true],
           [other, false]
         ] as const) {
+          const strip = outlined ? active : muted;
+          const header = strip;
           const px = await cornerPixels(page, id, M);
           const wrong: string[] = [];
           for (let y = 0; y < px.width; y++) {

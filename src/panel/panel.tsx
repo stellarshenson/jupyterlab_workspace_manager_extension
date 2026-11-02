@@ -12,7 +12,6 @@ import {
   addIcon,
   caretDownIcon,
   caretRightIcon,
-  cleaningIcon,
   closeIcon,
   ellipsesIcon,
   fileIcon,
@@ -43,6 +42,7 @@ import {
   workspaces
 } from '../api';
 import {
+  clearIcon,
   closeTabsIcon,
   eyeIcon,
   eyeOffIcon,
@@ -324,7 +324,8 @@ export class WorkspacePanel
       // a deleted workspace of this name left the position this page gave it
       delete this._positions[form.name];
       await store.save(form.name, { data: {}, metadata: { id: form.name } });
-      this._open = this._scrollTo = `w:${form.name}`;
+      this._openCards.add(`w:${form.name}`);
+      this._scrollTo = `w:${form.name}`;
       await this._store(form.name, {
         ...newRecord(form.purpose, colour),
         given: true
@@ -499,7 +500,7 @@ export class WorkspacePanel
     if (!section || !tab || !widget) {
       return false;
     }
-    this._open = keyOf(section);
+    this._openCards.add(keyOf(section));
     this._selected = `${keyOf(section)}/${tab.key}`;
     this._app.shell.activateById(widget.id);
     this._render();
@@ -665,17 +666,17 @@ export class WorkspacePanel
   private _isOpen(key: string): boolean {
     return this._query.trim()
       ? !this._closedInFilter.has(key)
-      : this._open === key;
+      : this._openCards.has(key);
   }
 
-  /** The triangle, or a header that does not switch: one card open outside a filter; inside it, this card only. */
+  /** The triangle, or a header that does not switch: outside a filter it opens or closes its own card and leaves the rest; inside it, this card only. */
   private _toggle(key: string): void {
     if (this._query.trim()) {
       if (!this._closedInFilter.delete(key)) {
         this._closedInFilter.add(key);
       }
-    } else {
-      this._open = this._open === key ? null : key;
+    } else if (!this._openCards.delete(key)) {
+      this._openCards.add(key);
     }
     this._render();
   }
@@ -854,9 +855,10 @@ export class WorkspacePanel
   }
 
   /**
-   * One section: the header carries the label, the count and its broom - Work
-   * spaces cleans up, the three below shut down all; an open section shows its
-   * body, which scrolls on its own, and one of those three with nothing in it says so.
+   * One section: the header carries the label, the count and its clear-console
+   * button - Work spaces cleans up, the three below shut down all; an open
+   * section shows its body, which scrolls on its own, and one of those three
+   * with nothing in it says so.
    */
   private _renderSection(
     key: string,
@@ -898,7 +900,7 @@ export class WorkspacePanel
           {shutdown &&
             (shutdown === 'workspaces'
               ? iconButton(
-                  cleaningIcon,
+                  clearIcon,
                   'Clean up workspaces',
                   () => void this._cleanUp(),
                   this._nothingToClean(),
@@ -907,7 +909,7 @@ export class WorkspacePanel
                   true // pointerFocus
                 )
               : iconButton(
-                  cleaningIcon,
+                  clearIcon,
                   'Shut down all',
                   () => void this._shutDownSection(shutdown),
                   !n,
@@ -944,6 +946,7 @@ export class WorkspacePanel
     const classes = [
       'jp-WorkspaceManager-card',
       section.colour ? `jp-mod-${section.colour}` : '',
+      section.colour ? 'jp-mod-coloured' : '',
       section.current ? 'jp-mod-current' : '',
       // not jp-mod-hidden: JupyterLab sets display: none on that class
       section.hidden ? 'jp-mod-hiddenWorkspace' : '',
@@ -1345,7 +1348,7 @@ export class WorkspacePanel
     });
   }
 
-  /** The WORKSPACES broom: delete the other workspaces and empty this one, asking once (DQ-22). */
+  /** The WORKSPACES clear-console button: delete the other workspaces and empty this one, asking once (DQ-22). */
   private async _cleanUp(): Promise<void> {
     const model = this._model();
     if (!model) {
@@ -1629,9 +1632,7 @@ export class WorkspacePanel
         return;
       }
       await workspaces(this._settings).remove(id);
-      if (this._open === `w:${id}`) {
-        this._open = null;
-      }
+      this._openCards.delete(`w:${id}`);
     });
   }
 
@@ -1831,7 +1832,8 @@ export class WorkspacePanel
 
   /** the sections the user closed; every other section is open */
   private _closedSections = closedSections();
-  private _open: string | null = null;
+  /** the cards this page shows open; a card keeps its state while another opens (DQ-28) */
+  private _openCards = new Set<string>();
   /** the selected row: its list and its key */
   private _selected: string | null = null;
   private _scrollTo: string | null = null;

@@ -22,13 +22,14 @@ The panel groups them by workspace: what each project holds, what is running in 
 
 ## Features
 
-- **Workspace section** - the colour strip, the name and the age, and the purpose with the number of tabs, terminals and kernels while the card is open
+- **Workspace section** - the colour strip, the name and the age, and the purpose with the number of tabs, terminals and kernels while the card is open; each card's header carries the workspace colour, this window's card a deeper shade of it
 - **Triangle** - opens or closes a section
+- **Several cards** - any number of workspace cards stay open at once, and closing one leaves the others open
 - **Header** - a click on the name of another workspace switches this window to it, and a click on this window's workspace opens its card or closes it
 - **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, move up, move down, delete
 - **Card order** - the cards keep one fixed order that switching workspaces does not change, a drag or Move up and Move down moves a card, and a new workspace goes last
 - **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last card of WORKSPACES
-- **Kernels, terminals and language servers** - three sections docked below the workspaces, always in view, for every running kernel and terminal, in a workspace or not, and the running language servers, each section with its count and a shut down all
+- **Kernels, terminals and language servers** - three sections docked below the workspaces, always in view, for every running kernel and terminal, in a workspace or not, and the running language servers, each section with its count and a shut down all; the WORKSPACES band carries a clean up button that removes the other workspaces after a confirmation
 - **One section at a time** - opening a section closes the others, the open section takes the height above the docked bands and scrolls, and a reload keeps the same section open
 - **Kernel rows** - a KERNELS row shows the status dot, the name and the time; select it for the kernel type, the document, the memory and the CPU use
 - **Terminal rows** - a TERMINALS row shows the terminal's name, the process running in it and the time since its last activity, all without selection

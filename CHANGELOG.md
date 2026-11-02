@@ -2,6 +2,23 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.31] - 2026-11-02
+
+### Added
+
+- Any number of workspace cards stay open at once; a click on a card's triangle closes only that card and leaves the others open
+
+### Changed
+
+- Each workspace card's header and 4 px strip carry the muted shade of the workspace colour and this window's card the active shade, over a plain body; the twelve values come in a light and a dark set, so the colours read apart in both themes and an edited palette in the coloured tabs extension is not followed
+- On a coloured card header the name, age, counts, purpose, count and action glyphs, caret and focus ring take the primary font colour, which keeps them above 3:1 on the workspace shade in every theme
+- The broom is replaced by a clear-console circle and one diagonal stroke on the four band buttons, the Clean up workspaces button included
+
+### Fixed
+
+- A row's time and state inside a coloured card keep the secondary font colour instead of taking the header's
+- A stale workspace's card name keeps full opacity, and its rows keep the fade
+
 ## [0.8.30] - 2026-11-01
 
 ### Changed

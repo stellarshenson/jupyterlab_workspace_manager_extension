@@ -14,15 +14,17 @@ export const COLOUR_LABELS = [
   'Purple'
 ];
 
-/** The value of each palette colour, in the same order (DQ-27). */
-export const SHADES = [
-  '#e39fb1',
-  '#d2ab82',
-  '#bab56d',
-  '#87c086',
-  '#77bae0',
-  '#bfa9da'
-];
+/** A palette shade as the page draws it: the extension's --wm-<colour>[-active] (DQ-28). */
+export const shade = (
+  page: Page,
+  colour: string,
+  active = false
+): Promise<string> =>
+  // on the body: the theme sets data-jp-theme-light there, so the dark block resolves
+  page.evaluate(
+    name => getComputedStyle(document.body).getPropertyValue(name).trim(),
+    `--wm-${colour}${active ? '-active' : ''}`
+  );
 
 /** The workspace colour of a card: its 4 px left border, as the page draws it. */
 export const stripColour = (c: Locator): Promise<string> =>

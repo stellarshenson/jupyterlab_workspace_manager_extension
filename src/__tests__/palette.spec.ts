@@ -11,15 +11,53 @@ const css = () => readFileSync(join(ROOT, 'style', 'base.css'), 'utf8');
 /** A hex, rgb() or hsl() colour. */
 const LITERAL = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i;
 
-/** The value of each workspace colour: the coloured tabs palette's default light active shade (DQ-27). */
-const SHADES: Record<string, string> = {
-  rose: '#e39fb1',
-  peach: '#d2ab82',
-  lemon: '#bab56d',
-  mint: '#87c086',
-  sky: '#77bae0',
-  lavender: '#bfa9da'
+/** The workspace palette (DQ-28): a card takes the muted shade, this window's card the active shade. */
+const PALETTE = {
+  light: {
+    rose: '#f1b2c4',
+    'rose-active': '#f191ae',
+    peach: '#e5ba90',
+    'peach-active': '#dfa465',
+    lemon: '#d5cea2',
+    'lemon-active': '#cbc061',
+    mint: '#a7cfa5',
+    'mint-active': '#73c973',
+    sky: '#98cff2',
+    'sky-active': '#62c0f5',
+    lavender: '#cebbe7',
+    'lavender-active': '#be9fe4'
+  },
+  dark: {
+    rose: '#542b36',
+    'rose-active': '#3f1e26',
+    peach: '#4a3827',
+    'peach-active': '#342a1d',
+    lemon: '#57512e',
+    'lemon-active': '#423e23',
+    mint: '#294d30',
+    'mint-active': '#1d3924',
+    sky: '#213854',
+    'sky-active': '#182a3d',
+    lavender: '#402c54',
+    'lavender-active': '#30213e'
+  }
 };
+
+/** The declarations of the workspace colour rule of `colour`, in order (DQ-28). */
+const SHADE_RULE = (colour: string) =>
+  `--wm-shade: var(--wm-${colour}); ` +
+  `--wm-shade-active: var(--wm-${colour}-active); ` +
+  '--wm-strip: var(--wm-shade);';
+
+/** The --wm- declarations of a palette block, in the order they are stated. */
+function declarations(block: string): Record<string, string> {
+  return Object.fromEntries(
+    [...block.matchAll(/--wm-([a-z-]+):\s*(#[0-9a-f]{6});/gi)].map(m => [
+      m[1],
+      m[2]
+    ])
+  );
+}
 
 /** The .ts and .tsx files under `dir`, the tests left out. */
 function sources(dir: string): string[] {
@@ -66,46 +104,43 @@ describe('palette', () => {
     expect(next.given).toEqual({ d: 'peach' });
   });
 
-  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its value and nothing else, for the strip and the swatch', () => {
+  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its shade, its active shade and the strip from the palette, and nothing else, for the card and the swatch', () => {
     const text = css();
+    let rest = text;
     for (const colour of COLOURS) {
-      const rule = text.match(
-        new RegExp(
-          `\\.jp-WorkspaceManager-card\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-swatch\\.jp-mod-${colour}\\s*\\{([^}]*)\\}`
-        )
+      const rule = new RegExp(
+        `\\.jp-WorkspaceManager-card\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-swatch\\.jp-mod-${colour}\\s*\\{([^}]*)\\}`
       );
-      expect(rule?.[1].trim()).toBe(`--wm-strip: ${SHADES[colour]};`);
+      const body = text.match(rule)?.[1] ?? '';
+      expect(body.trim().replace(/\s+/g, ' ')).toBe(SHADE_RULE(colour));
+      rest = rest.replace(rule, '');
     }
-    expect(text).not.toMatch(
-      /--jp-workspace-manager-(rose|peach|lemon|mint|sky|lavender)/
-    );
-    expect(text).not.toContain('--jp-colourful-tab-');
+    // no rule names the palette variables outside the six colour rules and the two blocks
+    expect(rest).not.toMatch(/var\(--wm-(rose|peach|lemon|mint|sky|lavender)/);
   });
 
-  it('ACC-PANEL-203-TOKENS-ONLY: the only literal colours in the stylesheet and the TypeScript are the six values, each once in its workspace colour rule, and there is no light or dark branch', () => {
-    const files = [
-      join(ROOT, 'style', 'base.css'),
-      ...sources(join(ROOT, 'src'))
-    ];
-    expect(files.length).toBeGreaterThan(10);
-    const found = files.flatMap(f =>
-      readFileSync(f, 'utf8')
-        .split('\n')
-        .flatMap((line, i) =>
-          LITERAL.test(line) || line.includes('data-jp-theme-light')
-            ? [`${f.slice(ROOT.length + 1)}:${i + 1}: ${line.trim()}`]
-            : []
-        )
-    );
-    // a seventh literal, or a literal in any other rule, is an entry not in this list
-    const lines = css().split('\n');
-    expect(found.sort()).toEqual(
-      COLOURS.map(colour => {
-        const at = lines.indexOf(
-          `.jp-WorkspaceManager-swatch.jp-mod-${colour} {`
-        );
-        return `style/base.css:${at + 2}: --wm-strip: ${SHADES[colour]};`;
-      }).sort()
-    );
+  it("ACC-PANEL-203-TOKENS-ONLY: the stylesheet and the TypeScript hold exactly the 24 palette values in the two palette blocks and the one black of the recessed filter field, with exactly one data-jp-theme-light='false' selector, the dark palette block", () => {
+    const text = css();
+    const light = text.match(/:root\s*\{([^}]*--wm-rose:[^}]*)\}/)?.[1] ?? '';
+    const dark =
+      text.match(/\[data-jp-theme-light='false'\]\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(declarations(light)).toEqual(PALETTE.light);
+    expect(declarations(dark)).toEqual(PALETTE.dark);
+    expect(Object.keys(declarations(light))).toHaveLength(12);
+    expect(Object.keys(declarations(dark))).toHaveLength(12);
+
+    // outside the palette values the one colour word is the design language's named black
+    // of the recessed filter field; every other colour is a --jp-* token
+    const bare = text
+      .replace(/--wm-[a-z-]+:\s*#[0-9a-f]{6};/gi, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(bare.match(/\bblack\b/gi)).toHaveLength(1);
+    expect(bare).toMatch(/--jp-workspace-manager-filter-background:[^;]*black/);
+    const typescript = sources(join(ROOT, 'src'))
+      .map(file => readFileSync(file, 'utf8'))
+      .join('\n');
+    expect(`${bare}\n${typescript}`).not.toMatch(LITERAL);
+    // the dark palette block is the only theme branch
+    expect(text.match(/data-jp-theme-light/g)).toHaveLength(1);
   });
 });

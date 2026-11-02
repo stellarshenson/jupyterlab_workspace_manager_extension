@@ -21,7 +21,7 @@ import {
   putWorkspace,
   refresh,
   rgb,
-  SHADES,
+  shade,
   stripColour,
   UNDER_LOAD
 } from './helpers';
@@ -226,7 +226,7 @@ test('ACC-ACCORD-150-COLOUR-SWATCH, MENU-04: the Colour submenu lists Red, Orang
       expect([s.size, s.radius, s.strokeWidth]).toEqual([[12, 12], '2', '1px']);
       expect(await rgb(page, s.stroke)).toEqual(border);
       expect(await rgb(page, s.fill), COLOURS[i]).toEqual(
-        await rgb(page, SHADES[i])
+        await rgb(page, await shade(page, COLOURS[i]))
       );
     }
   } finally {
@@ -259,7 +259,7 @@ test('ACC-ACCORD-30-SET-COLOUR: Colour sets the strip at once, and the colour su
 }) => {
   const { current, other } = await setUp(page, 'colour', 'sky');
   try {
-    const mint = await rgb(page, SHADES[COLOURS.indexOf('mint')]);
+    const mint = await rgb(page, await shade(page, 'mint'));
     expect(await strip(page, other)).not.toEqual(mint);
     await openColours(page, other);
     await menuItem(page, 'Green').click();

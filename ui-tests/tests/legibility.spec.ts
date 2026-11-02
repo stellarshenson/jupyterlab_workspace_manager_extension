@@ -177,12 +177,8 @@ async function textsOfOpenCards(
   const found: IText[] = [];
   // one section open at a time: the cards render with WORKSPACES open, the TERMINALS rows with TERMINALS open
   await openSection(page, 'workspaces');
-  for (const caret of [
-    triangle(page, ids.current),
-    triangle(page, ids.coloured[0])
-  ]) {
-    await caret.click();
-    await expect(caret).toHaveAttribute('aria-expanded', 'true');
+  for (const id of [ids.current, ids.coloured[0]]) {
+    await openCard(page, id);
     await page.mouse.move(0, 0);
     found.push(...(await texts(page)));
   }
@@ -191,7 +187,7 @@ async function textsOfOpenCards(
   return found;
 }
 
-test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a card name, the section and group labels and a row name are colour 1; a purpose, a time, a detail, a note, the counts, the carets and the empty lines are colour 2; no text is colour 3', async ({
+test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a card name, the section and group labels and a row name are colour 1; a row detail, a note, the section count, the carets and the empty lines are colour 2; a coloured card keeps its time, purpose and counts at colour 1; no text is colour 3', async ({
   page
 }) => {
   test.setTimeout(150000);
@@ -233,7 +229,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         colour1
       );
 
-      // the aged card: its name colour 1, its time colour 2; open, its purpose colour 2 and its counts colour 2
+      // the aged card: a coloured card keeps its name, its time, its purpose and its counts at colour 1
       await openCard(page, aged);
       const header = cardHeader(page, aged);
       await expect(header.locator('.jp-WorkspaceManager-age')).toHaveText(
@@ -246,9 +242,9 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
           header.locator(
             '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
           ),
-          colour2
+          colour1
         ],
-        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), colour2],
+        ['purpose', header.locator('.jp-WorkspaceManager-purpose'), colour1],
         [
           'section label',
           sectionHeader(page, 'workspaces').locator(
@@ -266,9 +262,9 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
       for (const c of await header
         .locator('.jp-WorkspaceManager-count')
         .all()) {
-        checks.push(['count', c, colour2]);
+        checks.push(['count', c, colour1]);
       }
-      // read while the aged card is open: one card is open at a time
+      // read while the aged card is open; another card may be open beside it (ACC-ACCORD-241-MANY-OPEN)
       const check = async () => {
         for (const [what, l, token] of checks.splice(0)) {
           expect.soft(await colourOf(l), `${theme} ${what}`).toEqual(token);
@@ -297,20 +293,25 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
       await check();
       // the design system's hover pair paints a hovered glyph colour 1: measure with the pointer off the triangle openCard clicked
       await page.mouse.move(0, 0);
-      // the carets: the section's text glyph takes colour, the card's SVG fill
-      const carets: [Locator, string][] = [
+      // the carets: the section's text glyph takes colour 2, and a coloured card's SVG fill colour 1 (DQ-07, ACC-PANEL-239)
+      const carets: [Locator, string, number[]][] = [
         [
           sectionHeader(page, 'workspaces').locator(
             '.jp-WorkspaceManager-caret'
           ),
-          'color'
+          'color',
+          colour2
         ],
-        [triangle(page, ids.coloured[0]).locator('.jp-icon3[fill]'), 'fill']
+        [
+          triangle(page, ids.coloured[0]).locator('.jp-icon3[fill]'),
+          'fill',
+          colour1
+        ]
       ];
-      for (const [caret, property] of carets) {
+      for (const [caret, property, expected] of carets) {
         expect
           .soft(await colourOf(caret.first(), property), `${theme} caret`)
-          .toEqual(colour2);
+          .toEqual(expected);
       }
       // the empty line: KERNELS holds no item, opened as the one open section
       await openSection(page, 'kernels');

@@ -378,7 +378,7 @@ const shutDownAll = (panel: Widget, key: string) =>
   Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
     b => b.getAttribute('aria-label') === 'Shut down all'
   )!;
-/** The broom of the WORKSPACES band. */
+/** The clear-console button of the WORKSPACES band. */
 const cleanButton = (panel: Widget) =>
   Array.from(
     sectionHeader(panel, 'workspaces').querySelectorAll('button')
@@ -605,7 +605,7 @@ describe('panel', () => {
     expect(cleanButton(fourth.panel).disabled).toBe(false);
   });
 
-  it('ACC-ACCORD-222-CLEAN-DIALOG: the broom asks with a dialog titled Clean up workspaces that counts the workspaces and names each one, what it holds and its outcome, Clean up at the far left and Cancel at the right', async () => {
+  it('ACC-ACCORD-222-CLEAN-DIALOG: the clear-console button asks with a dialog titled Clean up workspaces that counts the workspaces and names each one, what it holds and its outcome, Clean up at the far left and Cancel at the right', async () => {
     const { panel, fake } = await mount(cleanup(), { live: cleanupWidgets() });
     cleanButton(panel).click();
     await waitForDialog();
@@ -699,7 +699,7 @@ describe('panel', () => {
     await settle();
   });
 
-  it('DEF-PANEL-56-ABSENT-BROOM: without the server extension the broom refuses before the dialog and deletes nothing', async () => {
+  it('DEF-PANEL-56-ABSENT-BROOM: without the server extension the clear-console button refuses before the dialog and deletes nothing', async () => {
     const server = { ...standard(), absent: true };
     const { panel, log } = await mount(server);
     expect(card(panel, 'w:auto-6')).toBeTruthy();
@@ -1358,7 +1358,33 @@ describe('panel', () => {
     expect(button.classList).not.toContain('jp-mod-spinning');
   });
 
-  it('ACC-PANEL-8-POLL: a visible panel reloads every 10 s without the turning icon and keeps the section scroll, the closed section, the focus, the selected row, the open card and the menu', async () => {
+  it('ACC-ACCORD-241-MANY-OPEN: a triangle opens or closes only its own card, and every other open card stays open', async () => {
+    const server = standard();
+    server.workspaces.push(workspace('third', 5));
+    const { panel } = await mount(server);
+    openSection(panel, 'workspaces');
+    const open = (key: string) =>
+      card(panel, key).classList.contains('jp-mod-open');
+    const expanded = (key: string) =>
+      triangle(panel, key).getAttribute('aria-expanded');
+
+    triangle(panel, 'w:auto-6').click();
+    triangle(panel, 'w:default').click();
+    expect([open('w:auto-6'), open('w:default')]).toEqual([true, true]);
+    expect([expanded('w:auto-6'), expanded('w:default')]).toEqual([
+      'true',
+      'true'
+    ]);
+
+    triangle(panel, 'w:auto-6').click();
+    expect([open('w:auto-6'), open('w:default')]).toEqual([false, true]);
+    expect([expanded('w:auto-6'), expanded('w:default')]).toEqual([
+      'false',
+      'true'
+    ]);
+  });
+
+  it('ACC-PANEL-8-POLL: a visible panel reloads every 10 s without the turning icon and keeps the section scroll, the closed section, the focus, the selected row, the open cards and the menu', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
     const { panel, reloads, hold, release } = await mount(server);
@@ -1373,8 +1399,9 @@ describe('panel', () => {
     release();
     await settle();
 
-    // a card open, a row focused, the WORKSPACES list scrolled, KERNELS closed by default
+    // cards open, a row focused, the WORKSPACES list scrolled, KERNELS closed by default
     triangle(panel, 'w:auto-6').click();
+    triangle(panel, 'w:default').click();
     const list = sectionBody(panel, 'workspaces');
     list.scrollTop = 40;
     expect(section(panel, 'kernels')!.textContent).not.toContain('k1');
@@ -1409,6 +1436,10 @@ describe('panel', () => {
     expect($$(panel, '.jp-mod-selected')).toEqual([row]);
     expect(card(panel, 'w:auto-6').classList).toContain('jp-mod-open');
     expect(triangle(panel, 'w:auto-6').getAttribute('aria-expanded')).toBe(
+      'true'
+    );
+    expect(card(panel, 'w:default').classList).toContain('jp-mod-open');
+    expect(triangle(panel, 'w:default').getAttribute('aria-expanded')).toBe(
       'true'
     );
 

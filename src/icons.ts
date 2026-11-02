@@ -35,6 +35,15 @@ export const openIcon = new LabIcon({
   )
 });
 
+/** Clear console: a circle outline with one diagonal stroke, as the Chrome developer tools glyph. */
+export const clearIcon = new LabIcon({
+  name: `${NS}:clear`,
+  svgstr: svg(
+    line('<circle cx="8" cy="8" r="6"/>') +
+      line('<path d="M3.8 12.2L12.2 3.8"/>')
+  )
+});
+
 /** Close all tabs: a crossed tab before another. */
 export const closeTabsIcon = new LabIcon({
   name: `${NS}:close-tabs`,
