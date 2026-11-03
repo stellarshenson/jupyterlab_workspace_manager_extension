@@ -23,7 +23,8 @@ import {
   sectionCount,
   sectionHeader,
   startTerminal,
-  triangle
+  triangle,
+  UNDER_LOAD
 } from './helpers';
 
 test.use({ autoGoto: false, mockState: false });
@@ -67,7 +68,7 @@ function texts(page: Page): Promise<IText[]> {
         empty: !!el.closest('.jp-WorkspaceManager-empty'),
         coloured: !!el.closest('.jp-WorkspaceManager-card.jp-mod-coloured'),
         meta: !!el.closest(
-          '.jp-WorkspaceManager-age, .jp-WorkspaceManager-hiddenWord, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowProcess'
+          '.jp-WorkspaceManager-age, .jp-WorkspaceManager-hiddenWord, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowProcess, .jp-WorkspaceManager-rowPath'
         ),
         where: el.getAttribute('class') ?? el.tagName
       };
@@ -94,6 +95,19 @@ function texts(page: Page): Promise<IText[]> {
     }
     return found;
   });
+}
+
+/** The WCAG contrast of two colours as the page draws them. */
+function contrast(a: number[], b: number[]): number {
+  const luminance = (colour: number[]) => {
+    const [r, g, b] = colour.map(v => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
 }
 
 /** The size of a JupyterLab font-size variable, in px, as the panel resolves it. */
@@ -340,6 +354,48 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
     }
   } finally {
     await ids.cleanup();
+  }
+});
+
+test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the path of a real terminal in a lemon card takes the inverse layout colour 1 ink and reaches 4.5:1 on the surface of its row', async ({
+  page
+}) => {
+  test.setTimeout(150000);
+  const terminal = await startTerminal(page);
+  const current = fresh('pathink');
+  const lemon = `${current}-lemon`;
+  await putWorkspace(page, lemon, layout([`terminal:${terminal}`]));
+  await patchMeta(page, lemon, { colour: 'lemon' });
+  try {
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    await openCard(page, lemon);
+    const path = card(page, lemon).locator('.jp-WorkspaceManager-rowPath');
+    await expect(path).toHaveCount(1, UNDER_LOAD);
+    await page.mouse.move(0, 0);
+    const computed = async (l: Locator, property: string) =>
+      rgba(
+        page,
+        await l.evaluate((n, p) => (getComputedStyle(n) as any)[p], property)
+      );
+    for (const theme of [DARK, LIGHT]) {
+      await page.theme.setTheme(theme);
+      const ink = await computed(path, 'color');
+      expect(ink, `${theme} path`).toEqual(
+        await rgba(page, 'var(--jp-inverse-layout-color1)')
+      );
+      // the row at rest is transparent over the card, which paints the hue at 12 %
+      const surface = await computed(card(page, lemon), 'backgroundColor');
+      expect(surface[3], `${theme} surface`).toBe(255);
+      expect(
+        contrast(ink, surface),
+        `${theme} ${ink} on ${surface}`
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current, lemon]);
   }
 });
 

@@ -21,6 +21,10 @@ export interface ITerminal {
   last_activity?: string;
   /** null or absent when the foreground process cannot be read */
   process?: string | null;
+  /** the foreground process's working directory; null or absent when it cannot be read */
+  cwd?: string | null;
+  /** the foreground process's command line; null or absent when it cannot be read */
+  command?: string | null;
 }
 
 /**
@@ -43,6 +47,8 @@ export interface ITabRow extends ITab {
 export interface ITerminalRow {
   name: string;
   process: string | null;
+  cwd: string | null;
+  command: string | null;
   lastActivity?: string;
   /** the tab title, when this window shows the terminal */
   title?: string;
@@ -112,6 +118,25 @@ export interface IModel {
 /** The details of a row's tooltip, one per line; a missing detail leaves its line out. */
 export const lines = (...details: (string | null | undefined)[]): string =>
   details.filter(Boolean).join('\n');
+
+/** The label of a terminal row: `t7` for a number; a named terminal such as `build` reads as it is. */
+export const terminalLabel = (name: string): string =>
+  /^\d+$/.test(name) ? `t${name}` : name;
+
+/**
+ * The tab name a terminal row shows in place of its process: null with no tab
+ * in this window, or with a default title, which says no more than the label.
+ * shortcut: the lab's translated default title is not recognised, upgrade if a
+ * translated lab shows it in the row.
+ */
+export function terminalTabName(
+  terminal: Pick<ITerminalRow, 'name' | 'title'>
+): string | null {
+  const { name, title } = terminal;
+  return !title || title === 'Terminal' || title === `Terminal ${name}`
+    ? null
+    : title;
+}
 
 /** The dot of a kernel row: idle, busy, or unknown for every other state. */
 export function kernelDot(state: string | undefined): string {
@@ -219,6 +244,8 @@ export function buildModel(input: IModelInput): IModel {
   const terminalRow = (t: ITerminal, holders: string[], id?: string) => ({
     name: t.name,
     process: t.process ?? null,
+    cwd: t.cwd ?? null,
+    command: t.command ?? null,
     lastActivity: t.last_activity,
     title: titles.get(t.name),
     alsoIn: holders.filter(h => h !== id)
@@ -356,6 +383,48 @@ export function withoutTabs(
   }
   keys.forEach(key => delete data[key]);
   return { data, metadata: { id: ws.metadata.id } };
+}
+
+/**
+ * The saved workspace with the tab `key` added: after the widgets of the first
+ * tab area of the main area, depth first, or in a new tab area when the dock is
+ * empty or the layout absent. `entry` becomes `data[key]`, where the culler
+ * reads `terminal:<name>`. A workspace that holds the tab is returned unchanged.
+ */
+export function withTab(
+  ws: Workspace.IWorkspace,
+  key: string,
+  entry: Workspace.IWorkspace['data'][string]
+): Workspace.IWorkspace {
+  if (tabsOf(ws.data).some(tab => tab.key === key)) {
+    return ws;
+  }
+  const data: any = JSON.parse(JSON.stringify(ws.data));
+  // JupyterLab opens a workspace with no layout with the file browser shown, and collapses a left area a layout leaves out
+  const main = ((data['layout-restorer:data'] ??= {
+    left: { current: 'filebrowser' }
+  }).main ??= {});
+  const area = firstTabArea(main.dock);
+  if (area) {
+    area.widgets = [...(area.widgets ?? []), key];
+  } else {
+    main.dock = { type: 'tab-area', currentIndex: 0, widgets: [key] };
+  }
+  data[key] = entry;
+  return { data, metadata: { id: ws.metadata.id } };
+}
+
+function firstTabArea(area: any): any {
+  if (area?.type === 'tab-area') {
+    return area;
+  }
+  for (const child of area?.children ?? []) {
+    const found = firstTabArea(child);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
 }
 
 function areaKeys(area: any): string[] {

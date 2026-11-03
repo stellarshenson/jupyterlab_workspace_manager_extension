@@ -14,6 +14,7 @@ import {
   PANEL,
   putWorkspace,
   refresh,
+  rowLabel,
   saved,
   startSession,
   startTerminal,
@@ -74,7 +75,7 @@ test('ACC-CULLER-65-CULLED: a workspace, a terminal and a kernel removed outside
     );
     await expect(countOf(card(page, held), 'Kernels')).toHaveText('0');
     await expect(
-      page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
+      page.locator(PANEL).getByText(rowLabel(terminal), { exact: true })
     ).toHaveCount(0, UNDER_LOAD);
     await expect(
       page.locator(`${PANEL} .jp-WorkspaceManager-error`)

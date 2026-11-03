@@ -14,6 +14,7 @@ import {
   fromRowMenu,
   kernelIds,
   layout,
+  menuItem,
   NEXT_POLL,
   only,
   openCard,
@@ -28,6 +29,7 @@ import {
   sectionBody,
   sectionCount,
   serverList,
+  setSetting,
   shows,
   startSession,
   triangle,
@@ -51,6 +53,137 @@ async function sessionOf(page: Page, path: string): Promise<any> {
     .toBe(true);
   return session;
 }
+
+for (const kernelShutdown of [true, false]) {
+  test(`ACC-LISTS-266-DETACH, ACC-PANEL-245-ROW-MENU: with kernelShutdown ${kernelShutdown} the menu of a notebook row with a kernel lists its four entries and Detach from workspace closes the notebook's tab; its kernel keeps running and shows in KERNELS`, async ({
+    page,
+    tmpPath
+  }) => {
+    const current = fresh('detachkernel');
+    const notebook = `${tmpPath}/detached.ipynb`;
+    await putNotebook(page, notebook);
+    let session: any;
+    try {
+      await enterWorkspace(page, current);
+      await setSetting(
+        page,
+        '@jupyterlab/notebook-extension:tracker',
+        'kernelShutdown',
+        kernelShutdown
+      );
+      await openDocument(page, notebook);
+      session = await sessionOf(page, notebook);
+      // the notebook took the setting: the guard has something to override
+      expect(
+        await page.evaluate(
+          () =>
+            (window as any).jupyterapp.shell.currentWidget.sessionContext
+              .kernelPreference.shutdownOnDispose
+        )
+      ).toBe(kernelShutdown);
+      // the kernel's spec and its language info each mark a new notebook unsaved as they arrive, the language
+      // first as a placeholder with an empty name; saved after both, it closes without a question
+      await expect
+        .poll(
+          () =>
+            page.evaluate(async () => {
+              const { context, sessionContext } = (window as any).jupyterapp
+                .shell.currentWidget;
+              const { model } = context;
+              const written =
+                !!model.getMetadata('language_info')?.name &&
+                model.getMetadata('kernelspec')?.display_name ===
+                  sessionContext.kernelDisplayName;
+              if (written && model.dirty) {
+                await context.save();
+              }
+              return written && !model.dirty;
+            }),
+          UNDER_LOAD
+        )
+        .toBe(true);
+      await openCard(page, current);
+      const row = rowOf(card(page, current), 'detached.ipynb');
+      await expect(row.locator('.jp-WorkspaceManager-state')).toHaveCount(
+        1,
+        UNDER_LOAD
+      );
+
+      await row.click({ button: 'right' });
+      await expect(
+        page.locator('.jp-WorkspaceManager-menu .lm-Menu-itemLabel')
+      ).toHaveText([
+        'Close tab',
+        'Detach from workspace',
+        'Move to workspace',
+        'Shut down kernel'
+      ]);
+      await menuItem(page, 'Detach from workspace').click();
+      await expect(row).toHaveCount(0, UNDER_LOAD);
+      await refresh(page);
+      expect(await kernelIds(page)).toContain(session.kernel.id);
+      await openSection(page, 'kernels');
+      await expect(
+        rowOf(sectionBody(page, 'kernels'), 'detached.ipynb')
+      ).toBeVisible(UNDER_LOAD);
+    } finally {
+      await page.request.delete(`/api/sessions/${session?.id}`);
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+}
+
+test('ACC-LISTS-266-DETACH: Detach from workspace on a notebook with unsaved changes asks as Close tab asks; Cancel keeps the tab, Discard closes it and the kernel runs on', async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('detachdirty');
+  const notebook = `${tmpPath}/dirty.ipynb`;
+  await putNotebook(page, notebook);
+  let session: any;
+  try {
+    await enterWorkspace(page, current);
+    await setSetting(
+      page,
+      '@jupyterlab/notebook-extension:tracker',
+      'kernelShutdown',
+      true
+    );
+    await openDocument(page, notebook);
+    session = await sessionOf(page, notebook);
+    await page.evaluate(() => {
+      (window as any).jupyterapp.shell.currentWidget.context.model.dirty = true;
+    });
+    await openCard(page, current);
+    const row = rowOf(card(page, current), 'dirty.ipynb');
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveCount(
+      1,
+      UNDER_LOAD
+    );
+
+    await fromRowMenu(row, 'Detach from workspace');
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'Save your work'
+    );
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Cancel' })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(row).toBeVisible();
+
+    await fromRowMenu(row, 'Detach from workspace');
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Discard' })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(row).toHaveCount(0, UNDER_LOAD);
+    await refresh(page);
+    expect(await kernelIds(page)).toContain(session.kernel.id);
+  } finally {
+    await page.request.delete(`/api/sessions/${session?.id}`);
+    await deleteWorkspaces(page, [current]);
+  }
+});
 
 test('ACC-KERNEL-48-ROW, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a card document row shows its notebook, its kernel state word and dot, and its age and, selected, its folder; Shut down kernel ends the kernel and the notebook stays open', async ({
   page,
@@ -212,7 +345,10 @@ test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
       'eda.ipynb'
     );
-    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveText('idle');
+    await expect(row.locator('.jp-WorkspaceManager-state')).toHaveText(
+      'idle',
+      UNDER_LOAD
+    );
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
     await expect(row).not.toContainText('also in');
     await expect(row).toHaveAttribute('title', `${display}\n${notebook}\nidle`);
@@ -252,7 +388,8 @@ test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK
         steps: 5
       });
       await page.mouse.up();
-      expect(await panelWidth(page)).toBe(width);
+      // the split panel can land 1/64 px short: within 0.5 px
+      await expect.poll(() => panelWidth(page)).toBeCloseTo(width, 0);
       // per part of the detail line: its text, the width of the whole text, whether it is cut, whether it lies inside the row; the line's content width and gap
       const { parts, content, gap } = await longRow.evaluate(r => {
         const box = r.getBoundingClientRect();

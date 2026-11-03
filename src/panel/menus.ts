@@ -234,29 +234,55 @@ export function workspaceMenu(
   return menu;
 }
 
-/** A menu of plain actions: a row's context menu; `danger` marks a destructive entry (DQ-11). */
-export function actionMenu(
-  items: {
-    label: string;
-    icon: LabIcon;
-    execute: () => void;
-    danger?: boolean;
-  }[]
-): Menu {
+/** An entry of a row's context menu: an action, or a submenu that shows disabled with nothing to list. */
+export interface IRowAction {
+  label: string;
+  icon: LabIcon;
+  execute?: () => void;
+  /** a destructive entry: the error-coloured label and icon (DQ-11) */
+  danger?: boolean;
+  submenu?: { label: string; execute: () => void }[];
+}
+
+/** A menu of plain actions and submenus: a row's context menu. */
+export function actionMenu(items: IRowAction[]): Menu {
   const commands = new CommandRegistry();
   const menu = new MenuSvg({ commands });
   menu.addClass('jp-WorkspaceManager-menu');
   restoreFocus(menu);
-  items.forEach(({ label, icon, execute, danger }, i) => {
+  const submenus: Menu[] = [];
+  items.forEach(({ label, icon, execute, danger, submenu }, i) => {
+    if (submenu?.length) {
+      const sub = new MenuSvg({ commands });
+      sub.addClass('jp-WorkspaceManager-menu');
+      sub.title.label = label;
+      sub.title.icon = icon;
+      submenu.forEach((entry, j) => {
+        commands.addCommand(`item-${i}-${j}`, {
+          ...entry,
+          describedBy: { args: null }
+        });
+        sub.addItem({ command: `item-${i}-${j}` });
+      });
+      submenus.push(sub);
+      menu.addItem({ type: 'submenu', submenu: sub });
+      return;
+    }
     commands.addCommand(`item-${i}`, {
       label,
       icon,
-      execute,
+      execute: () => execute?.(),
+      isEnabled: () => !submenu,
       className: danger ? DANGER : '',
       describedBy: { args: null }
     });
     menu.addItem({ command: `item-${i}` });
   });
-  menu.aboutToClose.connect(() => setTimeout(() => menu.dispose()));
+  menu.aboutToClose.connect(() =>
+    setTimeout(() => {
+      menu.dispose();
+      submenus.forEach(sub => sub.dispose());
+    })
+  );
   return menu;
 }

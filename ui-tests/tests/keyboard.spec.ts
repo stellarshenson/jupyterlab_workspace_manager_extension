@@ -74,7 +74,7 @@ test('DEF-PANEL-7-MENU-FOCUS: closing a card or row menu, by Escape or by an act
   await page.goto();
   await openPanel(page);
   await tabToCardHeader(page);
-  // the triangle, then up to four card buttons (DQ-12)
+  // the triangle, then up to two card buttons (DQ-12)
   for (let i = 0; i < 6; i++) {
     await page.keyboard.press('Tab');
     if (
@@ -260,7 +260,7 @@ test.describe('with the workspaces of the server', () => {
               label: b.getAttribute('aria-label') ?? ''
             }))
         );
-      // every card holds Open workspace, Close all tabs, the eye and ...; a filter text adds its clear button
+      // every card holds the eye and ...; a filter text adds its clear button
       const buttons = await unnamed();
       await headerButton(page, 'Filter').click();
       await page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`).fill('a');
@@ -275,8 +275,6 @@ test.describe('with the workspaces of the server', () => {
           'Refresh',
           'Clear filter',
           'Expand',
-          'Open workspace',
-          'Close all tabs',
           'Hide workspace',
           'Workspace menu',
           'Show workspace again'

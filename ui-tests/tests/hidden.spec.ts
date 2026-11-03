@@ -127,9 +127,9 @@ test("ACC-HIDDEN-213-EYE-TOGGLE: the eye of a shown card hides it as Hide worksp
 }) => {
   const all = await setUp(page, 'eyetoggle', 1);
   const [current, other] = all;
-  /** The eye: the third button after the age. */
+  /** The eye: the first button after the age. */
   const cardEye = (id: string) =>
-    card(page, id).locator('.jp-WorkspaceManager-cardActions button').nth(2);
+    card(page, id).locator('.jp-WorkspaceManager-cardActions button').first();
   const hiddenOnServer = async () =>
     (
       await (

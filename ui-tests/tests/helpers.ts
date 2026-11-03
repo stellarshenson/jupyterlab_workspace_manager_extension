@@ -44,7 +44,8 @@ export async function sidebarTo(page: Page, width: number): Promise<void> {
   await page.mouse.down();
   await page.mouse.move(x + width - (await panelWidth(page)), y, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => panelWidth(page)).toBe(width);
+  // the split panel can land 1/64 px short: within 0.5 px
+  await expect.poll(() => panelWidth(page)).toBeCloseTo(width, 0);
 }
 
 /** The texts of the elements under `selector` that are cut: scrollWidth over clientWidth. */
@@ -128,6 +129,14 @@ export async function fromMenu(
 ): Promise<void> {
   await menuButton(page, id).click();
   await menuItem(page, label).click();
+}
+
+/** This window shows workspace `id`: the Open workspace item of its ... menu is disabled. */
+export async function expectCurrent(page: Page, id: string): Promise<void> {
+  await menuButton(page, id).click();
+  await expect(menuItem(page, 'Open workspace')).toHaveClass(/lm-mod-disabled/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.jp-WorkspaceManager-menu')).toHaveCount(0);
 }
 
 /** The colour the server records for a workspace. */
@@ -337,6 +346,18 @@ export async function saved(page: Page, id: string): Promise<any> {
     .data;
 }
 
+/** The tab keys of a workspace's saved layout: its main area, depth first, then its down area. */
+export async function savedTabs(page: Page, id: string): Promise<string[]> {
+  const layout = (await saved(page, id))['layout-restorer:data'];
+  const keys = (area: any): string[] =>
+    !area
+      ? []
+      : area.type === 'tab-area'
+        ? (area.widgets ?? [])
+        : (area.children ?? []).flatMap(keys);
+  return keys(layout?.main?.dock).concat(layout?.down?.widgets ?? []);
+}
+
 /** The workspaces windows other than `window` showed in the last 90 s. */
 export async function shownElsewhere(
   page: Page,
@@ -461,7 +482,11 @@ export async function openSection(page: Page, name: string): Promise<void> {
   }
 }
 
-/** The rows of a card whose label or detail reads `text` exactly, such as `terminal 3`. */
+/** The label of a terminal's row (ACC-TERM-257-SHORT-LABEL): t<n> for a name of digits, any other name as it is. */
+export const rowLabel = (name: string): string =>
+  /^\d+$/.test(name) ? `t${name}` : name;
+
+/** The rows of a card whose label or detail reads `text` exactly, such as `t3`. */
 export const rowOf = (c: Locator, text: string): Locator =>
   c
     .locator('.jp-WorkspaceManager-row')
@@ -511,6 +536,30 @@ export async function kernelIds(page: Page): Promise<string[]> {
 export async function fromRowMenu(row: Locator, label: string): Promise<void> {
   await row.click({ button: 'right' });
   await menuItem(row.page(), label).click();
+}
+
+/** Right-click a row, open its Move to workspace submenu and click workspace `target`. */
+export async function moveTo(row: Locator, target: string): Promise<void> {
+  await fromRowMenu(row, 'Move to workspace');
+  await menuItem(row.page(), target).click();
+}
+
+/** Change a setting of the lab in this page; the default mockSettings keeps it in the browser. */
+export async function setSetting(
+  page: Page,
+  plugin: string,
+  key: string,
+  value: boolean
+): Promise<void> {
+  await page.evaluate(
+    async ({ plugin, key, value }) => {
+      const registry = await (window as any).galata.getPlugin(
+        '@jupyterlab/apputils-extension:settings'
+      );
+      await registry.set(plugin, key, value);
+    },
+    { plugin, key, value }
+  );
 }
 
 /** Start a notebook session with a python3 kernel through the REST API; the test deletes it. */
@@ -588,6 +637,30 @@ export async function processOf(
     '/jupyterlab-workspace-manager-extension/terminals'
   );
   return list.find(t => t.name === name)?.process;
+}
+
+/** The command line the server reports for a terminal's foreground process. */
+export async function commandOf(
+  page: Page,
+  name: string
+): Promise<string | null | undefined> {
+  const list = await serverList(
+    page,
+    '/jupyterlab-workspace-manager-extension/terminals'
+  );
+  return list.find(t => t.name === name)?.command;
+}
+
+/** The working directory the server reports for a terminal's foreground process. */
+export async function cwdOf(
+  page: Page,
+  name: string
+): Promise<string | null | undefined> {
+  const list = await serverList(
+    page,
+    '/jupyterlab-workspace-manager-extension/terminals'
+  );
+  return list.find(t => t.name === name)?.cwd;
 }
 
 /** Run `sleep` in a terminal and wait until the server reports it in the foreground. */

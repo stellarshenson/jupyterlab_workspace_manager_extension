@@ -2,32 +2,48 @@ import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
 import type { Locator, Page } from '@playwright/test';
 
 import {
+  activeTab,
   card,
   cardHeader,
+  commandOf,
   countOf,
   cut,
+  cwdOf,
   deleteWorkspaces,
   dialog,
   enterWorkspace,
+  expectRefused,
   fresh,
   fromRowMenu,
+  languageServer,
   layout,
+  menuItem,
   newTerminalTab,
   openCard,
+  openDocument,
   openSection,
   PANEL,
+  patchMeta,
   PROCESS_START,
   processOf,
+  putNotebook,
   putWorkspace,
   refresh,
   rgba,
+  rowLabel,
   rowOf,
+  saved,
+  savedTabs,
+  secondWindow,
   sectionBody,
+  sectionHeader,
   sendToTerminal,
   serverList,
+  setSetting,
   shows,
   sidebarTo,
   sleepInTerminal,
+  startSession,
   startTerminal,
   terminalNames,
   triangle,
@@ -86,7 +102,7 @@ async function terminalHere(
   await enterWorkspace(page, current);
   const name = await newTerminalTab(page);
   await cardHeader(page, current).click();
-  const row = rowOf(card(page, current), `terminal ${name}`);
+  const row = rowOf(card(page, current), rowLabel(name));
   await expect(row).toBeVisible();
   return { name, row };
 }
@@ -94,12 +110,28 @@ async function terminalHere(
 const SELECTED = /jp-mod-selected/;
 const LABEL = '.jp-WorkspaceManager-rowLabel';
 const PROCESS = '.jp-WorkspaceManager-rowProcess';
+const PATH = '.jp-WorkspaceManager-rowPath';
+const SLOT = '.jp-WorkspaceManager-rowPathSlot';
 const AGE = '.jp-WorkspaceManager-age';
 const DETAIL = '.jp-WorkspaceManager-rowDetail';
+/** The tab label a program sets in the tests of the tab name: OSC 0 sets the title the tab shows. */
+const SET_TITLE = "printf '\\033]0;my tab\\007'\n";
 
-/** The whole text of a terminal row: its name, its process when one is known and its time. */
+/** The label of this window's current tab. */
+const tabTitle = (page: Page): Promise<string> =>
+  page.evaluate(
+    () => (window as any).jupyterapp.shell.currentWidget.title.label
+  );
+
+/** The lines of a row's tooltip. */
+const tooltip = async (row: Locator): Promise<string[]> =>
+  (await row.getAttribute('title'))!.split('\n');
+
+/** The whole text of a terminal row: its name, its process and path when one is known and its time. */
 const rowText = (name: string, process = ''): RegExp =>
-  new RegExp(`^terminal ${name}${process}(now|\\d+m ago)$`);
+  new RegExp(
+    `^${rowLabel(name)}${process}${process && '(/.*)?'}(now|\\d+m ago)$`
+  );
 
 /** A computed style of an element. */
 const css = (l: Locator, property: string): Promise<string> =>
@@ -124,8 +156,12 @@ const oneLine = (row: Locator): Promise<boolean> =>
     [LABEL, PROCESS, AGE]
   );
 
-/** Answer GET of the terminals route with each terminal's process replaced by what `process` gives. */
-const processIs = (page: Page, process: (name: string) => string | null) =>
+/** Answer GET of the terminals route with each terminal's process replaced by what `process` gives, and its path by what `cwd` gives. */
+const processIs = (
+  page: Page,
+  process: (name: string) => string | null,
+  cwd?: () => string | null
+) =>
   page.route(
     /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
     async route => {
@@ -136,14 +172,15 @@ const processIs = (page: Page, process: (name: string) => string | null) =>
       const json = response.ok()
         ? (await response.json()).map((t: any) => ({
             ...t,
-            process: process(t.name)
+            process: process(t.name),
+            cwd: cwd ? cwd() : t.cwd
           }))
         : undefined;
       await route.fulfill({ response, json });
     }
   );
 
-test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a terminal row, in a card and in TERMINALS, shows terminal <n>, the process the server reports and its age with no selection, the process in inverse layout colour 1 at the size of the time; selecting the row adds no text; another program shows at the next reload', async ({
+test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a terminal row, in a card and in TERMINALS, shows its short label, the process the server reports and its age with no selection, the process in inverse layout colour 1 at the size of the time; selecting the row adds no text; another program shows at the next reload', async ({
   page
 }) => {
   // a shell starts and then runs a program, twice over
@@ -183,7 +220,7 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
 
     // the TERMINALS section, with no selection and then selected
     await openSection(page, 'terminals');
-    const listed = rowOf(sectionBody(page, 'terminals'), `terminal ${name}`);
+    const listed = rowOf(sectionBody(page, 'terminals'), rowLabel(name));
     await expect(listed).not.toHaveClass(SELECTED);
     await expect(listed.locator(PROCESS)).toBeVisible();
     await expect(listed).toHaveText(rowText(name, 'sleep'));
@@ -231,7 +268,7 @@ test('ACC-TERM-236-PROCESS-NARROW: at a 250 px sidebar the process of a terminal
     layout([`terminal:${short}`, `terminal:${wide.name}`])
   );
   const check = async (scope: Locator) => {
-    const row = rowOf(scope, `terminal ${short}`);
+    const row = rowOf(scope, rowLabel(short));
     await expect(row.locator(PROCESS)).toHaveText(long);
     expect(await cut(row, PROCESS)).toEqual([long]);
     expect(await css(row.locator(PROCESS), 'textOverflow')).toBe('ellipsis');
@@ -240,9 +277,9 @@ test('ACC-TERM-236-PROCESS-NARROW: at a 250 px sidebar the process of a terminal
     expect((await shows(row, PROCESS)).inside).toBe(true);
     expect(await oneLine(row)).toBe(true);
 
-    const cramped = rowOf(scope, `terminal ${wide.name}`);
+    const cramped = rowOf(scope, rowLabel(wide.name));
     expect((await shows(cramped, PROCESS)).width).toBe(0);
-    expect(await cut(cramped, LABEL)).toEqual([`terminal ${wide.name}`]);
+    expect(await cut(cramped, LABEL)).toEqual([rowLabel(wide.name)]);
     expect(await shows(cramped, AGE)).toMatchObject({
       inside: true,
       whole: true
@@ -282,14 +319,14 @@ test('ACC-TERM-44-PROCESS-UNREAD: a terminal row whose process cannot be read, s
   try {
     await enterWorkspace(page, current);
     await triangle(page, held).click();
-    const row = rowOf(card(page, held), `terminal ${terminal}`);
+    const row = rowOf(card(page, held), rowLabel(terminal));
     // the same row shows the process while the server reports one
     await expect(row.locator(PROCESS)).toHaveText('known');
     unread = true;
     await refresh(page);
     await check(row);
     await openSection(page, 'terminals');
-    await check(rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`));
+    await check(rowOf(sectionBody(page, 'terminals'), rowLabel(terminal)));
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, held]);
@@ -320,7 +357,7 @@ test("ACC-TERM-45-ACTIVITY: a terminal row shows the time since the terminal's l
   }
 });
 
-test('ACC-PANEL-185-ROW-TOOLTIP: the tooltip of a terminal row is its name, the process and when it was last active, not the title of its tab', async ({
+test('ACC-PANEL-185-ROW-TOOLTIP: the tooltip of a terminal row is its name, the process, its path and when it was last active; a title a program sets takes its own Tab line, and the terminal keeps its own details', async ({
   page
 }) => {
   const current = fresh('title');
@@ -330,29 +367,481 @@ test('ACC-PANEL-185-ROW-TOOLTIP: the tooltip of a terminal row is its name, the 
     await expect
       .poll(async () => {
         await refresh(page);
-        return (await row.getAttribute('title'))!.split('\n')[1];
+        return (await tooltip(row))[1];
       }, UNDER_LOAD)
-      .toBe('bash');
-    const tabTitle = () =>
-      page.evaluate(
-        () => (window as any).jupyterapp.shell.currentWidget.title.label
-      );
-    const age = await row.locator('.jp-WorkspaceManager-age').textContent();
-    await expect(row).toHaveAttribute(
-      'title',
-      `terminal ${name}\nbash\n${age}`
-    );
+      .toBe('Process: bash');
+    const age = await row.locator(AGE).textContent();
+    const lines = await tooltip(row);
+    expect(lines.slice(0, 4)).toEqual([
+      `terminal ${name}`,
+      'Process: bash',
+      `Command: ${await commandOf(page, name)}`,
+      `Path: ${await cwdOf(page, name)}`
+    ]);
+    expect(lines[4]).toContain(`Last activity: ${age} (`);
 
     // OSC 2 sets the window title, which the terminal tab shows; the tooltip
-    // keeps the terminal's own details
+    // holds it on its own line and keeps the terminal's own details
     await typeInTerminal(page, `printf '\\033]2;%s\\007' ${title}\n`);
-    await expect.poll(tabTitle, UNDER_LOAD).toBe(title);
+    await expect.poll(() => tabTitle(page), UNDER_LOAD).toBe(title);
     await refresh(page);
-    const lines = (await row.getAttribute('title'))!.split('\n');
-    expect(lines.slice(0, 2)).toEqual([`terminal ${name}`, 'bash']);
-    expect(lines).not.toContain(title);
+    expect((await tooltip(row)).slice(0, 3)).toEqual([
+      `terminal ${name}`,
+      `Tab: ${title}`,
+      'Process: bash'
+    ]);
   } finally {
     await deleteWorkspaces(page, [current]);
+  }
+});
+
+/** As terminalHere, with the shell moved to `path`, which it creates; the row shows that path. */
+async function terminalIn(
+  page: IJupyterLabPageFixture,
+  current: string,
+  path: string
+): Promise<{ name: string; row: Locator }> {
+  const { name, row } = await terminalHere(page, current);
+  await sendToTerminal(page, name, `mkdir -p ${path} && cd ${path}\n`);
+  await expect
+    .poll(afterRefresh(page, row.locator(`${PATH} bdi`)), PROCESS_START)
+    .toBe(path);
+  return { name, row };
+}
+
+test('ACC-TERM-253-PATH-TOOLTIP: the tooltip of a terminal row, in a card and in TERMINALS, is its name, the process, the command, the path on its own line, the time and the workspaces', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const current = fresh('pathtip');
+  const path = `/tmp/${fresh('wm-tip')}`;
+  try {
+    const { name, row } = await terminalIn(page, current, path);
+    const process = await processOf(page, name);
+    const command = await commandOf(page, name);
+    const check = async (r: Locator) => {
+      const age = await r.locator(AGE).textContent();
+      const lines = await tooltip(r);
+      expect(lines.slice(0, 4)).toEqual([
+        `terminal ${name}`,
+        `Process: ${process}`,
+        `Command: ${command}`,
+        `Path: ${path}`
+      ]);
+      expect(lines[4]).toContain(`Last activity: ${age} (`);
+      expect(lines.slice(5)).toEqual([`Workspaces: ${current}`]);
+    };
+    await check(row);
+    await openSection(page, 'terminals');
+    await check(rowOf(sectionBody(page, 'terminals'), rowLabel(name)));
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+/** The left and right edges of a terminal row's parts, and the width of the process text. */
+const edges = (row: Locator) =>
+  row.evaluate(
+    (r, [label, process, path, age]) => {
+      const box = (selector: string) => {
+        const b = r.querySelector(selector)?.getBoundingClientRect();
+        return { left: b?.left, right: b?.right };
+      };
+      const text = document.createRange();
+      text.selectNodeContents(r.querySelector(process)!);
+      return {
+        label: box(label),
+        process: box(process),
+        path: box(path),
+        age: box(age),
+        processText: text.getBoundingClientRect().width
+      };
+    },
+    [LABEL, PROCESS, PATH, AGE]
+  );
+
+test('ACC-TERM-254-PATH-WIDTH: the path, in a card and in TERMINALS, stands after the process in the free width: the name and the process stay whole at the widths they have without it, the time does not move, at a width with none left the path has zero width while the process gives way, and under 32 px of free width it is hidden', async ({
+  page
+}) => {
+  const long = 'a-program-whose-name-has-forty-letters-x';
+  let process = 'sleep';
+  let cwd: string | null = null;
+  await processIs(
+    page,
+    () => process,
+    () => cwd
+  );
+  // short enough to stand whole beside the icon, the process and the time at 250 px
+  const terminal = `t${Math.floor(Math.random() * 46656).toString(36)}`;
+  expect(
+    (
+      await page.request.post('/api/terminals', { data: { name: terminal } })
+    ).ok()
+  ).toBe(true);
+  const current = fresh('pathwidth');
+  const held = `${current}-held`;
+  await putWorkspace(page, held, layout([`terminal:${terminal}`]));
+  const check = async (row: Locator) => {
+    process = 'sleep';
+    cwd = null;
+    await sidebarTo(page, 500);
+    await refresh(page);
+    await expect(row.locator(PATH)).toHaveCount(0);
+    const without = await edges(row);
+
+    const path = `/tmp/${'a-directory-with-a-long-name/'.repeat(4)}end`;
+    cwd = path;
+    await refresh(page);
+    await expect(row.locator(PATH)).toHaveCount(1);
+    const shown = await edges(row);
+    expect(shown.label).toEqual(without.label);
+    expect(shown.process.left).toBe(without.process.left);
+    expect(shown.processText).toBe(without.processText);
+    expect(shown.age).toEqual(without.age);
+    expect(await cut(row, LABEL)).toEqual([]);
+    expect(await cut(row, PROCESS)).toEqual([]);
+    expect(shown.process.right!).toBeLessThanOrEqual(shown.path.left!);
+    expect(shown.path.left!).toBeLessThan(shown.path.right!);
+    expect(shown.path.right!).toBeLessThan(shown.age.left!);
+    expect(await oneLine(row)).toBe(true);
+
+    // the name and the process fill the row: as ACC-TERM-236-PROCESS-NARROW, with no width for the path
+    process = long;
+    cwd = null;
+    await sidebarTo(page, 250);
+    await refresh(page);
+    await expect(row.locator(PROCESS)).toHaveText(long);
+    await expect(row.locator(PATH)).toHaveCount(0);
+    const narrow = await edges(row);
+
+    cwd = path;
+    await refresh(page);
+    await expect(row.locator(PATH)).toHaveCount(1);
+    expect((await shows(row, PATH)).width).toBe(0);
+    expect(await cut(row, PROCESS)).toEqual([long]);
+    expect(await cut(row, LABEL)).toEqual([]);
+    expect(await shows(row, AGE)).toMatchObject({ inside: true, whole: true });
+    expect(await oneLine(row)).toBe(true);
+    // a path of no width leaves the row as it is without one
+    const squeezed = await edges(row);
+    expect(squeezed.label).toEqual(narrow.label);
+    expect(squeezed.process).toEqual(narrow.process);
+    expect(squeezed.age).toEqual(narrow.age);
+
+    // the 32 px threshold from both sides: the free width follows the sidebar 1:1 while the process stays whole
+    await sidebarTo(page, 500);
+    const free = await row
+      .locator(SLOT)
+      .evaluate(n => n.getBoundingClientRect().width);
+    const at = async (width: number) => {
+      await sidebarTo(page, 500 - Math.round(free - width));
+      await expect(row.locator(PROCESS)).toHaveText(long);
+      expect(await cut(row, PROCESS)).toEqual([]);
+      return css(row.locator(PATH), 'visibility');
+    };
+    expect(await at(31)).toBe('hidden');
+    expect(await at(33)).toBe('visible');
+  };
+  try {
+    await enterWorkspace(page, current);
+    await triangle(page, held).click();
+    await check(rowOf(card(page, held), rowLabel(terminal)));
+    await openSection(page, 'terminals');
+    await check(rowOf(sectionBody(page, 'terminals'), rowLabel(terminal)));
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current, held]);
+  }
+});
+
+test('ACC-TERM-255-PATH-TAIL: a path wider than the free width, in a card and in TERMINALS, keeps its end in view with the ellipsis at its start, and the characters stay in their own order', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const current = fresh('pathtail');
+  const path = `/tmp/${fresh('wm-tail')}/${'a-directory-with-a-long-name/'.repeat(4)}end`;
+  const check = async (row: Locator) => {
+    await expect(row.locator(`${PATH} bdi`)).toHaveText(path);
+    expect(await cut(row, PATH)).toEqual([path]);
+    expect(await css(row.locator(PATH), 'textOverflow')).toBe('ellipsis');
+    const { box, first, last } = await row.locator(PATH).evaluate(span => {
+      const text = span.querySelector('bdi')!.firstChild as Text;
+      const character = (at: number) => {
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + 1);
+        const { left, right } = range.getBoundingClientRect();
+        return { left, right };
+      };
+      const { left, right } = span.getBoundingClientRect();
+      return {
+        box: { left, right },
+        first: character(0),
+        last: character(text.length - 1)
+      };
+    });
+    expect(box.left).toBeLessThan(box.right);
+    expect(last.left).toBeGreaterThanOrEqual(box.left);
+    expect(last.right).toBeLessThanOrEqual(box.right);
+    expect(first.right).toBeLessThan(box.left);
+  };
+  try {
+    const { name, row } = await terminalIn(page, current, path);
+    await check(row);
+    await openSection(page, 'terminals');
+    await check(rowOf(sectionBody(page, 'terminals'), rowLabel(name)));
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-TERM-257-SHORT-LABEL: a numbered terminal reads t<n> in a card and in TERMINALS and a named one reads its name; the tooltip and the shutdown dialog keep terminal <n>', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const named = await startTerminal(page);
+  const current = fresh('label');
+  const other = `${current}-other`;
+  try {
+    const { name, row } = await terminalHere(page, current);
+    expect(name).toMatch(/^\d+$/);
+    await expect(row.locator(LABEL)).toHaveText(`t${name}`);
+    expect((await tooltip(row))[0]).toBe(`terminal ${name}`);
+
+    await putWorkspace(page, other, layout([`terminal:${name}`]));
+    await refresh(page);
+    await fromRowMenu(row, 'Stop terminal');
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      `Shut down terminal ${name}?`
+    );
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Cancel' })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+
+    await openSection(page, 'terminals');
+    const list = sectionBody(page, 'terminals');
+    await expect(rowOf(list, `t${name}`).locator(LABEL)).toHaveText(`t${name}`);
+    expect((await tooltip(rowOf(list, `t${name}`)))[0]).toBe(
+      `terminal ${name}`
+    );
+    // a named terminal stays as it is: build must not read tbuild
+    await expect(rowOf(list, named).locator(LABEL)).toHaveText(named);
+    expect((await tooltip(rowOf(list, named)))[0]).toBe(`terminal ${named}`);
+  } finally {
+    await page.request.delete(`/api/terminals/${named}`);
+    await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test('ACC-TERM-259-TOOLTIP-DETAILS: the tooltip of a terminal row, in a card and in TERMINALS, holds its seven lines in order, the exact local time among them, and neither a PID nor a memory figure', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const activity = '2026-10-02T10:15:30.000Z';
+  await page.route(
+    /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+    async route => {
+      if (route.request().method() !== 'GET') {
+        return route.fallback();
+      }
+      const response = await route.fetch();
+      const json = response.ok()
+        ? (await response.json()).map((t: any) => ({
+            ...t,
+            process: 'vim',
+            command: 'vim notes.md',
+            cwd: '/srv/work',
+            last_activity: activity
+          }))
+        : undefined;
+      await route.fulfill({ response, json });
+    }
+  );
+  const current = fresh('tooltip');
+  const other = `${current}-other`;
+  try {
+    const { name, row } = await terminalHere(page, current);
+    await putWorkspace(page, other, layout([`terminal:${name}`]));
+    await typeInTerminal(page, SET_TITLE);
+    await expect.poll(() => tabTitle(page), PROCESS_START).toBe('my tab');
+    await refresh(page);
+    const exact = await page.evaluate(
+      time => new Date(time).toLocaleString(),
+      activity
+    );
+    const check = async (r: Locator) => {
+      const age = await r.locator(AGE).textContent();
+      const lines = await tooltip(r);
+      expect(lines.slice(0, 6)).toEqual([
+        `terminal ${name}`,
+        'Tab: my tab',
+        'Process: vim',
+        'Command: vim notes.md',
+        'Path: /srv/work',
+        `Last activity: ${age} (${exact})`
+      ]);
+      expect(lines[6].replace('Workspaces: ', '').split(', ').sort()).toEqual(
+        [current, other].sort()
+      );
+      expect(lines).toHaveLength(7);
+    };
+    await check(row);
+    await openSection(page, 'terminals');
+    await check(rowOf(sectionBody(page, 'terminals'), rowLabel(name)));
+  } finally {
+    await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test('ACC-TERM-261-TAB-NAME: a terminal row, in a card and in TERMINALS, shows the title a program gave its tab with no process text, and its tooltip holds the Tab and Process lines; a terminal with the default title, or with no tab, shows its process', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const noTab = await startTerminal(page);
+  const current = fresh('tabname');
+  try {
+    const { name, row } = await terminalHere(page, current);
+    await expect
+      .poll(afterRefresh(page, row.locator(PROCESS)), PROCESS_START)
+      .toBe('bash');
+    await expect
+      .poll(() => tabTitle(page), UNDER_LOAD)
+      .toBe(`Terminal ${name}`);
+    expect((await tooltip(row))[1]).toBe('Process: bash');
+
+    await typeInTerminal(page, SET_TITLE);
+    await expect.poll(() => tabTitle(page), UNDER_LOAD).toBe('my tab');
+    await refresh(page);
+    const check = async (r: Locator) => {
+      await expect(r.locator(PROCESS)).toHaveText('my tab');
+      await expect(r).toHaveText(rowText(name, 'my tab'));
+      await expect(r.getByText('bash', { exact: true })).toHaveCount(0);
+      expect((await tooltip(r)).slice(1, 3)).toEqual([
+        'Tab: my tab',
+        'Process: bash'
+      ]);
+    };
+    await check(row);
+    await openSection(page, 'terminals');
+    const list = sectionBody(page, 'terminals');
+    await check(rowOf(list, rowLabel(name)));
+    await expect
+      .poll(
+        afterRefresh(page, rowOf(list, noTab).locator(PROCESS)),
+        PROCESS_START
+      )
+      .toBe('bash');
+  } finally {
+    await page.request.delete(`/api/terminals/${noTab}`);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+for (const shutdownOnClose of [true, false]) {
+  test(`ACC-LISTS-266-DETACH, ACC-PANEL-245-ROW-MENU: with shutdownOnClose ${shutdownOnClose} the menu of a terminal row lists its four entries and Detach from workspace closes the terminal's tab in this window; the terminal keeps running and shows in TERMINALS`, async ({
+    page
+  }) => {
+    const current = fresh('detach');
+    const stops: string[] = [];
+    page.on('request', request => {
+      if (
+        request.method() === 'DELETE' &&
+        request.url().includes('/api/terminals/')
+      ) {
+        stops.push(request.url());
+      }
+    });
+    let terminal = '';
+    try {
+      await enterWorkspace(page, current);
+      await setSetting(
+        page,
+        '@jupyterlab/terminal-extension:plugin',
+        'shutdownOnClose',
+        shutdownOnClose
+      );
+      terminal = await newTerminalTab(page);
+      // the tab took the setting: the guard has something to override
+      expect(
+        await page.evaluate(() =>
+          (window as any).jupyterapp.shell.currentWidget.content.getOption(
+            'shutdownOnClose'
+          )
+        )
+      ).toBe(shutdownOnClose);
+      await openCard(page, current);
+      const row = rowOf(card(page, current), rowLabel(terminal));
+      await expect(row).toBeVisible(UNDER_LOAD);
+
+      await row.click({ button: 'right' });
+      await expect(
+        page.locator('.jp-WorkspaceManager-menu .lm-Menu-itemLabel')
+      ).toHaveText([
+        'Close tab',
+        'Detach from workspace',
+        'Move to workspace',
+        'Stop terminal'
+      ]);
+      await menuItem(page, 'Detach from workspace').click();
+      await expect
+        .poll(
+          async () => (await terminalTabs(page)).map(t => t.name),
+          UNDER_LOAD
+        )
+        .not.toContain(terminal);
+      await expect(row).toHaveCount(0, UNDER_LOAD);
+      await refresh(page);
+      expect(stops).toEqual([]);
+      expect(await terminalNames(page)).toContain(terminal);
+      await openSection(page, 'terminals');
+      await expect(
+        rowOf(sectionBody(page, 'terminals'), rowLabel(terminal))
+      ).toBeVisible(UNDER_LOAD);
+    } finally {
+      await page.request.delete(`/api/terminals/${terminal}`);
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+}
+
+test("ACC-LISTS-266-DETACH: Detach from workspace on another workspace's card takes the terminal out of its saved layout and the terminal runs on; refused while another window shows that workspace", async ({
+  page
+}) => {
+  // a second window loads
+  test.setTimeout(120000);
+  const [gone, stays] = [await startTerminal(page), await startTerminal(page)];
+  const current = fresh('detachother');
+  const other = `${current}-other`;
+  await putWorkspace(
+    page,
+    other,
+    layout([`terminal:${gone}`, `terminal:${stays}`])
+  );
+  let second: Page | undefined;
+  try {
+    await enterWorkspace(page, current);
+    await triangle(page, other).click();
+    const c = card(page, other);
+    await fromRowMenu(rowOf(c, rowLabel(gone)), 'Detach from workspace');
+    await expect
+      .poll(() => savedTabs(page, other), UNDER_LOAD)
+      .toEqual([`terminal:${stays}`]);
+    expect(Object.keys(await saved(page, other))).not.toContain(
+      `terminal:${gone}`
+    );
+    expect(await terminalNames(page)).toContain(gone);
+
+    second = await secondWindow(page, other);
+    await fromRowMenu(rowOf(c, rowLabel(stays)), 'Detach from workspace');
+    await expectRefused(page, 'Detach from workspace');
+    expect(await savedTabs(page, other)).toEqual([`terminal:${stays}`]);
+  } finally {
+    await second?.close();
+    for (const name of [gone, stays]) {
+      await page.request.delete(`/api/terminals/${name}`);
+    }
+    await deleteWorkspaces(page, [current, other]);
   }
 });
 
@@ -367,12 +856,12 @@ test('ACC-TERM-111-SHUTDOWN: Stop terminal ends the terminal, and its row leaves
     await enterWorkspace(page, current);
     await triangle(page, other).click();
     await fromRowMenu(
-      rowOf(card(page, other), `terminal ${terminal}`),
+      rowOf(card(page, other), rowLabel(terminal)),
       'Stop terminal'
     );
     // the route leaves out the ended pty, so the row leaves at the load after the DELETE
     await expect(
-      page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
+      page.locator(PANEL).getByText(rowLabel(terminal), { exact: true })
     ).toHaveCount(0);
     await expect(countOf(card(page, other), 'Terminals')).toHaveText('0');
     await expect
@@ -394,7 +883,7 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
   const [a, b] = [`${current}-a`, `${current}-b`];
   await putWorkspace(page, a, layout([`terminal:${terminal}`]));
   await putWorkspace(page, b, layout([`terminal:${terminal}`]));
-  const row = () => rowOf(card(page, a), `terminal ${terminal}`);
+  const row = () => rowOf(card(page, a), rowLabel(terminal));
   try {
     await enterWorkspace(page, current);
     await triangle(page, a).click();
@@ -416,7 +905,7 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
     await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
     // the route leaves out the ended pty at the load after the DELETE
     await expect(
-      page.locator(PANEL).getByText(`terminal ${terminal}`, { exact: true })
+      page.locator(PANEL).getByText(rowLabel(terminal), { exact: true })
     ).toHaveCount(0);
     for (const id of [a, b]) {
       await openCard(page, id);
@@ -441,8 +930,7 @@ test('ACC-TERM-215-TAB-MATCH: a click on a terminal row activates the tab of its
   try {
     await enterWorkspace(page, current);
     await openSection(page, 'terminals');
-    const listed = () =>
-      rowOf(sectionBody(page, 'terminals'), `terminal ${name}`);
+    const listed = () => rowOf(sectionBody(page, 'terminals'), rowLabel(name));
     // the row opens the running terminal in a tab of this window
     await listed().click();
     await expect
@@ -476,7 +964,7 @@ test('ACC-TERM-215-TAB-MATCH: a click on a terminal row activates the tab of its
     await openSection(page, 'workspaces');
     // this window's card lists the new terminal through the kept tab of the old one
     await openCard(page, current);
-    const cardRow = rowOf(card(page, current), `terminal ${name}`);
+    const cardRow = rowOf(card(page, current), rowLabel(name));
     await expect(cardRow).toHaveCount(1, UNDER_LOAD);
     await cardRow.click();
     // a new tab opens, and the tab of the ended terminal stays inactive
@@ -505,7 +993,7 @@ test('ACC-TERM-216-TAB-KEPT: once a row opened a tab, every later click activate
   try {
     await enterWorkspace(page, current);
     await openSection(page, 'terminals');
-    const row = () => rowOf(sectionBody(page, 'terminals'), `terminal ${name}`);
+    const row = () => rowOf(sectionBody(page, 'terminals'), rowLabel(name));
     await row().click();
     await expect
       .poll(async () => (await terminalTabs(page)).length, UNDER_LOAD)
@@ -547,4 +1035,251 @@ test('ACC-TERM-216-TAB-KEPT: once a row opened a tab, every later click activate
     }
     await deleteWorkspaces(page, [current]);
   }
+});
+
+test('DEF-PANEL-76-TWO-TABS: two clicks on a terminal row about 110 ms apart, the second while the first is opening the tab, open one tab', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const name = await startTerminal(page);
+  const current = fresh('twotabs');
+  try {
+    await enterWorkspace(page, current);
+    await openSection(page, 'terminals');
+    const row = rowOf(sectionBody(page, 'terminals'), rowLabel(name));
+    await row.click();
+    await page.waitForTimeout(110);
+    // the mouse stays on the row: a locator's click would first spend time on its checks
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await terminalTabs(page)).length, UNDER_LOAD)
+      .toBe(1);
+    // the second tab of the defect lands just after the first
+    await page.waitForTimeout(1500);
+    expect((await terminalTabs(page)).length).toBe(1);
+  } finally {
+    await page.request.delete(`/api/terminals/${name}`);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test.describe('rows lit while they are worked with', () => {
+  // the KERNELS row of a session started by REST; Galata would list only its page's own
+  test.use({ kernels: null, sessions: null });
+
+  /** The tab in the main area's tab bar that reads `label`. */
+  const tabOf = (page: Page, label: string): Locator =>
+    page
+      .locator('#jp-main-dock-panel .lm-TabBar-tab')
+      .filter({ has: page.getByText(label, { exact: true }) });
+
+  /** The rows of the panel that are lit. */
+  const lit = (page: Page): Locator =>
+    page.locator(`${PANEL} .jp-mod-selected`);
+
+  test('ACC-LISTS-260-ROW-LIT: a terminal row clicked in a card stays lit after its tab takes the focus; another tab leaves no row lit, and going back by the tab bar lights none; ArrowDown still moves the selection', async ({
+    page,
+    tmpPath
+  }) => {
+    test.setTimeout(120000);
+    const current = fresh('litterm');
+    const doc = `${tmpPath}/lit.txt`;
+    await page.contents.uploadContent('text', 'text', doc);
+    try {
+      const { name, row } = await terminalHere(page, current);
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(name);
+      const terminalTabLabel = await tabTitle(page);
+      await openDocument(page, doc);
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+      await expect(lit(page)).toHaveCount(0);
+
+      // the click: the row lights, the terminal tab takes the focus, the row stays lit
+      await row.click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(name);
+      await expect(terminalTab(page).locator('textarea')).toBeFocused();
+      await expect(row).toHaveClass(SELECTED);
+
+      // another tab: no row is lit
+      await tabOf(page, 'lit.txt').click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+      await expect(lit(page)).toHaveCount(0);
+
+      // back by the tab bar: no row lights by itself
+      await tabOf(page, terminalTabLabel).click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(name);
+      await expect(terminalTab(page).locator('textarea')).toBeFocused();
+      await expect(lit(page)).toHaveCount(0);
+
+      const rows = card(page, current).locator('.jp-WorkspaceManager-row');
+      await rows.first().focus();
+      await expect(rows.first()).toHaveClass(SELECTED);
+      await page.keyboard.press('ArrowDown');
+      await expect(rows.nth(1)).toBeFocused();
+      await expect(rows.nth(1)).toHaveClass(SELECTED);
+      await expect(lit(page)).toHaveCount(1);
+    } finally {
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+
+  test('ACC-LISTS-260-ROW-LIT: a language server row, which has no tab, is lit while it holds the focus; a click in the main area leaves no row lit', async ({
+    page,
+    tmpPath
+  }) => {
+    const current = fresh('litserver');
+    const doc = `${tmpPath}/lit.txt`;
+    await page.contents.uploadContent('text', 'text', doc);
+    try {
+      await enterWorkspace(page, current);
+      await openDocument(page, doc);
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+      await languageServer(page, true);
+      await openSection(page, 'servers');
+      const row = rowOf(sectionBody(page, 'servers'), 'fake-lsp (python)');
+      await row.focus();
+      await expect(row).toHaveClass(SELECTED);
+
+      await page.locator('#jp-main-dock-panel .jp-FileEditor:visible').click();
+      await expect(row).not.toHaveClass(SELECTED);
+      await expect(lit(page)).toHaveCount(0);
+    } finally {
+      await languageServer(page, false);
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+
+  test('ACC-LISTS-260-ROW-LIT: a KERNELS row whose click opens its notebook stays lit with its detail lines while the notebook is current; another tab leaves it unlit', async ({
+    page,
+    tmpPath
+  }) => {
+    test.setTimeout(120000);
+    const current = fresh('litkernel');
+    const notebook = `${tmpPath}/lit.ipynb`;
+    const doc = `${tmpPath}/lit.txt`;
+    await putNotebook(page, notebook);
+    await page.contents.uploadContent('text', 'text', doc);
+    const session = await startSession(page, notebook);
+    try {
+      await enterWorkspace(page, current);
+      await openDocument(page, doc);
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+      await openSection(page, 'kernels');
+      const row = rowOf(sectionBody(page, 'kernels'), 'lit.ipynb');
+
+      await row.click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(notebook);
+      await expect(row).toHaveClass(SELECTED);
+      await expect(row.locator(DETAIL).first()).toBeVisible();
+
+      await tabOf(page, 'lit.txt').click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+      await expect(row).not.toHaveClass(SELECTED);
+      await expect(row.locator(DETAIL)).toHaveCount(0);
+    } finally {
+      await page.request.delete(`/api/sessions/${session.id}`);
+      await page.request.delete(`/api/kernels/${session.kernel.id}`);
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+
+  test('ACC-LISTS-260-ROW-LIT: a press held on the TERMINALS band opens it while a KERNELS row is lit; the lit row keeps its detail lines until the press ends, so the band stays under the pointer', async ({
+    page,
+    tmpPath
+  }) => {
+    const current = fresh('litpress');
+    const notebook = `${tmpPath}/press.ipynb`;
+    await putNotebook(page, notebook);
+    const session = await startSession(page, notebook);
+    try {
+      await enterWorkspace(page, current);
+      await openSection(page, 'kernels');
+      const row = rowOf(sectionBody(page, 'kernels'), 'press.ipynb');
+      await row.focus();
+      await expect(row.locator(DETAIL).first()).toBeVisible();
+
+      const band = sectionHeader(page, 'terminals');
+      const box = (await band.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      // a person's press lasts several frames, the panel renders inside it
+      await page.waitForTimeout(150);
+      expect((await band.boundingBox())!.y).toBe(box.y);
+      await page.mouse.up();
+      await expect(band).toHaveAttribute('aria-expanded', 'true');
+    } finally {
+      await page.request.delete(`/api/sessions/${session.id}`);
+      await page.request.delete(`/api/kernels/${session.kernel.id}`);
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+
+  test("DEF-PANEL-77-BAND-PRESS: a row lit by focus is unlit after another card's header is dragged above a third card's and dropped, with the focus on the dragged header", async ({
+    page
+  }) => {
+    const current = fresh('litdrag');
+    const [a, b] = [`${current}-a`, `${current}-b`];
+    const placed = [current, a, b];
+    const order = () =>
+      page
+        .locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`)
+        .evaluateAll(cards => cards.map(c => c.getAttribute('data-workspace')));
+    try {
+      for (const [position, id] of placed.entries()) {
+        await patchMeta(page, id, { position });
+        await putWorkspace(
+          page,
+          id,
+          id === a ? layout(['editor:held.txt']) : {}
+        );
+      }
+      await enterWorkspace(page, current);
+      await expect.poll(order).toEqual(placed);
+      await openCard(page, a);
+      const row = rowOf(card(page, a), 'held.txt');
+      await row.focus();
+      await expect(row).toHaveClass(SELECTED);
+
+      // a native drag: Chromium sends pointercancel, drop and dragend, and no mouseup
+      await cardHeader(page, b).dragTo(cardHeader(page, current), {
+        sourcePosition: { x: 50, y: 10 },
+        targetPosition: { x: 50, y: 2 }
+      });
+      await expect.poll(order).toEqual([b, current, a]);
+      await expect(cardHeader(page, b)).toBeFocused();
+      await expect(lit(page)).toHaveCount(0);
+    } finally {
+      await deleteWorkspaces(page, placed);
+    }
+  });
+
+  test('ACC-LISTS-260-ROW-LIT: a row whose tab is not current loses the light while its context menu is open and lights again when the focus returns', async ({
+    page,
+    tmpPath
+  }) => {
+    test.setTimeout(120000);
+    const current = fresh('litmenu');
+    const doc = `${tmpPath}/lit.txt`;
+    await page.contents.uploadContent('text', 'text', doc);
+    try {
+      const { row } = await terminalHere(page, current);
+      await openDocument(page, doc);
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+      await row.focus();
+      await expect(row).toHaveClass(SELECTED);
+
+      const menu = page.locator('.jp-WorkspaceManager-menu');
+      await row.click({ button: 'right' });
+      await expect(menu).toBeVisible();
+      await expect(lit(page)).toHaveCount(0);
+
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(row).toBeFocused();
+      await expect(row).toHaveClass(SELECTED);
+      await expect(lit(page)).toHaveCount(1);
+    } finally {
+      await deleteWorkspaces(page, [current]);
+    }
+  });
 });

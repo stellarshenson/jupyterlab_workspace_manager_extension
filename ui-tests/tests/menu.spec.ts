@@ -11,6 +11,7 @@ import {
   fresh,
   fromMenu,
   gotoWorkspace,
+  headerButton,
   listed,
   menuButton,
   menuItem,
@@ -21,6 +22,7 @@ import {
   putWorkspace,
   refresh,
   rgb,
+  sectionHeader,
   shade,
   stripColour,
   UNDER_LOAD
@@ -87,19 +89,80 @@ test('ACC-ACCORD-29-MENU: the ... button opens the workspace menu with its nine 
   }
 });
 
-test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icons, the swatch, and the danger class on Delete workspace alone', async ({
+test("ACC-ACCORD-263-HEADER-MENU: a right-click on a card header, its buttons included, opens the ... menu at the pointer; the context-menu key opens it below the header; a hidden card's header opens no menu; a section band opens no workspace menu", async ({
+  page
+}) => {
+  const { current, other } = await setUp(page, 'hdrmenu');
+  const hidden = `${current}-hidden`;
+  const menu = page.locator('.jp-WorkspaceManager-menu');
+  const labels = items(page).locator('.lm-Menu-itemLabel');
+  const closed = async () => {
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+  };
+  const corner = async () => {
+    const box = (await menu.boundingBox())!;
+    return [Math.round(box.x), Math.round(box.y)];
+  };
+  try {
+    await putWorkspace(page, hidden);
+    await patchMeta(page, hidden, { hidden: true });
+    await headerButton(page, 'Show hidden workspaces').click();
+    await refresh(page);
+    await expect(card(page, hidden)).toBeVisible();
+
+    for (const id of [current, other]) {
+      const box = (await cardHeader(page, id).boundingBox())!;
+      // whole pixels: a mouse event's position has no fraction
+      const [x, y] = [box.x + box.width / 2, box.y + box.height / 2].map(
+        Math.round
+      );
+      await page.mouse.click(x, y, { button: 'right' });
+      await expect(labels).toHaveText(MENU);
+      expect(await corner()).toEqual([x, y]);
+      await closed();
+    }
+
+    // a button of the header: the enabled eye of another card, the disabled eye of this one
+    for (const id of [other, current]) {
+      await cardHeader(page, id)
+        .getByRole('button', { name: 'Hide workspace' })
+        .click({ button: 'right', force: true });
+      await expect(labels).toHaveText(MENU);
+      await closed();
+    }
+
+    await cardHeader(page, other).focus();
+    await page.keyboard.press('ContextMenu');
+    await expect(labels).toHaveText(MENU);
+    const header = (await cardHeader(page, other).boundingBox())!;
+    expect(await corner()).toEqual([
+      Math.round(header.x),
+      Math.round(header.y + header.height)
+    ]);
+    await closed();
+
+    await cardHeader(page, hidden).click({ button: 'right' });
+    await expect(page.locator('.lm-Menu')).toHaveCount(0);
+
+    for (const name of ['kernels', 'terminals', 'servers']) {
+      await sectionHeader(page, name).click({ button: 'right' });
+      await expect(menu).toHaveCount(0);
+      await expect(
+        page.locator('.lm-Menu-itemLabel', { hasText: 'Open workspace' })
+      ).toHaveCount(0);
+      await page.keyboard.press('Escape');
+    }
+  } finally {
+    await deleteWorkspaces(page, [current, other, hidden]);
+  }
+});
+
+test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, openIcon and closeTabsIcon, the swatch, and the danger class on Delete workspace alone', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'icons', 'mint');
   try {
-    await cardHeader(page, other).hover();
-    const headerIcon = (label: string) =>
-      card(page, other)
-        .locator(`button[aria-label="${label}"] svg`)
-        .getAttribute('data-icon');
-    const open = await headerIcon('Open workspace');
-    const closeAll = await headerIcon('Close all tabs');
-
     await menuButton(page, other).click();
     const icons = await items(page).evaluateAll(nodes =>
       nodes.map(n => {
@@ -119,8 +182,12 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, the header icon
     for (const i of icons) {
       expect([i.label, i.size, i.before]).toEqual([i.label, [16, 16], true]);
     }
-    expect(icons[0].icon).toBe(open);
-    expect(icons[2].icon).toBe(closeAll);
+    expect(icons[0].icon).toBe(
+      '@stellarshenson/jupyterlab-workspace-manager-extension:open'
+    );
+    expect(icons[2].icon).toBe(
+      '@stellarshenson/jupyterlab-workspace-manager-extension:close-tabs'
+    );
 
     // Colour shows the swatch of the workspace's colour
     const swatch = await items(page)

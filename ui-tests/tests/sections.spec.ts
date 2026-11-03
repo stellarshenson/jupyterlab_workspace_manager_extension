@@ -7,6 +7,7 @@ import {
   colourOf,
   COLOURS,
   countOf,
+  cwdOf,
   deleteWorkspaces,
   displayName,
   expectRefused,
@@ -36,8 +37,10 @@ import {
   refresh,
   rgb,
   rgba,
+  rowLabel,
   rowOf,
   saved,
+  savedTabs,
   secondWindow,
   sectionBody,
   sectionCount,
@@ -45,6 +48,7 @@ import {
   serverList,
   shade,
   shownElsewhere,
+  sidebarTo,
   sleepInTerminal,
   startSession,
   startTerminal,
@@ -429,7 +433,7 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts it
 
     // a terminal row shuts its terminal down from its context menu
     await openSection(page, 'terminals');
-    const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
+    const row = rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
     await expect(row).toBeVisible();
     await expect(row.locator('button')).toHaveCount(0);
     await fromRowMenu(row, 'Shut down terminal');
@@ -531,7 +535,7 @@ test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES (3) opens
     // opening a section closes the open one; a closed section shows its band only
     const steps: [string, string, string][] = [
       ['kernels', kernelId, 'workspaces'],
-      ['terminals', `terminal ${terminal}`, 'kernels'],
+      ['terminals', rowLabel(terminal), 'kernels'],
       ['servers', 'fake-lsp (python)', 'terminals']
     ];
     for (const [name, text, was] of steps) {
@@ -821,19 +825,19 @@ test("ACC-ACCORD-70-COUNT-TABS: another workspace's card counts every tab of its
     expect(await holds(page, six)).toEqual({
       tabs: '6',
       terminals: '6',
-      rows: terminals.map(t => `terminal ${t}`).sort()
+      rows: terminals.map(rowLabel).sort()
     });
     await openCard(page, mixed);
     expect(await holds(page, mixed)).toEqual({
       tabs: '3',
       terminals: '1',
-      rows: ['a.md', 'b.txt', `terminal ${terminals[0]}`].sort()
+      rows: ['a.md', 'b.txt', rowLabel(terminals[0])].sort()
     });
     await openCard(page, kept);
     expect(await holds(page, kept)).toEqual({
       tabs: '1',
       terminals: '1',
-      rows: [`terminal ${terminals[0]}`]
+      rows: [rowLabel(terminals[0])]
     });
     await openCard(page, gone);
     expect(await holds(page, gone)).toEqual({
@@ -985,27 +989,31 @@ test.describe('kernels and sessions of the server', () => {
         rowOf(card(page, `${current}-doc`), 'note.md')
       ).toHaveAttribute('title', `${tmpPath}/note.md`);
 
-      // a terminal row: its name, the process and when it was last active
+      // a terminal row: its name, the process, its path and when it was last active
       await sleepInTerminal(page, terminal);
       await openSection(page, 'terminals');
       const terminalRow = rowOf(
         sectionBody(page, 'terminals'),
-        `terminal ${terminal}`
+        rowLabel(terminal)
       );
       await expect
         .poll(async () => {
           await refresh(page);
           return (await terminalRow.getAttribute('title'))!.split('\n')[1];
         }, UNDER_LOAD)
-        .toBe('sleep');
+        .toBe('Process: sleep');
       const age = await terminalRow
         .locator('.jp-WorkspaceManager-age')
         .textContent();
-      expect((await terminalRow.getAttribute('title'))!.split('\n')).toEqual([
+      const lines = (await terminalRow.getAttribute('title'))!.split('\n');
+      expect(lines.slice(0, 4)).toEqual([
         `terminal ${terminal}`,
-        'sleep',
-        age
+        'Process: sleep',
+        'Command: sleep 600',
+        `Path: ${await cwdOf(page, terminal)}`
       ]);
+      expect(lines[4]).toContain(`Last activity: ${age} (`);
+      expect(lines).toHaveLength(5);
 
       // a kernel row: its kernelspec display name, the session path and its state
       // a REST-created session has no client, so the server keeps 'starting' until one connects
@@ -1049,10 +1057,7 @@ test('ACC-ACCORD-23-OPEN: Open loads the workspace in this window with its tabs'
   await putWorkspace(page, target, layout([`terminal:${terminal}`]));
   try {
     await setUpExisting(page, current);
-    await cardHeader(page, target).hover();
-    await card(page, target)
-      .locator('button[aria-label="Open workspace"]')
-      .click();
+    await fromMenu(page, target, 'Open workspace');
     await expect(page).toHaveURL(
       new RegExp(`/lab/workspaces/${target}(\\?.*)?$`)
     );
@@ -1131,10 +1136,7 @@ test('ACC-ACCORD-25-CLOSE-CURRENT: Close all tabs of this window closes every ma
     await refresh(page);
     await page.mouse.move(0, 0);
 
-    await cardHeader(page, current).hover();
-    await card(page, current)
-      .locator('button[aria-label="Close all tabs"]')
-      .click();
+    await fromMenu(page, current, 'Close all tabs');
     // the terminal tab: Close all asks once (ACC-ACCORD-27)
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       `Close all tabs of ${current}?`
@@ -1236,10 +1238,7 @@ test('ACC-ACCORD-27-CLOSE-WARN: Close all tabs asks when the workspace holds a t
   try {
     await setUpExisting(page, current);
     const before = await saved(page, other);
-    await cardHeader(page, other).hover();
-    await card(page, other)
-      .locator('button[aria-label="Close all tabs"]')
-      .click();
+    await fromMenu(page, other, 'Close all tabs');
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       `Close all tabs of ${other}?`
     );
@@ -1261,7 +1260,7 @@ test('ACC-ACCORD-27-CLOSE-WARN: Close all tabs asks when the workspace holds a t
 test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows are refused', async ({
   page
 }) => {
-  // three windows load and ten actions are refused
+  // three windows load and eight actions are refused
   test.setTimeout(120000);
   const terminal = await startTerminal(page);
   const current = fresh('elsewhere');
@@ -1276,14 +1275,6 @@ test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows
     const before = [await saved(page, x), await colourOf(page, x)];
     const url = page.url();
     const pages = page.context().pages().length;
-
-    await cardHeader(page, x).hover();
-    await card(page, x).locator('button[aria-label="Close all tabs"]').click();
-    await expectRefused(page, 'Close all tabs');
-
-    await cardHeader(page, x).hover();
-    await card(page, x).locator('button[aria-label="Open workspace"]').click();
-    await expectRefused(page, 'Open workspace');
 
     await fromMenu(page, x, 'Open workspace');
     await expectRefused(page, 'Open workspace');
@@ -1330,10 +1321,7 @@ test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows
     await openPanel(third);
     await refresh(third);
     await expect(card(third, current)).toBeVisible();
-    await cardHeader(third, current).hover();
-    await card(third, current)
-      .locator('button[aria-label="Close all tabs"]')
-      .click();
+    await fromMenu(third, current, 'Close all tabs');
     await expectRefused(third, 'Close all tabs');
     await menuButton(third, current).click();
     await menuItem(third, 'Delete workspace').click();
@@ -1679,7 +1667,7 @@ test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the purpose wraps
   }
 });
 
-test("ACC-ACCORD-98-HOVER-ACTIONS: Open workspace, Close all tabs, the eye and ... keep their place on a closed, a hovered, a focused, an open, a hidden and this window's card; one that does not apply is disabled", async ({
+test("ACC-ACCORD-98-HOVER-ACTIONS: the eye and ... keep their place on a closed, a hovered, a focused, an open, a hidden and this window's card; one that does not apply is disabled", async ({
   page
 }) => {
   const suffix = 'a-name-too-long-for-the-card';
@@ -1687,7 +1675,7 @@ test("ACC-ACCORD-98-HOVER-ACTIONS: Open workspace, Close all tabs, the eye and .
   const [other, hidden] = [`${current}-${suffix}`, `${current}-h`];
   const header = cardHeader(page, other);
   const name = header.locator('.jp-WorkspaceManager-name');
-  /** The four buttons after the age: label, x, shown, disabled, pressed. */
+  /** The two buttons after the age: label, x, shown, disabled, pressed. */
   const buttons = (id: string) =>
     card(page, id)
       .locator('.jp-WorkspaceManager-cardActions button')
@@ -1722,12 +1710,7 @@ test("ACC-ACCORD-98-HOVER-ACTIONS: Open workspace, Close all tabs, the eye and .
     const xs = rest.map(b => b.x);
     const nameWidth = await width();
     expect(rest).toEqual(
-      [
-        'Open workspace',
-        'Close all tabs',
-        'Hide workspace',
-        'Workspace menu'
-      ].map((label, i) => ({
+      ['Hide workspace', 'Workspace menu'].map((label, i) => ({
         label,
         x: xs[i],
         shown: true,
@@ -1766,11 +1749,9 @@ test("ACC-ACCORD-98-HOVER-ACTIONS: Open workspace, Close all tabs, the eye and .
     expect(await width()).toBe(nameWidth);
 
     const mine = await same(current, "this window's card");
-    expect(mine.map(b => b.disabled)).toEqual([true, false, true, false]);
+    expect(mine.map(b => b.disabled)).toEqual([true, false]);
     const shown = await same(hidden, 'hidden card');
     expect(shown.map(b => [b.label, b.disabled, b.pressed])).toEqual([
-      ['Open workspace', false, null],
-      ['Close all tabs', false, null],
       ['Show workspace again', false, 'true'],
       ['Workspace menu', true, null]
     ]);
@@ -1799,21 +1780,22 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its button
     await expect(mine).toHaveAttribute('aria-expanded', 'false');
     await expect(mine).toBeFocused();
     await page.mouse.move(0, 0);
-    await expect(myIcons).toHaveCount(4);
-    for (let i = 0; i < 4; i++) {
+    await expect(myIcons).toHaveCount(2);
+    for (let i = 0; i < 2; i++) {
       await expect(myIcons.nth(i)).toBeVisible();
     }
 
-    // a click on a button keeps the focus where it was: Close all tabs of a
-    // workspace without terminals asks nothing
-    await icons.nth(1).click();
+    // a click on a button keeps the focus where it was: the triangle opens
+    // the other card, and a second click closes it
+    await triangle(page, other).click();
+    await triangle(page, other).click();
     await page.mouse.move(0, 0);
     await expect(mine).toBeFocused();
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       await expect(icons.nth(i)).toBeVisible();
     }
 
-    // Tab moves from the header through the triangle and the four buttons;
+    // Tab moves from the header through the triangle and the two buttons;
     // Tab from the WORKSPACES header, above every card
     await sectionHeader(page, 'workspaces').focus();
     for (let i = 0; i < 12; i++) {
@@ -1826,10 +1808,6 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its button
     await page.keyboard.press('Tab');
     await focused('Expand');
     await page.keyboard.press('Tab');
-    await focused('Open workspace');
-    await page.keyboard.press('Tab');
-    await focused('Close all tabs');
-    await page.keyboard.press('Tab');
     await focused('Hide workspace');
     await page.keyboard.press('Tab');
     await focused('Workspace menu');
@@ -1838,7 +1816,7 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its button
   }
 });
 
-test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, without Open or Close all tabs; both stay in the card header and in its ... menu", async ({
+test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, without Open or Close all tabs; both stay in its ... menu and neither is in the card header", async ({
   page,
   tmpPath
 }) => {
@@ -1865,13 +1843,131 @@ test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, wit
     for (const name of ['Open workspace', 'Close all tabs']) {
       await expect(
         cardHeader(page, other).getByRole('button', { name, exact: true })
-      ).toBeVisible();
+      ).toHaveCount(0);
     }
 
     await menuButton(page, other).click();
     await expect(menuItem(page, 'Open workspace')).toBeVisible();
     await expect(menuItem(page, 'Close all tabs')).toBeVisible();
     await page.keyboard.press('Escape');
+  } finally {
+    await deleteWorkspaces(page, ids(current, 'a'));
+  }
+});
+
+test('ACC-ACCORD-264-HEADER-ICONS: no card header has an Open workspace or a Close all tabs button; it keeps the eye then ...; both actions work from the ... menu; the name takes the free width', async ({
+  page,
+  tmpPath
+}) => {
+  const current = await setUp(page, 'twoicons', {
+    target: {},
+    held: layout([`editor:${tmpPath}/held.txt`]),
+    h: {}
+  });
+  const [target, held, hidden] = ['target', 'held', 'h'].map(
+    s => `${current}-${s}`
+  );
+  try {
+    await patchMeta(page, hidden, { hidden: true });
+    await headerButton(page, 'Show hidden workspaces').click();
+    await refresh(page);
+    await expect(card(page, hidden)).toHaveClass(/jp-mod-hiddenWorkspace/);
+    await triangle(page, held).click();
+    await expect(card(page, held)).toHaveClass(/jp-mod-open/);
+
+    // a closed card, an open card, this window's card and a hidden card
+    for (const [id, eye] of [
+      [target, 'Hide workspace'],
+      [held, 'Hide workspace'],
+      [current, 'Hide workspace'],
+      [hidden, 'Show workspace again']
+    ]) {
+      const buttons = card(page, id).locator(
+        '.jp-WorkspaceManager-cardActions button'
+      );
+      expect(
+        await buttons.evaluateAll(nodes =>
+          nodes.map(n => n.getAttribute('aria-label'))
+        ),
+        id
+      ).toEqual([eye, 'Workspace menu']);
+      for (const name of ['Open workspace', 'Close all tabs']) {
+        await expect(
+          cardHeader(page, id).getByRole('button', { name, exact: true })
+        ).toHaveCount(0);
+      }
+    }
+
+    // the name fills the line up to the age, less the 6 px gap of the line
+    const header = cardHeader(page, target);
+    const name = (await header
+      .locator('.jp-WorkspaceManager-name')
+      .boundingBox())!;
+    const age = (await header
+      .locator('.jp-WorkspaceManager-age')
+      .boundingBox())!;
+    expect(Math.round(age.x - (name.x + name.width))).toBe(6);
+
+    // a name shorter than the line still takes the free width: its box is wider than its text
+    await sidebarTo(page, 500);
+    const [box, text] = await header
+      .locator('.jp-WorkspaceManager-name')
+      .evaluate(n => {
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        return [
+          n.getBoundingClientRect().width,
+          range.getBoundingClientRect().width
+        ];
+      });
+    expect(box - text).toBeGreaterThan(100);
+
+    await fromMenu(page, held, 'Close all tabs');
+    await expect.poll(() => savedTabs(page, held), UNDER_LOAD).toEqual([]);
+
+    await fromMenu(page, target, 'Open workspace');
+    await expect(page).toHaveURL(
+      new RegExp(`/lab/workspaces/${target}(\\?.*)?$`)
+    );
+  } finally {
+    await deleteWorkspaces(page, ids(current, 'target', 'held', 'h'));
+  }
+});
+
+test('ACC-PANEL-243-HEADER: the first line of a card header holds the caret, the name, the age, the eye and ...; the second line of an open card holds the tab, terminal and kernel counts with their glyphs', async ({
+  page
+}) => {
+  const current = await setUp(page, 'hdrline', { a: {} });
+  const other = `${current}-a`;
+  try {
+    await triangle(page, other).click();
+    await expect(card(page, other)).toHaveClass(/jp-mod-open/);
+    const lines = cardHeader(page, other).locator(
+      '.jp-WorkspaceManager-headerLine'
+    );
+    await expect(lines).toHaveCount(2);
+    const first = lines.first();
+    await expect(
+      first.locator('button.jp-WorkspaceManager-caret')
+    ).toBeVisible();
+    await expect(first.locator('.jp-WorkspaceManager-name')).toHaveText(other);
+    await expect(first.locator('.jp-WorkspaceManager-age')).toBeVisible();
+    await expect(
+      first.getByRole('button', { name: 'Hide workspace' })
+    ).toBeVisible();
+    await expect(
+      first.getByRole('button', { name: 'Workspace menu' })
+    ).toBeVisible();
+    expect(
+      await lines
+        .last()
+        .locator('.jp-WorkspaceManager-count svg')
+        .evaluateAll(nodes => nodes.map(n => n.getAttribute('data-icon')))
+    ).toEqual([
+      'ui-components:tab',
+      '@stellarshenson/jupyterlab-workspace-manager-extension:terminal',
+      'ui-components:kernel'
+    ]);
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
   }

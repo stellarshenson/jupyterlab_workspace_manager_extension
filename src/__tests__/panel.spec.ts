@@ -12,7 +12,7 @@ import { nullTranslator } from '@jupyterlab/translation';
 import { CommandRegistry } from '@lumino/commands';
 import { MessageLoop } from '@lumino/messaging';
 import { Signal } from '@lumino/signaling';
-import { Widget } from '@lumino/widgets';
+import { Menu, Widget } from '@lumino/widgets';
 
 import { withoutTabs } from '../model/model';
 import { workspaceMenu } from '../panel/menus';
@@ -33,6 +33,14 @@ const trans = nullTranslator.load(
 const MARKUP = '<img src=x onerror=alert(1)>';
 const iso = (minutesAgo: number) =>
   new Date(Date.now() - minutesAgo * 60000).toISOString();
+/** The labels of the rows under `root`. */
+const rowLabels = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll('.jp-WorkspaceManager-rowLabel')).map(
+    label => label.textContent
+  );
+/** The Last activity line of a terminal's tooltip, for a terminal active under a minute ago. */
+const activeNow = (terminal: { last_activity?: string }) =>
+  `Last activity: now (${new Date(terminal.last_activity!).toLocaleString()})`;
 
 /** A saved workspace whose main area holds `keys`, with their saved data. */
 function workspace(id: string, minutesAgo: number, keys: string[] = []) {
@@ -70,6 +78,10 @@ interface IServer {
   presence?: string[];
   /** answer 500 on the extension's `presence` route */
   presenceFailing?: boolean;
+  /** what the panel saved last, per workspace id */
+  saved?: { [id: string]: any };
+  /** answer 500 to a save of this workspace */
+  saveFailing?: string;
 }
 
 /** A fake Jupyter server behind `settings.fetch`; it logs every request. */
@@ -149,10 +161,16 @@ function fakeServer(server: IServer) {
       });
     }
     if (path.includes('/api/workspaces/')) {
+      const id = decodeURIComponent(path.split('/').pop()!);
+      if (method === 'PUT' && server.saveFailing === id) {
+        return reply(500, { message: 'Unhandled error' });
+      }
+      if (method === 'PUT') {
+        (server.saved ??= {})[id] = JSON.parse(body);
+      }
       if (method !== 'GET') {
         return reply(204, undefined);
       }
-      const id = decodeURIComponent(path.split('/').pop()!);
       // jupyterlab_server answers a missing workspace with an empty one, no last_modified
       return reply(
         200,
@@ -247,7 +265,9 @@ function fakeApp(settings: ServerConnection.ISettings, live: Widget[] = []) {
     shell: {
       widgets: (area: string) =>
         (area === 'main' ? live : [])[Symbol.iterator](),
-      activateById: jest.fn()
+      activateById: jest.fn(),
+      currentWidget: null,
+      currentChanged: new Signal<any, any>({})
     },
     commands: new CommandRegistry(),
     docRegistry: { getFileTypesForPath: () => [] }
@@ -314,18 +334,57 @@ async function mount(
 /** Choose the item at `index` of the open menu by keyboard; Lumino reads keyCode. */
 function chooseMenuItem(index: number) {
   const menu = document.querySelector('.jp-WorkspaceManager-menu')!;
-  const key = (keyCode: number) => {
-    const event = new KeyboardEvent('keydown', {
-      bubbles: true,
-      cancelable: true
-    });
-    Object.defineProperty(event, 'keyCode', { value: keyCode });
-    menu.dispatchEvent(event);
-  };
   for (let i = 0; i <= index; i++) {
-    key(40); // ArrowDown
+    pressKey(menu, 40); // ArrowDown
   }
-  key(13); // Enter
+  pressKey(menu, 13); // Enter
+}
+
+function pressKey(menu: Element, keyCode: number) {
+  const event = new KeyboardEvent('keydown', {
+    bubbles: true,
+    cancelable: true
+  });
+  Object.defineProperty(event, 'keyCode', { value: keyCode });
+  menu.dispatchEvent(event);
+}
+
+/** The labels of the items of the open menus, the submenu's after its parent's. */
+const menuLabels = () =>
+  Array.from(
+    document.querySelectorAll('.jp-WorkspaceManager-menu .lm-Menu-itemLabel')
+  ).map(l => l.textContent);
+
+/** Choose workspace `name` in the Move to workspace submenu at `index` of the open row menu. */
+function moveTo(index: number, name: string) {
+  chooseMenuItem(index);
+  const menus = document.querySelectorAll('.jp-WorkspaceManager-menu');
+  const submenu = menus[menus.length - 1];
+  const labels = Array.from(submenu.querySelectorAll('.lm-Menu-itemLabel'));
+  // the keyboard opens a submenu with its first item active
+  for (let i = labels.findIndex(l => l.textContent === name); i > 0; i--) {
+    pressKey(submenu, 40); // ArrowDown
+  }
+  pressKey(submenu, 13); // Enter
+}
+
+/** The shell moves its current tab, which it does on the focus event. */
+function current(app: any, widget: Widget | null) {
+  app.shell.currentWidget = widget;
+  app.shell.currentChanged.emit({ oldValue: null, newValue: widget });
+}
+
+/** A tab of this window showing `path`, attached, holding a focusable element; `notebook` makes it a notebook's. */
+function liveTab(path: string, notebook = false) {
+  const tab = new Widget();
+  (tab as any).context = { path };
+  tab.title.label = path;
+  if (notebook) {
+    tab.addClass('jp-NotebookPanel');
+  }
+  const input = tab.node.appendChild(document.createElement('input'));
+  Widget.attach(tab, document.body);
+  return { tab, input };
 }
 
 const dialogText = () => document.querySelector('.jp-Dialog')?.textContent;
@@ -716,8 +775,9 @@ describe('panel', () => {
   it('DEF-PANEL-58-ABSENT-MENU: without the server extension Close all tabs refuses', async () => {
     const { panel } = await mount({ ...standard(), absent: true });
     header(panel, 'w:auto-6')
-      .querySelector<HTMLElement>('button[aria-label="Close all tabs"]')!
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
       .click();
+    chooseMenuItem(2); // Close all tabs
     await waitForDialog();
     expect(dialogText()).toContain(
       'Close all tabs is refused: the server extension is not available, so the panel cannot tell which workspaces another window shows.'
@@ -1318,6 +1378,60 @@ describe('panel', () => {
     expect(opened).toEqual([]);
   });
 
+  it('DEF-PANEL-76-TWO-TABS: a second click on a terminal row while its tab is opening joins the first and opens no second tab; once the opening settles, by success or failure, a call opens a tab again', async () => {
+    const server = standard();
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
+    });
+    const { panel, app } = await mount(server);
+    const opening: {
+      resolve: (tab: Widget) => void;
+      reject: (reason: Error) => void;
+    }[] = [];
+    app.commands.addCommand('terminal:create-new', {
+      execute: () =>
+        new Promise((resolve, reject) => opening.push({ resolve, reject }))
+    });
+    const row = () =>
+      Array.from(
+        openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      ).find(r => r.title.startsWith('terminal 9'))!;
+
+    row().click();
+    row().click();
+    await settle();
+    expect(opening).toHaveLength(1);
+
+    const tab = new Widget();
+    tab.id = 'new-1';
+    (tab as any).content = {
+      hasClass: (c: string) => c === 'jp-Terminal',
+      session: { name: '9' }
+    };
+    opening[0].resolve(tab);
+    await settle();
+    expect(app.shell.activateById.mock.calls).toEqual([['new-1']]);
+
+    // settled by success: the tab closes, and a call opens a tab; called
+    // directly from here so the test holds the rejection
+    tab.dispose();
+    const open = () => (panel as any)._openTerminal('9') as Promise<void>;
+    const failed = open();
+    await settle();
+    expect(opening).toHaveLength(2);
+
+    // settled by failure: a call opens a tab
+    opening[1].reject(new Error('refused'));
+    await expect(failed).rejects.toThrow('refused');
+    void open();
+    await settle();
+    expect(opening).toHaveLength(3);
+  });
+
   it('ACC-PANEL-7-REFRESH-BUSY: the refresh button turns and waits for the requests, at least 500 ms', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const { panel, hold, release } = await mount(standard());
@@ -1420,7 +1534,7 @@ describe('panel', () => {
     jest.advanceTimersByTime(10000);
     await settle();
     expect(reloads()).toBe(3);
-    expect(card(panel, 'w:auto-6').textContent).toContain('terminal 2');
+    expect(rowLabels(card(panel, 'w:auto-6'))).toContain('t2');
     expect(sectionBody(panel, 'workspaces')).toBe(list);
     expect(list.scrollTop).toBe(40);
     expect(sectionHeader(panel, 'kernels').getAttribute('aria-expanded')).toBe(
@@ -1470,6 +1584,12 @@ describe('panel', () => {
     ).toEqual(['README.md']);
     // the card of this window shows, holding the selected row
     expect(card(panel, 'w:default').classList).toContain('jp-mod-open');
+
+    // ACC-LISTS-260-ROW-LIT: the row stays lit while that tab is current, and no longer
+    current(app, live);
+    expect($$(panel, '.jp-mod-selected')).toHaveLength(1);
+    current(app, new Widget());
+    expect($$(panel, '.jp-mod-selected')).toEqual([]);
   });
 
   it('ACC-CLI-219-SWITCH-WORKSPACE: a plain switch for a workspace newer than the last reload is applied once, and a second read consumes nothing', async () => {
@@ -1628,7 +1748,7 @@ describe('panel', () => {
     expect(card(panel, 'w:auto-6')).toBeTruthy();
     triangle(panel, 'w:auto-6').click();
     const rows = $$(panel, '.jp-WorkspaceManager-row').map(r => r.textContent);
-    expect(rows).toContain('terminal 1now');
+    expect(rows).toContain('t1now');
     expect(card(panel, 'w:auto-6').textContent).not.toContain('claude');
     expect(openSection(panel, 'kernels').textContent).toContain('k1');
   });
@@ -1655,13 +1775,13 @@ describe('panel', () => {
     // the KERNELS section keeps its last rows under the line
     expect(sectionBody(panel, 'kernels').textContent).toContain('k1');
     // the TERMINALS section lists the new terminal
-    expect(openSection(panel, 'terminals').textContent).toContain('terminal 9');
+    expect(rowLabels(openSection(panel, 'terminals'))).toContain('t9');
 
     server.failing = false;
     await panel.refresh();
     expect($(panel, '.jp-WorkspaceManager-error')).toBeNull();
     expect(sectionCount(panel, 'kernels')).toBe('(0)');
-    expect(sectionBody(panel, 'terminals').textContent).toContain('terminal 9');
+    expect(rowLabels(sectionBody(panel, 'terminals'))).toContain('t9');
   });
 
   it('ACC-CULLER-65-CULLED: a kernel list that answers 500 once, as jupyter_server does while a kernel starts, is asked again and shows no line', async () => {
@@ -1698,7 +1818,7 @@ describe('panel', () => {
     release();
     await settle();
     expect(reloads()).toBe(3);
-    expect(openSection(panel, 'terminals').textContent).toContain('terminal 9');
+    expect(rowLabels(openSection(panel, 'terminals'))).toContain('t9');
     jest.advanceTimersByTime(500);
     await settle();
     expect(refreshButton(panel).disabled).toBe(false);
@@ -1710,8 +1830,9 @@ describe('panel', () => {
     const { panel, log } = await mount(server);
     server.workspaces.pop();
     header(panel, 'w:W')
-      .querySelector<HTMLElement>('button[aria-label="Close all tabs"]')!
+      .querySelector<HTMLElement>('button[aria-label="Workspace menu"]')!
       .click();
+    chooseMenuItem(2); // Close all tabs
     await settle();
     expect(log).toContain('GET /lab/api/workspaces/W');
     expect(log.filter(l => l.startsWith('PUT'))).toEqual([]);
@@ -1755,7 +1876,7 @@ describe('panel', () => {
           '.jp-WorkspaceManager-rowLabel'
         )
       ).map(r => r.textContent);
-    expect(rows()).toEqual(['README.md', 'terminal 1']);
+    expect(rows()).toEqual(['README.md', 't1']);
     expect($(panel, '.jp-WorkspaceManager-groupLabel')).toBeNull();
 
     $(panel, 'button[aria-label="Filter"]')!.click();
@@ -1824,20 +1945,13 @@ describe('panel', () => {
       '6 terminal tabs and no document',
       ['1', '2', '3', '4', '5', '6'].map(n => `terminal:${n}`),
       ['6', '6', '0'],
-      [
-        'terminal 1',
-        'terminal 2',
-        'terminal 3',
-        'terminal 4',
-        'terminal 5',
-        'terminal 6'
-      ]
+      ['t1', 't2', 't3', 't4', 't5', 't6']
     ],
     [
       'documents and terminals',
       ['editor:a.md', 'editor:b.md', 'terminal:1'],
       ['3', '1', '0'],
-      ['a.md', 'b.md', 'terminal 1']
+      ['a.md', 'b.md', 't1']
     ],
     [
       'a key the layout repeats for a second New View of one document',
@@ -1849,7 +1963,7 @@ describe('panel', () => {
       'a saved key of a terminal that no longer runs',
       ['terminal:1', 'terminal:2', 'terminal:ended'],
       ['2', '2', '0'],
-      ['terminal 1', 'terminal 2']
+      ['t1', 't2']
     ]
   ])(
     'ACC-ACCORD-70-COUNT-TABS: the tab count of a saved layout with %s',
@@ -1927,9 +2041,17 @@ describe('panel', () => {
     ).toBe(MARKUP);
     expect(panel.node.querySelector('img')).toBeNull();
     const terminalRow = $$(panel, '.jp-WorkspaceManager-row').find(r =>
-      r.textContent!.includes('terminal 1')
+      r.title.startsWith('terminal 1\n')
     )!;
-    expect(terminalRow.title).toBe(`terminal 1\n${MARKUP}\nnow`);
+    expect(terminalRow.title).toBe(
+      [
+        'terminal 1',
+        `Tab: ${MARKUP}`,
+        `Process: ${MARKUP}`,
+        activeNow(server.terminals[0]),
+        'Workspaces: default, auto-6'
+      ].join('\n')
+    );
   });
 
   it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-48-ROW: a kernel row shows kernelIcon and, with no session, its id in the code font; selected, the display name of its kernelspec; its tooltip the display name and state', async () => {
@@ -1977,7 +2099,7 @@ describe('panel', () => {
     expect(text(card(panel, 'w:auto-6'))).toEqual([
       'README.md',
       'a.ipynbidle5m ago',
-      'terminal 1claudenow'
+      't1claudenow'
     ]);
     expect($(panel, '.jp-WorkspaceManager-rowDetail')).toBeNull();
     // a card document row: the state word in the line, the state span's title and the dot's aria-label
@@ -2013,15 +2135,182 @@ describe('panel', () => {
     // one section open at a time: KERNELS is opened, then TERMINALS
     expect(text(openSection(panel, 'kernels'))).toEqual(['a.ipynbidle5m ago']);
     state(sectionBody(panel, 'kernels'));
-    expect(text(openSection(panel, 'terminals'))).toEqual([
-      'terminal 1claudenow'
-    ]);
+    expect(text(openSection(panel, 'terminals'))).toEqual(['t1claudenow']);
     // the kernel type, the path, the folder, memory and CPU wait for the selection
     for (const hidden of [PYTHON, 'docs', 'work/', 'MB', '%']) {
       expect(
         panel.node.querySelector('.jp-WorkspaceManager-list')!.textContent
       ).not.toContain(hidden);
     }
+  });
+
+  it('ACC-TERM-253-PATH-TOOLTIP: a terminal row with a path shows it after the process, inside a bdi, and its tooltip carries it on its Path line', async () => {
+    const server = standard();
+    server.terminals[0].cwd = '/home/lab/work';
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const row = $$(panel, '.jp-WorkspaceManager-row').find(r =>
+      r.title.startsWith('terminal 1\n')
+    )!;
+    expect(row.title).toBe(
+      [
+        'terminal 1',
+        'Process: claude',
+        'Path: /home/lab/work',
+        activeNow(server.terminals[0]),
+        'Workspaces: auto-6'
+      ].join('\n')
+    );
+    expect(row.textContent).toBe('t1claude/home/lab/worknow');
+    expect(
+      row.querySelector(
+        '.jp-WorkspaceManager-rowProcess + .jp-WorkspaceManager-rowPathSlot > .jp-WorkspaceManager-rowPath > bdi'
+      )!.textContent
+    ).toBe('/home/lab/work');
+  });
+
+  it('ACC-TERM-256-PATH-UNREAD: a terminal with cwd null or no cwd shows its row and tooltip as before, with no path element; with no process the path stays out of the line and in the tooltip', async () => {
+    const server = standard();
+    server.terminals.push(
+      { name: '2', last_activity: iso(0), process: 'bash', cwd: null },
+      { name: '3', last_activity: iso(0), process: null, cwd: '/srv' }
+    );
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:1',
+      'terminal:2',
+      'terminal:3'
+    ]);
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const rows = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    expect(rows.map(r => r.textContent)).toEqual([
+      't1claudenow',
+      't2bashnow',
+      't3now'
+    ]);
+    const [one, two, three] = server.terminals.map(activeNow);
+    expect(rows.map(r => r.title)).toEqual([
+      `terminal 1\nProcess: claude\n${one}\nWorkspaces: auto-6`,
+      `terminal 2\nProcess: bash\n${two}\nWorkspaces: auto-6`,
+      `terminal 3\nPath: /srv\n${three}\nWorkspaces: auto-6`
+    ]);
+    expect($(panel, '.jp-WorkspaceManager-rowPath')).toBeNull();
+  });
+
+  it('ACC-TERM-259-TOOLTIP-DETAILS, ACC-TERM-261-TAB-NAME: a terminal row shows its tab name, and its tooltip holds its seven lines in order in a card and in TERMINALS; a line with no value is left out, and with no last activity the exact time', async () => {
+    const server = standard();
+    Object.assign(server.terminals[0], {
+      process: 'vim',
+      command: 'vim notes.md',
+      cwd: '/srv/work'
+    });
+    server.terminals.push(
+      { name: '2', last_activity: iso(0), process: 'bash' },
+      { name: '3' }
+    );
+    server.workspaces[0] = workspace('default', 1, ['terminal:1']);
+    const tab = (name: string, title: string) => {
+      const widget = new Widget();
+      widget.title.label = title;
+      (widget as any).content = { hasClass: () => true, session: { name } };
+      return widget;
+    };
+    const { panel } = await mount(server, {
+      live: [tab('1', 'my tab'), tab('2', 'Terminal 2')]
+    });
+    triangle(panel, 'w:default').click();
+    const rows = () =>
+      Array.from(
+        panel.node.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row')
+      );
+    const [one, two, three] = server.terminals.map(t => t.last_activity);
+    const every = [
+      'terminal 1',
+      'Tab: my tab',
+      'Process: vim',
+      'Command: vim notes.md',
+      'Path: /srv/work',
+      activeNow({ last_activity: one })
+    ];
+    // this window's card: its own workspace first, then the other holder
+    expect(rows().map(r => r.textContent)).toEqual([
+      't1my tab/srv/worknow',
+      't2bashnow'
+    ]);
+    expect(rows().map(r => r.title)).toEqual([
+      [...every, 'Workspaces: default, auto-6'].join('\n'),
+      // a default tab name says nothing, so the row falls back to the process and has no Tab line
+      ['terminal 2', 'Process: bash', activeNow({ last_activity: two })]
+        .concat('Workspaces: default')
+        .join('\n')
+    ]);
+    openSection(panel, 'terminals');
+    expect(rows().map(r => r.textContent)).toEqual([
+      't1my tab/srv/worknow',
+      't2bashnow',
+      't3never'
+    ]);
+    expect(rows().map(r => r.title)).toEqual([
+      [...every, 'Workspaces: default, auto-6'].join('\n'),
+      ['terminal 2', 'Process: bash', activeNow({ last_activity: two })]
+        .concat('Workspaces: default')
+        .join('\n'),
+      // no process, no last activity and no workspace
+      'terminal 3\nLast activity: never'
+    ]);
+    expect(three).toBeUndefined();
+  });
+
+  it('ACC-TERM-259-TOOLTIP-DETAILS: a tab title and a command holding two percent signs and a space read in the tooltip as they do in the row and on the server', async () => {
+    const server = standard();
+    Object.assign(server.terminals[0], { command: 'echo 50%% done' });
+    server.workspaces[0] = workspace('default', 1, ['terminal:1']);
+    const tab = new Widget();
+    tab.title.label = '50%% done';
+    (tab as any).content = {
+      hasClass: () => true,
+      session: { name: '1' }
+    };
+    const { panel } = await mount(server, { live: [tab] });
+    triangle(panel, 'w:default').click();
+    const row = $(panel, '.jp-WorkspaceManager-row') as HTMLElement;
+    expect(row.textContent).toBe('t150%% donenow');
+    expect(row.title.split('\n').slice(0, 4)).toEqual([
+      'terminal 1',
+      'Tab: 50%% done',
+      'Process: claude',
+      'Command: echo 50%% done'
+    ]);
+  });
+
+  it('ACC-TERM-259-TOOLTIP-DETAILS: a newline in a tab name, a process or a path leaves each on its one tooltip line, and a run of carriage returns and newlines reads as one space', async () => {
+    const server = standard();
+    Object.assign(server.terminals[0], {
+      process: 'wm-x\ny',
+      cwd: '/tmp/wm-fix-a\r\n\nb'
+    });
+    server.workspaces[0] = workspace('default', 1, ['terminal:1']);
+    const tab = new Widget();
+    tab.title.label = 'first\nsecond';
+    (tab as any).content = {
+      hasClass: () => true,
+      session: { name: '1' }
+    };
+    const { panel } = await mount(server, { live: [tab] });
+    triangle(panel, 'w:default').click();
+    const row = $(panel, '.jp-WorkspaceManager-row') as HTMLElement;
+    expect(row.title.split('\n')).toEqual([
+      'terminal 1',
+      'Tab: first second',
+      'Process: wm-x y',
+      'Path: /tmp/wm-fix-a b',
+      activeNow(server.terminals[0]),
+      'Workspaces: default, auto-6'
+    ]);
   });
 
   it('ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS, ACC-TERM-44-PROCESS-UNREAD: a focused row is the one selected row and shows its detail line; the arrow keys move it; a terminal row has no detail line, its process shows once in its line, and with no readable process it shows none', async () => {
@@ -2052,13 +2341,13 @@ describe('panel', () => {
     expect(document.activeElement).toBe(rows[1]);
     expect(selected()).toEqual([rows[1]]);
     expect(detail()).toBeNull();
-    expect(rows[1].textContent).toBe('terminal 1claudenow');
+    expect(rows[1].textContent).toBe('t1claudenow');
     rows[1].dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })
     );
     expect(selected()).toEqual([rows[2]]);
     expect(detail()).toBeNull();
-    expect(rows[2].textContent).toBe('terminal 2now');
+    expect(rows[2].textContent).toBe('t2now');
     // a row of a section takes the selection from the card's row
     const listed = openSection(panel, 'terminals').querySelector<HTMLElement>(
       '.jp-WorkspaceManager-row'
@@ -2066,13 +2355,119 @@ describe('panel', () => {
     listed.focus();
     expect(selected()).toEqual([listed]);
     expect(detail()).toBeNull();
-    expect(listed.textContent).toBe('terminal 1claudenow');
+    expect(listed.textContent).toBe('t1claudenow');
     // a reload keeps it while its item exists
     await panel.refresh();
     expect(selected()).toEqual([listed]);
     server.terminals = server.terminals.filter(t => t.name !== '1');
     await panel.refresh();
     expect(selected()).toEqual([]);
+  });
+
+  it('ACC-LISTS-260-ROW-LIT: a row of this window stays lit while its tab takes the focus and stays current; another tab takes the light away and going back by the tab bar does not return it', async () => {
+    const other = liveTab('other.md');
+    const { tab, input } = liveTab('notes.md');
+    const { panel, app } = await mount(standard(), {
+      live: [tab, other.tab]
+    });
+    current(app, other.tab);
+    triangle(panel, 'w:default').click();
+    const row = Array.from(
+      card(panel, 'w:default').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.textContent!.startsWith('notes.md'))!;
+    const selected = () => $$(panel, '.jp-mod-selected');
+
+    row.focus();
+    expect(selected()).toEqual([row]);
+    // the focus lands in the tab while the shell still names the other tab
+    input.focus();
+    expect(app.shell.currentWidget).toBe(other.tab);
+    expect(selected()).toEqual([row]);
+    current(app, tab);
+    expect(selected()).toEqual([row]);
+    await panel.refresh();
+    expect(selected()).toEqual([row]);
+
+    // the shell's current tab follows the focus
+    other.input.focus();
+    current(app, other.tab);
+    expect(selected()).toEqual([]);
+    input.focus();
+    current(app, tab);
+    expect(selected()).toEqual([]);
+  });
+
+  it('ACC-LISTS-260-ROW-LIT: a row with no tab is lit while it holds the focus: a browser window losing the focus keeps the light, the focus leaving for an element or for nothing takes it away, the arrow keys still move it', async () => {
+    const server = standard();
+    server.kernels.push({ ...server.kernels[0], id: 'k2' });
+    const { tab, input } = liveTab('notes.md');
+    const { panel, app } = await mount(server, { live: [tab] });
+    current(app, tab);
+    const rows = Array.from(
+      openSection(panel, 'kernels').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    const selected = () => $$(panel, '.jp-mod-selected');
+
+    rows[0].focus();
+    expect(selected()).toEqual([rows[0]]);
+    // a window that loses the focus: no target, and the row stays the active element
+    rows[0].dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    expect(selected()).toEqual([rows[0]]);
+    // the shell moves its current tab while the row holds the focus
+    current(app, null);
+    expect(selected()).toEqual([rows[0]]);
+
+    rows[0].dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })
+    );
+    expect(document.activeElement).toBe(rows[1]);
+    expect(selected()).toEqual([rows[1]]);
+
+    input.focus();
+    expect(selected()).toEqual([]);
+    rows[1].focus();
+    expect(selected()).toEqual([rows[1]]);
+    rows[1].blur();
+    expect(selected()).toEqual([]);
+  });
+
+  it('ACC-LISTS-260-ROW-LIT: a KERNELS row stays lit with its detail lines while the tab of its document is current, a tab its click opened included', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      path: 'eda.ipynb',
+      name: 'eda.ipynb',
+      type: 'notebook',
+      kernel: { id: 'k1', name: 'python3' }
+    });
+    const other = liveTab('other.md');
+    const live: Widget[] = [other.tab];
+    const { panel, app } = await mount(server, { live });
+    current(app, other.tab);
+    const row = openSection(panel, 'kernels').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!;
+    const selected = () => $$(panel, '.jp-mod-selected');
+    row.focus();
+    expect(selected()).toEqual([row]);
+
+    // the tab opens after the panel's last render, and takes the focus
+    const { tab, input } = liveTab('eda.ipynb', true);
+    live.push(tab);
+    input.focus();
+    expect(selected()).toEqual([row]);
+    current(app, tab);
+    expect(selected()).toEqual([row]);
+    expect(row.querySelector('.jp-WorkspaceManager-rowDetail')).not.toBeNull();
+
+    other.input.focus();
+    current(app, other.tab);
+    expect(selected()).toEqual([]);
+    expect(row.querySelector('.jp-WorkspaceManager-rowDetail')).toBeNull();
   });
 
   it('ACC-KERNEL-196-KERNEL-DETAILS: a selected KERNELS row shows the display name, the session path, the memory and the CPU, refreshed by the poll; figures the server cannot read show a dash; a kernel with no session shows no path; a card document row shows its file name, its kernel state word and dot, and age', async () => {
@@ -2155,7 +2550,7 @@ describe('panel', () => {
     expect(cardDetail.textContent).toBe('work');
   });
 
-  it('ACC-LISTS-37-TWO-WORKSPACES, ACC-KERNEL-196-KERNEL-DETAILS: no terminal or kernel row, in a section or a card, shows an also in mark, and no hover text names another workspace', async () => {
+  it('ACC-LISTS-37-TWO-WORKSPACES, ACC-KERNEL-196-KERNEL-DETAILS: no terminal or kernel row, in a section or a card, shows an also in mark; the hover text of a kernel or a tab names no other workspace, and that of a terminal lists every holder', async () => {
     const server = standard();
     server.sessions.push({
       id: 's1',
@@ -2199,7 +2594,14 @@ describe('panel', () => {
     ]);
     for (const r of rows) {
       expect(r.textContent).not.toContain('also in');
-      expect(r.title).not.toMatch(/also in|auto-7/);
+      expect(r.title).not.toContain('also in');
+    }
+    const [kernelRow, listed, tab, inCard] = rows;
+    expect(kernelRow.title).not.toContain('auto-7');
+    expect(tab.title).not.toContain('auto-7');
+    // ACC-TERM-259-TOOLTIP-DETAILS: the terminal's own Workspaces line
+    for (const r of [listed, inCard]) {
+      expect(r.title.split('\n').pop()).toBe('Workspaces: auto-6, auto-7');
     }
   });
 
@@ -2291,8 +2693,8 @@ describe('panel', () => {
     const shutDown = (
       path: string,
       root = card(panel, 'w:auto-6'),
-      // a card document row lists Close tab first; a KERNELS row its one action
-      index = 1
+      // a card document row lists Close tab, Detach from workspace and Move to workspace first; a KERNELS row its one action
+      index = 3
     ) => {
       Array.from(root.querySelectorAll<HTMLElement>('.jp-WorkspaceManager-row'))
         .find(r => r.title === path || r.title === `${PYTHON}\n${path}\nidle`)!
@@ -2403,14 +2805,14 @@ describe('panel', () => {
     )
       .find(r => r.title.startsWith('terminal 4\n'))!
       .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-    chooseMenuItem(1); // Stop terminal, after Close tab
+    chooseMenuItem(3); // Stop terminal, after Close tab, Detach from workspace and Move to workspace
     await waitForDialog();
     const three = dialogBody();
     await dismissDialog();
     expect(three).toBe('Workspaces auto-7 and auto-8 also hold this terminal.');
   });
 
-  it('EDGE-ROW-MENU: a card document row lists Close tab then Shut down kernel, naming each kernel when the document runs more than one; a terminal row lists Close tab then Stop terminal', async () => {
+  it('EDGE-ROW-MENU ACC-LISTS-265-MENU-ENTRIES: a card document row lists Close tab, Detach from workspace, Move to workspace then Shut down kernel, naming each kernel when the document runs more than one; a plain document row lists Close tab then Move to workspace; a terminal row lists Close tab, Detach from workspace, Move to workspace then Stop terminal', async () => {
     const server = standard();
     server.kernels.push({ ...server.kernels[0], id: 'k2', name: 'ir' });
     server.sessions.push(
@@ -2431,6 +2833,7 @@ describe('panel', () => {
     );
     server.workspaces[1] = workspace('auto-6', 60, [
       'notebook:a.ipynb',
+      'editor:plain.txt',
       'terminal:1'
     ]);
     const { panel, app, log } = await mount(server);
@@ -2444,33 +2847,52 @@ describe('panel', () => {
           '.jp-WorkspaceManager-row'
         )
       );
-    const labels = () =>
-      Array.from(
-        document.querySelectorAll(
-          '.jp-WorkspaceManager-menu .lm-Menu-itemLabel'
-        )
-      ).map(l => l.textContent);
     const open = (title: string) => {
       rows()
         .find(r => r.title.split('\n')[0] === title)!
         .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
     };
+    /** The danger entries of the open menu. */
+    const danger = () =>
+      Array.from(
+        document.querySelectorAll(
+          '.jp-WorkspaceManager-menu .lm-Menu-item.jp-WorkspaceManager-danger .lm-Menu-itemLabel'
+        )
+      ).map(l => l.textContent);
 
     // the document runs two kernels: each entry names its kernel
     open('a.ipynb');
-    expect(labels()).toEqual([
+    expect(menuLabels()).toEqual([
       'Close tab',
+      'Detach from workspace',
+      'Move to workspace',
       `Shut down kernel ${PYTHON}`,
       'Shut down kernel ir'
     ]);
-    chooseMenuItem(1);
+    expect(danger()).toEqual([
+      `Shut down kernel ${PYTHON}`,
+      'Shut down kernel ir'
+    ]);
+    chooseMenuItem(3);
     await settle();
     expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k1']]);
 
-    // the terminal tab: Close tab first, then Stop terminal
+    // no process stays behind a plain document: no Detach
+    open('plain.txt');
+    expect(menuLabels()).toEqual(['Close tab', 'Move to workspace']);
+    expect(danger()).toEqual([]);
+    pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 27); // Escape
+
+    // the terminal tab: Stop terminal last
     open('terminal 1');
-    expect(labels()).toEqual(['Close tab', 'Stop terminal']);
-    chooseMenuItem(1); // Stop terminal
+    expect(menuLabels()).toEqual([
+      'Close tab',
+      'Detach from workspace',
+      'Move to workspace',
+      'Stop terminal'
+    ]);
+    expect(danger()).toEqual(['Stop terminal']);
+    chooseMenuItem(3); // Stop terminal
     await settle();
     expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['1']]);
 
@@ -2481,6 +2903,684 @@ describe('panel', () => {
     expect(log.filter(l => l.startsWith('PUT'))).toEqual([
       'PUT /lab/api/workspaces/auto-6'
     ]);
+  });
+
+  describe('Detach and Move to workspace', () => {
+    /** A live terminal tab of this window. */
+    const liveTerminal = (name: string) => {
+      const tab = new Widget();
+      const content = {
+        hasClass: () => true,
+        session: { name },
+        setOption: jest.fn()
+      };
+      (tab as any).content = content;
+      return { tab, content, close: jest.spyOn(tab, 'close') };
+    };
+    /** A live notebook of this window with a kernel preference. */
+    const liveNotebook = (path: string) => {
+      const tab = liveTab(path, true).tab;
+      const kernelPreference = { name: 'python3', shutdownOnDispose: true };
+      const sessionContext = { path, kernelPreference };
+      (tab as any).sessionContext = sessionContext;
+      return { tab, sessionContext, close: jest.spyOn(tab, 'close') };
+    };
+    /** auto-6 holding a document and terminal 1, and this window's workspace holding `keys`; every workspace has saved. */
+    const three = (keys: string[] = []) => {
+      const server = standard();
+      server.workspaces[0] = workspace('default', 1, keys);
+      server.workspaces.push(workspace('auto-7', 30));
+      return server;
+    };
+    const open = (panel: Widget, id: string, name: string) => {
+      if (!card(panel, `w:${id}`).classList.contains('jp-mod-open')) {
+        triangle(panel, `w:${id}`).click();
+      }
+      Array.from(
+        card(panel, `w:${id}`).querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+        .find(r => r.title.split('\n')[0] === name)!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    };
+    const saves = (log: string[]) => log.filter(l => l.startsWith('PUT'));
+    const keysOf = (server: IServer, id: string) =>
+      Object.keys(server.saved![id].data);
+
+    it("ACC-LISTS-266-DETACH: on this window's card the guards go on before the close, keeping the other fields; nothing is saved", async () => {
+      const terminal = liveTerminal('1');
+      const notebook = liveNotebook('a.ipynb');
+      const server = three();
+      server.sessions.push({
+        id: 's1',
+        name: 'a.ipynb',
+        path: 'a.ipynb',
+        type: 'notebook',
+        kernel: server.kernels[0]
+      });
+      const { panel, log } = await mount(server, {
+        live: [terminal.tab, notebook.tab]
+      });
+      log.length = 0;
+
+      open(panel, 'default', 'terminal 1');
+      expect(menuLabels()[1]).toBe('Detach from workspace');
+      chooseMenuItem(1);
+      await settle();
+      expect(terminal.content.setOption.mock.calls).toEqual([
+        ['shutdownOnClose', false]
+      ]);
+      expect(terminal.close).toHaveBeenCalledTimes(1);
+      expect(
+        terminal.content.setOption.mock.invocationCallOrder[0]
+      ).toBeLessThan(terminal.close.mock.invocationCallOrder[0]);
+
+      open(panel, 'default', 'a.ipynb');
+      chooseMenuItem(1);
+      await settle();
+      expect(notebook.sessionContext.kernelPreference).toEqual({
+        name: 'python3',
+        shutdownOnDispose: false
+      });
+      expect(notebook.close).toHaveBeenCalledTimes(1);
+      expect(saves(log)).toEqual([]);
+    });
+
+    it("ACC-LISTS-266-DETACH: Close tab sets no guard: the lab's setting decides", async () => {
+      const terminal = liveTerminal('1');
+      const { panel } = await mount(three(), { live: [terminal.tab] });
+      open(panel, 'default', 'terminal 1');
+      chooseMenuItem(0); // Close tab
+      await settle();
+      expect(terminal.close).toHaveBeenCalledTimes(1);
+      expect(terminal.content.setOption).not.toHaveBeenCalled();
+    });
+
+    it("ACC-LISTS-266-DETACH: on another workspace's card it removes the tab from the saved layout and stops nothing", async () => {
+      const server = three();
+      const { panel, app, log } = await mount(server);
+      log.length = 0;
+      open(panel, 'auto-6', 'terminal 1');
+      chooseMenuItem(1);
+      await settle();
+      expect(saves(log)).toEqual(['PUT /lab/api/workspaces/auto-6']);
+      expect(keysOf(server, 'auto-6')).not.toContain('terminal:1');
+      expect(app.serviceManager.terminals.shutdown).not.toHaveBeenCalled();
+    });
+
+    it('ACC-LISTS-266-DETACH: it is refused as Close tab is when another window shows the workspace or presence is unknown', async () => {
+      // without the server extension the terminals come from /api/terminals, listed only when the page allows terminals
+      const terminals = PageConfig.setOption('terminalsAvailable', 'true');
+      try {
+        const shown = { ...three(), presence: ['auto-6'] };
+        const first = await mount(shown);
+        first.log.length = 0;
+        open(first.panel, 'auto-6', 'terminal 1');
+        chooseMenuItem(1);
+        await waitForDialog();
+        expect(dialogText()).toContain(
+          'Detach from workspace is refused: workspace auto-6 is open in another browser window.'
+        );
+        await dismissDialog();
+        await settle();
+        expect(saves(first.log)).toEqual([]);
+
+        const absent = await mount({ ...three(), absent: true });
+        absent.log.length = 0;
+        open(absent.panel, 'auto-6', 'terminal 1');
+        chooseMenuItem(1);
+        await waitForDialog();
+        expect(dialogText()).toContain(
+          'Detach from workspace is refused: the server extension is not available'
+        );
+        await dismissDialog();
+        await settle();
+        expect(saves(absent.log)).toEqual([]);
+      } finally {
+        PageConfig.setOption('terminalsAvailable', terminals);
+      }
+    });
+
+    it('ACC-LISTS-267-MOVE-MENU: the submenu lists the other shown workspaces in panel order, without the hidden ones, the eye on or off', async () => {
+      const server = three();
+      server.workspaces.push(workspace('auto-8', 20));
+      server.records['auto-8'] = { hidden: true };
+      server.records['default'] = { position: 2 };
+      server.records['auto-6'] = { ...server.records['auto-6'], position: 0 };
+      server.records['auto-7'] = { position: 1 };
+      const { panel } = await mount(server);
+      const submenu = () => {
+        open(panel, 'auto-6', 'terminal 1');
+        chooseMenuItem(2);
+        const menus = document.querySelectorAll('.jp-WorkspaceManager-menu');
+        const labels = Array.from(
+          menus[menus.length - 1].querySelectorAll('.lm-Menu-itemLabel')
+        ).map(l => l.textContent);
+        pressKey(menus[menus.length - 1], 27); // Escape
+        pressKey(menus[0], 27);
+        return labels;
+      };
+      expect(submenu()).toEqual(['auto-7', 'default']);
+      $(panel, 'button[aria-label="Show hidden workspaces"]')!.click();
+      expect(submenu()).toEqual(['auto-7', 'default']);
+    });
+
+    it('ACC-LISTS-267-MOVE-MENU: with nothing to list the entry shows disabled, a plain item', async () => {
+      const terminal = liveTerminal('1');
+      const server = standard();
+      server.records['auto-6'].hidden = true;
+      const { panel } = await mount(server, { live: [terminal.tab] });
+      open(panel, 'default', 'terminal 1');
+      expect(menuLabels()[2]).toBe('Move to workspace');
+      const item = document.querySelectorAll(
+        '.jp-WorkspaceManager-menu .lm-Menu-item'
+      )[2];
+      expect(item.classList).toContain('lm-mod-disabled');
+      expect(item.getAttribute('data-type')).toBe('command');
+      pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 27); // Escape
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: another workspace to another workspace saves the target first, then the source; the entry keeps its shape', async () => {
+      const server = three();
+      const { panel, log } = await mount(server);
+      log.length = 0;
+      open(panel, 'auto-6', 'terminal 1');
+      moveTo(2, 'auto-7');
+      await settle();
+      expect(saves(log)).toEqual([
+        'PUT /lab/api/workspaces/auto-7',
+        'PUT /lab/api/workspaces/auto-6'
+      ]);
+      expect(server.saved!['auto-7'].data['terminal:1']).toEqual({
+        data: { name: '1' }
+      });
+      expect(
+        server.saved!['auto-7'].data['layout-restorer:data'].main.dock.widgets
+      ).toEqual(['terminal:1']);
+      expect(keysOf(server, 'auto-6')).not.toContain('terminal:1');
+      expect(keysOf(server, 'auto-6')).toContain('editor:docs/README.md');
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: a failed source save leaves the tab in both workspaces', async () => {
+      const server = { ...three(), saveFailing: 'auto-6' };
+      const { panel, log } = await mount(server);
+      log.length = 0;
+      open(panel, 'auto-6', 'terminal 1');
+      moveTo(2, 'auto-7');
+      await waitForDialog();
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([
+        'PUT /lab/api/workspaces/auto-7',
+        'PUT /lab/api/workspaces/auto-6'
+      ]);
+      expect(keysOf(server, 'auto-7')).toContain('terminal:1');
+      expect(server.saved!['auto-6']).toBeUndefined();
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: a failed target save leaves the source alone', async () => {
+      const server = { ...three(), saveFailing: 'auto-7' };
+      const { panel, log } = await mount(server);
+      log.length = 0;
+      open(panel, 'auto-6', 'terminal 1');
+      moveTo(2, 'auto-7');
+      await waitForDialog();
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual(['PUT /lab/api/workspaces/auto-7']);
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: this window to another workspace saves the target, then closes the live tab with the guard; this window is not saved', async () => {
+      const terminal = liveTerminal('1');
+      const server = three(['terminal:1']);
+      const { panel, log } = await mount(server, { live: [terminal.tab] });
+      log.length = 0;
+      // the close goes into the request log, so the log holds the calls in order
+      terminal.close.mockImplementation(() => {
+        log.push('close terminal 1');
+        Widget.prototype.close.call(terminal.tab);
+      });
+      open(panel, 'default', 'terminal 1');
+      moveTo(2, 'auto-7');
+      await settle();
+      expect(
+        log.filter(l => l.startsWith('PUT') || l.startsWith('close'))
+      ).toEqual(['PUT /lab/api/workspaces/auto-7', 'close terminal 1']);
+      expect(keysOf(server, 'auto-7')).toContain('terminal:1');
+      expect(terminal.content.setOption).toHaveBeenCalledWith(
+        'shutdownOnClose',
+        false
+      );
+      expect(terminal.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: a live document moves by its saved key, which differs from its live key', async () => {
+      const { tab } = liveTab('docs/a.txt');
+      const close = jest.spyOn(tab, 'close');
+      const server = three(['editor:docs/a.txt']);
+      server.workspaces[0].data['editor:docs/a.txt'].data.factory = 'Editor';
+      const { panel } = await mount(server, { live: [tab] });
+      open(panel, 'default', 'docs/a.txt');
+      moveTo(1, 'auto-7');
+      await settle();
+      expect(server.saved!['auto-7'].data['editor:docs/a.txt']).toEqual({
+        data: { path: 'docs/a.txt', factory: 'Editor' }
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: another workspace to this window opens the terminal live, then saves the source; this window is not saved', async () => {
+      const server = three();
+      const { panel, app, log } = await mount(server);
+      const view = new Widget();
+      view.id = 'opened-terminal';
+      const created = jest.fn(async () => view);
+      app.commands.addCommand('terminal:create-new', {
+        execute: created,
+        describedBy: { args: null }
+      });
+      log.length = 0;
+      open(panel, 'auto-6', 'terminal 1');
+      moveTo(2, 'default');
+      await settle();
+      expect(created).toHaveBeenCalledWith({ name: '1' });
+      expect(app.shell.activateById).toHaveBeenCalledWith('opened-terminal');
+      expect(saves(log)).toEqual(['PUT /lab/api/workspaces/auto-6']);
+      expect(keysOf(server, 'auto-6')).not.toContain('terminal:1');
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: another workspace to this window opens the document live with the path and factory of its entry', async () => {
+      const server = three();
+      server.workspaces[1].data['editor:docs/README.md'].data.factory =
+        'Editor';
+      const { panel, app, log } = await mount(server);
+      const opened = jest.fn(async () => new Widget());
+      app.commands.addCommand('docmanager:open', {
+        execute: opened,
+        describedBy: { args: null }
+      });
+      log.length = 0;
+      open(panel, 'auto-6', 'docs/README.md');
+      moveTo(1, 'default');
+      await settle();
+      expect(opened).toHaveBeenCalledWith({
+        path: 'docs/README.md',
+        factory: 'Editor'
+      });
+      expect(saves(log)).toEqual(['PUT /lab/api/workspaces/auto-6']);
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: a tab this window cannot open stays in its workspace', async () => {
+      const server = three();
+      const { panel, app, log } = await mount(server);
+      app.commands.addCommand('docmanager:open', {
+        execute: async () => undefined,
+        describedBy: { args: null }
+      });
+      log.length = 0;
+      open(panel, 'auto-6', 'docs/README.md');
+      moveTo(1, 'default');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'This window cannot open editor:docs/README.md.'
+      );
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+    });
+
+    it('DEF-PANEL-80-MOVE-CONSOLE: a console from another workspace to this window opens by console:create with its saved data, never as a document, then the source is saved without it', async () => {
+      const server = three();
+      server.workspaces[1] = workspace('auto-6', 60, ['console:docs/a.ipynb']);
+      server.workspaces[1].data['console:docs/a.ipynb'].data = {
+        path: 'docs/a.ipynb',
+        name: 'Console 1',
+        kernelPreference: {}
+      };
+      const { panel, app, log } = await mount(server);
+      const opened = jest.fn(async () => new Widget());
+      const created = jest.fn(async () => new Widget());
+      app.commands.addCommand('docmanager:open', {
+        execute: opened,
+        describedBy: { args: null }
+      });
+      app.commands.addCommand('console:create', {
+        execute: created,
+        describedBy: { args: null }
+      });
+      log.length = 0;
+      open(panel, 'auto-6', 'docs/a.ipynb');
+      moveTo(1, 'default');
+      await settle();
+      expect(created).toHaveBeenCalledWith({
+        path: 'docs/a.ipynb',
+        name: 'Console 1',
+        kernelPreference: {}
+      });
+      expect(opened).not.toHaveBeenCalled();
+      expect(saves(log)).toEqual(['PUT /lab/api/workspaces/auto-6']);
+      expect(keysOf(server, 'auto-6')).not.toContain('console:docs/a.ipynb');
+    });
+
+    it('ACC-LISTS-268-MOVE-TAB: a target deleted since the last reload is not saved again and the source stays', async () => {
+      const server = three();
+      const { panel, log } = await mount(server);
+      server.workspaces.pop();
+      log.length = 0;
+      open(panel, 'auto-6', 'terminal 1');
+      moveTo(2, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain('Workspace auto-7 no longer exists');
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+    });
+
+    it('ACC-LISTS-269-MOVE-REFUSED: another window on the target or on the source refuses and saves nothing', async () => {
+      for (const shown of ['auto-7', 'auto-6']) {
+        const { panel, log } = await mount({
+          ...three(),
+          presence: [shown]
+        });
+        log.length = 0;
+        open(panel, 'auto-6', 'terminal 1');
+        moveTo(2, 'auto-7');
+        await waitForDialog();
+        expect(dialogText()).toContain(
+          `Move to workspace is refused: workspace ${shown} is open in another browser window.`
+        );
+        await dismissDialog();
+        await settle();
+        expect(saves(log)).toEqual([]);
+      }
+    });
+
+    it('ACC-LISTS-269-MOVE-REFUSED: presence unknown refuses and saves nothing', async () => {
+      // without the server extension the terminals come from /api/terminals, listed only when the page allows terminals
+      const terminals = PageConfig.setOption('terminalsAvailable', 'true');
+      try {
+        const { panel, log } = await mount({ ...three(), absent: true });
+        log.length = 0;
+        open(panel, 'auto-6', 'terminal 1');
+        moveTo(2, 'auto-7');
+        await waitForDialog();
+        expect(dialogText()).toContain(
+          'Move to workspace is refused: the server extension is not available'
+        );
+        await dismissDialog();
+        await settle();
+        expect(saves(log)).toEqual([]);
+      } finally {
+        PageConfig.setOption('terminalsAvailable', terminals);
+      }
+    });
+
+    it('ACC-LISTS-269-MOVE-REFUSED: a tab not in the saved record is refused, the entry is never made up', async () => {
+      const terminal = liveTerminal('1');
+      const { panel, log } = await mount(three(), { live: [terminal.tab] });
+      log.length = 0;
+      open(panel, 'default', 'terminal 1');
+      moveTo(2, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'Move to workspace is refused: workspace default has not saved this tab yet, or has saved more than one tab of its file.'
+      );
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+      expect(terminal.close).not.toHaveBeenCalled();
+    });
+
+    it('DEF-PANEL-79-MOVE-PATH: a live key that matches neither of two saved tabs of its path is refused as a tab not in the saved record; nothing is saved or closed', async () => {
+      const { tab } = liveTab('docs/a.md');
+      const close = jest.spyOn(tab, 'close');
+      const server = three(['editor:docs/a.md', 'markdownviewer:docs/a.md']);
+      server.workspaces[0].data['editor:docs/a.md'].data.factory = 'Editor';
+      server.workspaces[0].data['markdownviewer:docs/a.md'].data.factory =
+        'Markdown Preview';
+      const { panel, log } = await mount(server, { live: [tab] });
+      log.length = 0;
+      open(panel, 'default', 'docs/a.md');
+      moveTo(1, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'Move to workspace is refused: workspace default has not saved this tab yet, or has saved more than one tab of its file.'
+      );
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+      expect(close).not.toHaveBeenCalled();
+    });
+
+    it('DEF-PANEL-81-MOVE-EDITOR: a live document whose path is also saved as its own console moves by its editor entry; the console is not counted', async () => {
+      const { tab } = liveTab('a.py');
+      const close = jest.spyOn(tab, 'close');
+      const server = three(['editor:a.py', 'console:a.py']);
+      server.workspaces[0].data['editor:a.py'].data.factory = 'Editor';
+      const { panel } = await mount(server, { live: [tab] });
+      open(panel, 'default', 'a.py');
+      moveTo(1, 'auto-7');
+      await settle();
+      expect(server.saved!['auto-7'].data['editor:a.py']).toEqual({
+        data: { path: 'a.py', factory: 'Editor' }
+      });
+      expect(keysOf(server, 'auto-7')).not.toContain('console:a.py');
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('DEF-PANEL-82-MOVE-VIEW: the second of two live tabs of a path saved once is refused; the saved tab is not moved, nothing is saved or closed', async () => {
+      const editor = liveTab('a.md').tab;
+      const preview = liveTab('a.md').tab;
+      preview.title.label = 'Preview a.md';
+      const closes = [
+        jest.spyOn(editor, 'close'),
+        jest.spyOn(preview, 'close')
+      ];
+      const server = three(['editor:a.md']);
+      server.workspaces[0].data['editor:a.md'].data.factory = 'Editor';
+      const { panel, log } = await mount(server, { live: [editor, preview] });
+      log.length = 0;
+      triangle(panel, 'w:default').click();
+      Array.from(
+        card(panel, 'w:default').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+        .find(r => r.textContent!.includes('Preview a.md'))!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      moveTo(1, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'Move to workspace is refused: workspace default has not saved this tab yet, or has saved more than one tab of its file.'
+      );
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+      closes.forEach(close => expect(close).not.toHaveBeenCalled());
+    });
+
+    /** Move to workspace on the row labelled `label` of this window's card, with `live` open and only `saved` saved, `entries` replacing their saved entries; expects the refusal, no save and no close. */
+    const refusedMove = async (
+      live: Widget[],
+      saved: string[],
+      label: string,
+      entries: Record<string, unknown> = {}
+    ) => {
+      const closes = live.map(w => jest.spyOn(w, 'close'));
+      const server = three(saved);
+      Object.assign(server.workspaces[0].data, entries);
+      const { panel, log } = await mount(server, { live });
+      log.length = 0;
+      triangle(panel, 'w:default').click();
+      Array.from(
+        card(panel, 'w:default').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+        .find(r => r.textContent!.includes(label))!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      moveTo(1, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'Move to workspace is refused: workspace default has not saved this tab yet, or has saved more than one tab of its file.'
+      );
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+      closes.forEach(close => expect(close).not.toHaveBeenCalled());
+    };
+
+    it('DEF-PANEL-83-MOVE-OWNKEY: a console whose path is saved only as its editor tab is refused; the editor entry is not moved, nothing is saved or closed', async () => {
+      const editor = liveTab('a.py').tab;
+      const panelOfConsole = new Widget();
+      panelOfConsole.addClass('jp-ConsolePanel');
+      (panelOfConsole as any).sessionContext = { path: 'a.py' };
+      panelOfConsole.title.label = 'Console a.py';
+      Widget.attach(panelOfConsole, document.body);
+      await refusedMove(
+        [editor, panelOfConsole],
+        ['editor:a.py'],
+        'Console a.py',
+        { 'editor:a.py': { data: { path: 'a.py', factory: 'Editor' } } }
+      );
+    });
+
+    it('DEF-PANEL-83-MOVE-OWNKEY: a notebook whose path is saved only as its editor tab is refused; the editor entry is not moved, nothing is saved or closed', async () => {
+      const editor = liveTab('x.ipynb').tab;
+      const notebook = liveNotebook('x.ipynb').tab;
+      notebook.title.label = 'Notebook x.ipynb';
+      await refusedMove(
+        [editor, notebook],
+        ['editor:x.ipynb'],
+        'Notebook x.ipynb',
+        { 'editor:x.ipynb': { data: { path: 'x.ipynb', factory: 'Editor' } } }
+      );
+    });
+
+    /** x.ipynb in this window as a notebook, a cloned output view of it and an editor tab; the output view is JupyterLab's MainAreaWidget, with neither context nor sessionContext. */
+    const notebookWithOutputView = () => {
+      const notebook = liveNotebook('x.ipynb').tab;
+      notebook.title.label = 'Notebook x.ipynb';
+      const outputView = new Widget();
+      outputView.title.label = 'Output View';
+      Widget.attach(outputView, document.body);
+      const editor = liveTab('x.ipynb').tab;
+      editor.title.label = 'Editor x.ipynb';
+      return [notebook, outputView, editor];
+    };
+    /** The notebook and the cloned output view of x.ipynb as JupyterLab saves them: the notebook with its factory, the output view with none. */
+    const notebookEntries = {
+      'notebook:x.ipynb': { data: { path: 'x.ipynb', factory: 'Notebook' } },
+      'cloned-outputs:x.ipynb:3': { data: { path: 'x.ipynb', index: 3 } }
+    };
+
+    it('DEF-PANEL-81-MOVE-EDITOR: an editor tab of a notebook file not saved yet, beside a saved cloned output view of the notebook, is refused; the output view entry is not moved, nothing is saved or closed', async () => {
+      await refusedMove(
+        notebookWithOutputView(),
+        ['notebook:x.ipynb', 'cloned-outputs:x.ipynb:3'],
+        'Editor x.ipynb',
+        notebookEntries
+      );
+    });
+
+    it('DEF-PANEL-81-MOVE-EDITOR: a saved editor tab of a notebook file, beside a saved cloned output view of the notebook, moves by its editor entry; the output view is not counted, only the editor closes', async () => {
+      const live = notebookWithOutputView();
+      const closes = live.map(w => jest.spyOn(w, 'close'));
+      const server = three([
+        'notebook:x.ipynb',
+        'cloned-outputs:x.ipynb:3',
+        'editor:x.ipynb'
+      ]);
+      Object.assign(server.workspaces[0].data, notebookEntries);
+      server.workspaces[0].data['editor:x.ipynb'].data.factory = 'Editor';
+      const { panel } = await mount(server, { live });
+      triangle(panel, 'w:default').click();
+      Array.from(
+        card(panel, 'w:default').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+        .find(r => r.textContent!.includes('Editor x.ipynb'))!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      moveTo(1, 'auto-7');
+      await settle();
+      expect(server.saved!['auto-7'].data['editor:x.ipynb']).toEqual({
+        data: { path: 'x.ipynb', factory: 'Editor' }
+      });
+      expect(keysOf(server, 'auto-7')).not.toContain(
+        'cloned-outputs:x.ipynb:3'
+      );
+      expect(closes.map(close => close.mock.calls.length)).toEqual([0, 0, 1]);
+    });
+
+    it('ACC-LISTS-269-MOVE-REFUSED: a document with unsaved changes is refused and stays open', async () => {
+      const { tab } = liveTab('a.txt');
+      (tab as any).context.model = { dirty: true };
+      const close = jest.spyOn(tab, 'close');
+      const { panel, log } = await mount(three(['editor:a.txt']), {
+        live: [tab]
+      });
+      log.length = 0;
+      open(panel, 'default', 'a.txt');
+      moveTo(1, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'Move to workspace is refused: the document has unsaved changes.'
+      );
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+      expect(close).not.toHaveBeenCalled();
+    });
+  });
+
+  it('ACC-ACCORD-263-HEADER-MENU: a right-click opens the ... menu at the pointer, a click on a header button included; a hidden card opens none; the context-menu key opens it at the header', async () => {
+    const server = standard();
+    server.workspaces.push(workspace('secret', 5));
+    server.records.secret = { hidden: true };
+    const { panel } = await mount(server);
+    $(panel, 'button[aria-label="Show hidden workspaces"]')!.click();
+    const opened = jest.spyOn(Menu.prototype, 'open');
+    const dismiss = () =>
+      pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 27);
+
+    const right = { bubbles: true, button: 2, clientX: 40, clientY: 50 };
+    const stopped = new MouseEvent('contextmenu', {
+      ...right,
+      cancelable: true
+    });
+    header(panel, 'w:auto-6').dispatchEvent(stopped);
+    expect(stopped.defaultPrevented).toBe(true);
+    expect(opened.mock.calls[0].slice(0, 2)).toEqual([40, 50]);
+    expect(menuLabels()[0]).toBe('Open workspace');
+    dismiss();
+
+    header(panel, 'w:auto-6')
+      .querySelector('button[aria-label="Hide workspace"]')!
+      .dispatchEvent(new MouseEvent('contextmenu', right));
+    expect(opened).toHaveBeenCalledTimes(2);
+    dismiss();
+
+    // the key reports the header's centre and no button
+    const rect = { left: 7, bottom: 9 } as DOMRect;
+    jest
+      .spyOn(header(panel, 'w:auto-6'), 'getBoundingClientRect')
+      .mockReturnValue(rect);
+    header(panel, 'w:auto-6').dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, clientX: 90, clientY: 30 })
+    );
+    expect(opened.mock.calls[2].slice(0, 2)).toEqual([7, 9]);
+    dismiss();
+
+    const hidden = new MouseEvent('contextmenu', {
+      ...right,
+      cancelable: true
+    });
+    header(panel, 'w:secret').dispatchEvent(hidden);
+    expect(hidden.defaultPrevented).toBe(true);
+    expect(opened).toHaveBeenCalledTimes(3);
+    opened.mockRestore();
   });
 
   it('EDGE-CLEAN-UP-ICON: the WORKSPACES header carries the eraser glyph, and the KERNELS, TERMINALS and LANGUAGE SERVERS headers the power glyph', async () => {

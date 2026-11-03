@@ -2,6 +2,32 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.34] - 2026-11-03
+
+### Added
+
+- A right-click on a workspace card's header opens its ... menu at the pointer; the context-menu key opens it below the header
+- A tab or terminal row's menu offers Detach from workspace on a terminal and on a document with a running kernel: the tab leaves the workspace and the terminal or kernel keeps running, whatever the lab's shutdown-on-close settings say
+- A tab or terminal row's menu offers Move to workspace, with a submenu of the other shown workspaces: the target is saved first, then the source, and a console moved into this window opens as a console; the move is refused when another window shows either workspace, the document has unsaved changes, or the file is open in two tabs of this window
+- A terminal's tooltip shows its tab, process, command line, working directory, last activity and the workspaces that hold it, one line each
+- The free width of a terminal row shows the working directory of its foreground process, cut from its start so the end stays in view, and hidden under 32 px
+
+### Changed
+
+- A numbered terminal reads t1, t2 in its row; a named terminal keeps its name
+- A terminal row shows its tab's own name when it has one, and the process otherwise
+- A row is lit only while it has the keyboard focus or its tab is the window's current tab, and it stays lit while a press inside the panel is held
+- With WORKSPACES folded, the KERNELS, TERMINALS and LANGUAGE SERVERS bands follow it from the top; they stand at the panel bottom only while WORKSPACES is open, and any other open section is as tall as its rows
+- The section triangles render at weight 600, the size of the bookmarks panel's triangles
+- The Open workspace and Close all tabs buttons are gone from the card header; both stay in the ... menu, and a header click still switches to the workspace
+
+### Fixed
+
+- Two quick clicks on a terminal row no longer open two tabs for one terminal
+- A click on a section band is no longer lost while a row is lit
+- A tab moved into a workspace that was never opened no longer makes it open with both sidebars collapsed
+- Move to workspace no longer moves another tab of the same file in place of the one chosen
+
 ## [0.8.33] - 2026-11-02
 
 ### Added

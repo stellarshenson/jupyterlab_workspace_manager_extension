@@ -18,6 +18,7 @@ import {
   filterIcon,
   kernelIcon,
   LabIcon,
+  launchIcon,
   refreshIcon,
   SidePanel,
   tabIcon,
@@ -42,11 +43,9 @@ import {
   workspaces
 } from '../api';
 import {
-  closeTabsIcon,
   eraserIcon,
   eyeIcon,
   eyeOffIcon,
-  openIcon,
   powerIcon,
   terminalGlyph
 } from '../icons';
@@ -66,7 +65,10 @@ import {
   type ITerminalRow,
   lines,
   tabsOf,
-  withoutTabs
+  terminalLabel,
+  terminalTabName,
+  withoutTabs,
+  withTab
 } from '../model/model';
 import { newRecord } from '../model/new';
 import { givePositions, moved } from '../model/order';
@@ -77,7 +79,7 @@ import {
   descriptionDialog,
   newWorkspaceDialog
 } from './dialogs';
-import { actionMenu, workspaceMenu } from './menus';
+import { actionMenu, type IRowAction, workspaceMenu } from './menus';
 
 /** The section of the panel that lists the running language servers. */
 const LANGUAGE_SERVERS = 'Language servers';
@@ -237,6 +239,24 @@ export class WorkspacePanel
     pressed(this._hiddenButton, false);
 
     this._root = createRoot(this.content.node);
+    this._app.shell.currentChanged?.connect(() => this._releaseRow(), this);
+    this.content.node.addEventListener('focusout', e => this._releaseRow(e));
+    // the lit row's detail lines stay for the press: removed, they pull what is below from under the pointer and lose its click
+    this.content.node.addEventListener(
+      'mousedown',
+      () => {
+        this._pressed = true;
+        // a native drag of a card header sends pointercancel when it starts, and Chromium sends no mouseup
+        const ends = ['mouseup', 'pointercancel'];
+        const release = (): void => {
+          ends.forEach(t => window.removeEventListener(t, release, true));
+          this._pressed = false;
+          this._releaseRow();
+        };
+        ends.forEach(t => window.addEventListener(t, release, true));
+      },
+      true
+    );
     // kernel rows show the display names of the kernelspecs
     this._app.serviceManager.kernelspecs.specsChanged.connect(
       this._render,
@@ -503,6 +523,7 @@ export class WorkspacePanel
     }
     this._openCards.add(keyOf(section));
     this._selected = `${keyOf(section)}/${tab.key}`;
+    this._selectedTabs = [tab.key];
     this._app.shell.activateById(widget.id);
     this._render();
     return true;
@@ -688,6 +709,7 @@ export class WorkspacePanel
     }
     const model = this._model();
     const sections = model?.sections ?? [];
+    this._sections = sections;
     const filtering = !!this._query.trim();
     const { cards, unmatched } = filterSections(
       sections,
@@ -995,6 +1017,21 @@ export class WorkspacePanel
               click();
             }
           }}
+          onContextMenu={e => {
+            e.preventDefault();
+            e.stopPropagation();
+            // a hidden card's ... button is disabled, so its header has no menu
+            if (!section.hidden) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              // the context-menu key reports the header's centre and no button
+              const pointer = e.button === 2;
+              this._openMenu(
+                section,
+                pointer ? e.clientX : rect.left,
+                pointer ? e.clientY : rect.bottom
+              );
+            }
+          }}
         >
           <div className="jp-WorkspaceManager-headerLine">
             {caret(open, () => this._toggle(key))}
@@ -1009,17 +1046,6 @@ export class WorkspacePanel
             {/* every button on every card; one that does not apply is disabled (DQ-12) */}
             <span className="jp-WorkspaceManager-cardActions">
               {iconButton(
-                openIcon,
-                'Open workspace',
-                () => void this._openWorkspace(section),
-                section.current
-              )}
-              {iconButton(
-                closeTabsIcon,
-                'Close all tabs',
-                () => void this._closeAll(section)
-              )}
-              {iconButton(
                 section.hidden ? eyeIcon : eyeOffIcon,
                 section.hidden ? 'Show workspace again' : 'Hide workspace',
                 () => void this._store(id, { hidden: !section.hidden }),
@@ -1030,7 +1056,10 @@ export class WorkspacePanel
               {iconButton(
                 ellipsesIcon,
                 'Workspace menu',
-                e => this._openMenu(section, e.currentTarget as HTMLElement),
+                e => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  this._openMenu(section, rect.left, rect.bottom);
+                },
                 section.hidden
               )}
             </span>
@@ -1075,17 +1104,73 @@ export class WorkspacePanel
     );
   }
 
-  /** The selection of the row `key` of the list `list`: the panel has one selected row (DQ-17). */
-  private _selection(list: string, key: string) {
+  /** The selection of the row `key` of the list `list`, whose tab has one of the keys `tabs`: the panel has one selected row (DQ-17). */
+  private _selection(list: string, key: string, tabs = [key]) {
     const id = `${list}/${key}`;
     return {
       selected: this._selected === id,
       select: () => {
         if (this._selected !== id) {
           this._selected = id;
+          this._selectedTabs = tabs;
           this._render();
         }
       }
+    };
+  }
+
+  /** The selected row stays lit while the focus is on it or its tab is the current tab of this window (DQ-32), and until a press in the panel ends. */
+  private _releaseRow(event?: FocusEvent): void {
+    const row = this.content.node.querySelector(
+      '.jp-WorkspaceManager-row.jp-mod-selected'
+    );
+    if (!row || this._pressed) {
+      return;
+    }
+    // a tab the click opened may not be in the map yet
+    this._liveTabs();
+    // a browser window losing focus names no target and leaves the row the active element
+    const focus = (event?.relatedTarget ??
+      document.activeElement) as Node | null;
+    if (row.contains(focus)) {
+      return;
+    }
+    const current = this._app.shell.currentWidget;
+    // the shell moves its current widget on the focus event, which follows this focusout
+    const kept = this._selectedTabs.some(key => {
+      const widget = this._live.get(key);
+      return widget && (widget === current || widget.node.contains(focus));
+    });
+    if (!kept) {
+      this._selected = null;
+      this._render();
+    }
+  }
+
+  /** The Detach from workspace entry of a card row. */
+  private _detachAction(section: ISection, key: string): IRowAction {
+    return {
+      label: this._translation.__('Detach from workspace'),
+      icon: launchIcon,
+      execute: () => void this._closeTab(section, key, true)
+    };
+  }
+
+  /** The Move to workspace entry of a card row: the workspaces of this panel but its own and the hidden ones. */
+  private _moveAction(
+    section: ISection,
+    key: string,
+    path?: string
+  ): IRowAction {
+    return {
+      label: this._translation.__('Move to workspace'),
+      icon: tabIcon,
+      submenu: this._sections
+        .filter(s => s.id !== section.id && !s.hidden)
+        .map(target => ({
+          label: target.id,
+          execute: () => void this._moveTab(section, target, key, path)
+        }))
     };
   }
 
@@ -1129,6 +1214,8 @@ export class WorkspacePanel
           icon: closeIcon,
           execute: () => void this._closeTab(section, tab.key)
         },
+        ...(kernels.length ? [this._detachAction(section, tab.key)] : []),
+        this._moveAction(section, tab.key, tab.path),
         ...kernels.map(k => ({
           label:
             kernels.length > 1
@@ -1153,14 +1240,36 @@ export class WorkspacePanel
     const when = age(t.lastActivity, now, this._translation);
     const key = `terminal:${t.name}`;
     const inCard = section !== null && !listed;
+    const trans = this._translation;
+    const tab = terminalTabName(t);
+    const holders = (inCard ? [section!.id, ...t.alsoIn] : t.alsoIn).join(', ');
+    // the value stays out of the format string: Gettext reduces a %% in it;
+    // a file name can hold a newline, and a tooltip field takes one line
+    const line = (label: string, value?: string | null) =>
+      value && `${label}: ${value.replace(/[\r\n]+/g, ' ')}`;
     return row({
       key,
       ...this._selection(listed ? 'terminals' : keyOf(section!), key),
       icon: terminalGlyph,
-      label: `terminal ${t.name}`,
+      label: terminalLabel(t.name),
       code: listed,
-      process: t.process,
-      title: lines(`terminal ${t.name}`, t.process, when.label),
+      process: tab ?? t.process,
+      path: t.cwd,
+      title: lines(
+        `terminal ${t.name}`,
+        line(trans.__('Tab'), tab),
+        line(trans.__('Process'), t.process),
+        line(trans.__('Command'), t.command),
+        line(trans.__('Path'), t.cwd),
+        t.lastActivity
+          ? trans.__(
+              'Last activity: %1 (%2)',
+              when.label,
+              new Date(t.lastActivity).toLocaleString()
+            )
+          : trans.__('Last activity: %1', when.label),
+        line(trans.__('Workspaces'), holders)
+      ),
       when,
       // this window's row or a TERMINALS row activates the tab of its terminal;
       // a row of another workspace's card opens that workspace
@@ -1177,6 +1286,8 @@ export class WorkspacePanel
               icon: closeIcon,
               execute: () => void this._closeTab(section!, key)
             },
+            this._detachAction(section!, key),
+            this._moveAction(section!, key),
             {
               label: this._translation.__('Stop terminal'),
               icon: closeIcon,
@@ -1205,9 +1316,10 @@ export class WorkspacePanel
   ): React.ReactElement {
     const figures = this._data?.resources[k.id];
     const key = `kernel:${k.id}`;
+    const tabs = [`notebook:${k.path}`, `console:${k.path}`];
     return row({
       key,
-      ...this._selection(listed ? 'kernels' : keyOf(section!), key),
+      ...this._selection(listed ? 'kernels' : keyOf(section!), key, tabs),
       icon: kernelIcon,
       // the file name of its notebook or console, the id with no session
       label: k.detail || k.id,
@@ -1237,7 +1349,7 @@ export class WorkspacePanel
           section !== null &&
           (!listed || section.current || session?.type !== 'notebook')
         ) {
-          this._openRow(section, `notebook:${k.path}`, `console:${k.path}`);
+          this._openRow(section, ...tabs);
           return;
         }
         if (session?.type === 'notebook' && k.path) {
@@ -1438,7 +1550,7 @@ export class WorkspacePanel
     );
   }
 
-  private _openMenu(section: ISection, anchor: HTMLElement): void {
+  private _openMenu(section: ISection, x: number, y: number): void {
     const id = section.id;
     const shown = this._shown();
     const i = shown.findIndex(s => s.id === id);
@@ -1459,8 +1571,7 @@ export class WorkspacePanel
       },
       this._translation
     );
-    const rect = anchor.getBoundingClientRect();
-    menu.open(rect.left, rect.bottom);
+    menu.open(x, y);
   }
 
   /** Show the refusal of an action on a workspace that another browser window shows, or of a destructive action while presence is unknown. */
@@ -1563,8 +1674,20 @@ export class WorkspacePanel
     return undefined;
   }
 
-  /** A terminal row: activate the tab of its terminal, or open one. */
-  private async _openTerminal(name: string): Promise<void> {
+  /** A terminal row: a call while the tab opens joins that opening, because the shell holds no tab to find yet. */
+  private _openTerminal(name: string): Promise<void> {
+    let opening = this._opening.get(name);
+    if (!opening) {
+      opening = this._showTerminal(name).finally(() =>
+        this._opening.delete(name)
+      );
+      this._opening.set(name, opening);
+    }
+    return opening;
+  }
+
+  /** Activate the tab of a terminal, or open one. */
+  private async _showTerminal(name: string): Promise<void> {
     // terminal:open cannot be used: it would activate the tab of an ended
     // connection that a new terminal of the same name has taken over from
     const view =
@@ -1616,15 +1739,30 @@ export class WorkspacePanel
     });
   }
 
-  private async _closeTab(section: ISection, key: string): Promise<void> {
+  /** Close a tab; `detach` keeps its terminal or kernel running, whatever the lab's settings say. */
+  private async _closeTab(
+    section: ISection,
+    key: string,
+    detach = false
+  ): Promise<void> {
     if (section.current) {
+      const live = this._live.get(key);
+      if (live && detach) {
+        keepRunning(live);
+      }
       // as JupyterLab's own close: only the last view of an unsaved document asks
-      this._live.get(key)?.close();
+      live?.close();
       return;
     }
     const id = section.id;
     await this._act(async () => {
-      if (await this._refused(id, 'Close tab', true)) {
+      if (
+        await this._refused(
+          id,
+          detach ? 'Detach from workspace' : 'Close tab',
+          true
+        )
+      ) {
         return;
       }
       const store = workspaces(this._settings);
@@ -1633,6 +1771,95 @@ export class WorkspacePanel
         throw new Error(`Workspace ${id} no longer exists`);
       }
       await store.save(id, withoutTabs(ws, [key]));
+    });
+  }
+
+  /**
+   * Move a tab to another workspace. The target is saved first: a failure between
+   * the two writes leaves the tab in both workspaces, never in neither. This window
+   * takes the tab live, because its next autosave overwrites a saved-layout write.
+   */
+  private async _moveTab(
+    source: ISection,
+    target: ISection,
+    key: string,
+    path?: string
+  ): Promise<void> {
+    const action = 'Move to workspace';
+    await this._act(async () => {
+      if (
+        (await this._refused(target.id, action, true)) ||
+        (await this._refused(source.id, action, true))
+      ) {
+        return;
+      }
+      const live = source.current ? this._live.get(key) : undefined;
+      if ((live as any)?.context?.model?.dirty) {
+        throw new Error(
+          `${action} is refused: the document has unsaved changes. Save it first.`
+        );
+      }
+      const store = workspaces(this._settings);
+      const from = await store.fetch(source.id);
+      const tabs = tabsOf(from.data);
+      // a live document's key is not always its saved key: `document:a.txt` saves as `editor:a.txt`; a path of two saved tabs names neither;
+      // a live document is a tab a document factory opened, so only a saved entry with a factory can be it; a notebook has a live key of its own (DEF-PANEL-81-MOVE-EDITOR)
+      const byPath = tabs.filter(
+        t =>
+          path !== undefined &&
+          t.path === path &&
+          !t.key.startsWith('notebook:') &&
+          (from.data[t.key] as any)?.data?.factory !== undefined
+      );
+      // two live documents of one path may share one saved tab until the autosave, so the path names neither (DEF-PANEL-82-MOVE-VIEW)
+      const views = [...this._live].filter(
+        ([k, w]) =>
+          k.startsWith('document:') &&
+          ((w as any).context?.path ?? (w as any).sessionContext?.path) === path
+      ).length;
+      // a notebook or a console keeps its saved key as its live key, so a miss means it is not saved yet (DEF-PANEL-83-MOVE-OWNKEY)
+      const saved =
+        tabs.find(t => t.key === key) ??
+        (key.startsWith('document:') && byPath.length === 1 && views === 1
+          ? byPath[0]
+          : undefined);
+      if (!saved) {
+        throw new Error(
+          `${action} is refused: workspace ${source.id} has not saved this tab yet, or has saved more than one tab of its file. Try again in a moment, or close the other tab of the file.`
+        );
+      }
+      const entry = from.data[saved.key];
+      if (!target.current) {
+        const to = await store.fetch(target.id);
+        if (!to.metadata.last_modified) {
+          throw new Error(`Workspace ${target.id} no longer exists`);
+        }
+        await store.save(target.id, withTab(to, saved.key, entry));
+      } else if (saved.key.startsWith('terminal:')) {
+        await this._openTerminal(saved.key.slice('terminal:'.length));
+      } else {
+        // a console saves no factory: it opens as the layout restorer opens it, by console:create with its saved data
+        const opened =
+          saved.path &&
+          (saved.key.startsWith('console:')
+            ? await this._app.commands.execute(
+                'console:create',
+                (entry as any).data
+              )
+            : (entry as any).data?.factory &&
+              (await this._app.commands.execute('docmanager:open', {
+                path: saved.path,
+                factory: (entry as any).data.factory
+              })));
+        if (!opened) {
+          throw new Error(`This window cannot open ${saved.key}.`);
+        }
+      }
+      if (source.current) {
+        await this._closeTab(source, key, true);
+      } else {
+        await store.save(source.id, withoutTabs(from, [saved.key]));
+      }
     });
   }
 
@@ -1819,6 +2046,8 @@ export class WorkspacePanel
   private _sectionAdded = new Signal<this, ISectionEntry>(this);
 
   private _data: ILoaded | null = null;
+  /** the workspaces of the last render, in panel order */
+  private _sections: ISection[] = [];
   private _error = '';
   private _loading: Promise<void> | null = null;
   /** user actions ended so far; a load started before the last one is discarded */
@@ -1832,6 +2061,8 @@ export class WorkspacePanel
   private _live = new Map<string, Widget>();
   /** the tab a terminal row opened or activated, by terminal name */
   private _terminalTab = new Map<string, Widget>();
+  /** the terminal row calls in flight, by terminal name */
+  private _opening = new Map<string, Promise<void>>();
   /** colours this page gave to workspaces whose record has none */
   private _colours: { [id: string]: Colour } = {};
   /** the colour given last, as the server keeps it for every window */
@@ -1850,6 +2081,10 @@ export class WorkspacePanel
   private _openCards = new Set<string>();
   /** the selected row: its list and its key */
   private _selected: string | null = null;
+  /** the keys of the tabs that keep the selected row lit while one of them is current (DQ-32) */
+  private _selectedTabs: string[] = [];
+  /** a mouse press that began in the panel has not ended */
+  private _pressed = false;
   private _scrollTo: string | null = null;
   private _query = '';
   private _filterShown = false;
@@ -1872,6 +2107,24 @@ function button(icon: LabIcon, label: string, onClick: () => void): Widget {
 function pressed(widget: Widget, on: boolean): void {
   widget.node.classList.toggle('jp-mod-active', on);
   widget.node.setAttribute('aria-pressed', String(on));
+}
+
+/**
+ * Make sure closing this tab cannot stop its terminal or kernel, whatever the lab's settings say.
+ * shortcut: a Cancel on the unsaved-changes question leaves the guard on the tab, so its later close
+ * keeps the kernel too; upgrade if the document manager ever reports the answer.
+ */
+function keepRunning(widget: Widget): void {
+  const w = widget as any;
+  if (w.content?.hasClass?.('jp-Terminal')) {
+    w.content.setOption('shutdownOnClose', false);
+  }
+  if (w.sessionContext) {
+    w.sessionContext.kernelPreference = {
+      ...w.sessionContext.kernelPreference,
+      shutdownOnDispose: false
+    };
+  }
 }
 
 /**
@@ -1994,9 +2247,9 @@ const TYPE = `${SHRINK} jp-WorkspaceManager-type`;
 const FOLDER = `${CODE} ${SHRINK} jp-WorkspaceManager-folder`;
 
 /**
- * A row: its type icon, its name, a terminal's process (DQ-24), a kernel's state dot and word, its
- * time; selected, the lines of its details under them (DQ-17). Its focus, by a click or the arrow
- * keys, selects it.
+ * A row: its type icon, its name, a terminal's tab name or process (DQ-24, DQ-31) and path (DQ-30), a kernel's state
+ * dot and word, its time; selected, the lines of its details under them (DQ-17). Its focus, by a
+ * click or the arrow keys, selects it.
  */
 function row(props: {
   key: string;
@@ -2007,8 +2260,10 @@ function row(props: {
   label: React.ReactNode;
   /** the label is an identifier: the code font */
   code?: boolean;
-  /** a terminal's process: it stands in the line, selected or not (DQ-24) */
+  /** a terminal's tab name, else its process (DQ-31): it stands in the line, selected or not (DQ-24) */
   process?: string | null;
+  /** the working directory of the foreground process: it stands after the process, in the free width (DQ-30) */
+  path?: string | null;
   /** a kernel's state: its word stands in the line, the title and the dot's aria-label (DQ-13) */
   state?: { word: string; dot: string };
   /** the time since the last activity, and its recent or stale emphasis (DQ-09) */
@@ -2021,13 +2276,7 @@ function row(props: {
   /** the shutdown button of an item of another extension's section */
   shutdown?: { label: string; icon: LabIcon; execute: () => void };
   open: () => void;
-  menu?: {
-    label: string;
-    icon: LabIcon;
-    execute: () => void;
-    /** a destructive entry: the error-coloured label and icon (DQ-11) */
-    danger?: boolean;
-  }[];
+  menu?: IRowAction[];
 }): React.ReactElement {
   const { icon, menu, shutdown, state, when } = props;
   const detail = props.selected
@@ -2090,6 +2339,13 @@ function row(props: {
       </span>
       {props.process && (
         <span className="jp-WorkspaceManager-rowProcess">{props.process}</span>
+      )}
+      {props.process && props.path && (
+        <span className="jp-WorkspaceManager-rowPathSlot">
+          <span className="jp-WorkspaceManager-rowPath">
+            <bdi>{props.path}</bdi>
+          </span>
+        </span>
       )}
       {state && (
         <span className="jp-WorkspaceManager-state" title={state.word}>

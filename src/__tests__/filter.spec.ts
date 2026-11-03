@@ -119,6 +119,15 @@ describe('filter', () => {
     expect(rowsFor('beta')).toEqual([['beta', [], [], []]]);
   });
 
+  it('ACC-TERM-257-SHORT-LABEL: the label t7 finds terminal 7, and so does the text terminal 7', () => {
+    const terminalsFor = (query: string) =>
+      filterSections(sections(), query, false).cards.map(c =>
+        c.terminals.map(t => t.name)
+      );
+    expect(terminalsFor('t7')).toEqual([['7']]);
+    expect(terminalsFor('terminal 7')).toEqual([['7']]);
+  });
+
   it('ACC-KERNEL-156-DISPLAY-NAME: the filter matches a kernel by its display name and by its kernelspec id', () => {
     const kernelsFor = (query: string) =>
       filterSections(sections(), query, false).cards.map(c => [

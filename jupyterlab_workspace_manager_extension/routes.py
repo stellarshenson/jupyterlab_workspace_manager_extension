@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 import uuid
 from contextlib import suppress
 from pathlib import Path
@@ -55,6 +56,24 @@ def process_name(pty):
         return None
 
 
+def process_cwd(pty):
+    """Working directory of the foreground process of a terminal's pty; None when it cannot be read."""
+    try:
+        return os.readlink(f"/proc/{os.tcgetpgrp(pty.ptyproc.fd)}/cwd")
+    except OSError:
+        return None
+
+
+def process_command(pty):
+    """Command line of the foreground process of a terminal's pty; None when it cannot be read or is empty."""
+    try:
+        command = Path(f"/proc/{os.tcgetpgrp(pty.ptyproc.fd)}/cmdline").read_bytes()
+    except OSError:
+        return None
+    # a run of control characters, NUL and newline included, is one space: a command takes one tooltip line
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", command.decode(errors="replace")).strip() or None
+
+
 class TerminalsHandler(APIHandler):
     @tornado.web.authenticated
     def get(self):
@@ -68,6 +87,8 @@ class TerminalsHandler(APIHandler):
             if pty.ptyproc.terminated or not pty.ptyproc.isalive():
                 continue
             model["process"] = process_name(pty)
+            model["cwd"] = process_cwd(pty)
+            model["command"] = process_command(pty)
             live.append(model)
         self.finish(json.dumps(live))
 

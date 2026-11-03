@@ -13,6 +13,7 @@ import {
   dialog,
   enterWorkspace,
   fresh,
+  fromMenu,
   fromRowMenu,
   gotoWorkspace,
   headerButton,
@@ -38,6 +39,7 @@ import {
   putWorkspace,
   refresh,
   rgba,
+  rowLabel,
   rowOf,
   sectionBody,
   sectionCount,
@@ -445,7 +447,7 @@ test.describe('the seeded scenario', () => {
       await closeCards(page);
       await triangle(page, s.current).click();
       const mineCard = card(page, s.current);
-      await expect(rowOf(mineCard, `terminal ${s.tab}`)).toHaveCount(1);
+      await expect(rowOf(mineCard, rowLabel(s.tab))).toHaveCount(1);
       const notebook = rowOf(mineCard, 'analysis.ipynb');
       await expect(notebook).toHaveCount(1);
       await expect(notebook.locator('.jp-WorkspaceManager-state')).toHaveCount(
@@ -458,7 +460,7 @@ test.describe('the seeded scenario', () => {
         .locator('.jp-WorkspaceManager-rowLabel')
         .allTextContents();
       expect(labels.filter(l => l === 'analysis.ipynb')).toHaveLength(1);
-      expect(labels.filter(l => l === `terminal ${s.tab}`)).toHaveLength(1);
+      expect(labels.filter(l => l === rowLabel(s.tab))).toHaveLength(1);
 
       // ROW-01 in this window's card and in the TERMINALS section, at 300 px
       const [colour1, colour2, inverse0, inverse1] = [
@@ -610,7 +612,7 @@ test.describe('the seeded scenario', () => {
       const row = sectionBody(page, 'terminals').locator(ROW);
       await expect(row).toHaveCount(1);
       await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-        `terminal ${terminal}`
+        rowLabel(terminal)
       );
       await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(
         0
@@ -823,12 +825,13 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
     );
     await triangle(page, ids[1]).click();
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
-    // a row of the open card, focused: the panel's one selected row
+    await menuButton(page, ids[1]).click();
+    await expect(page.locator('.jp-WorkspaceManager-menu')).toBeVisible();
+    // a row of the open card, focused: the panel's one selected row. It has no tab here, so
+    // it stays lit only with the focus (DQ-32), and the menu takes the focus as it opens
     const selected = rowOf(card(page, ids[1]), 'README.md');
     await selected.focus();
     await expect(selected).toHaveClass(/jp-mod-selected/);
-    await menuButton(page, ids[1]).click();
-    await expect(page.locator('.jp-WorkspaceManager-menu')).toBeVisible();
     // scrolled after the click, which scrolls the button into view
     const list = sectionBody(page, 'workspaces');
     await list.evaluate(n => (n.scrollTop = 80));
@@ -1572,7 +1575,7 @@ test('WS-18 ACC-ACCORD-71-COUNT-ICONS, ACC-ACCORD-22-COUNTS: a closed card shows
   }
 });
 
-test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: every card shows Open workspace, Close all tabs, the eye and ... at rest; Open workspace and the eye are disabled on this window's card; Open workspace on another card switches this window to that workspace", async ({
+test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: every card shows the eye and ... at rest; the eye is disabled on this window's card; Open workspace in the ... menu of another card switches this window to that workspace", async ({
   page
 }) => {
   const current = fresh('hoveropen');
@@ -1590,21 +1593,11 @@ test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: every card shows Op
           )
         );
     expect(await labels(current)).toEqual([
-      'Open workspace disabled',
-      'Close all tabs',
       'Hide workspace disabled',
       'Workspace menu'
     ]);
-    expect(await labels(ids[1])).toEqual([
-      'Open workspace',
-      'Close all tabs',
-      'Hide workspace',
-      'Workspace menu'
-    ]);
-    const open = cardHeader(page, ids[1]).getByRole('button', {
-      name: 'Open workspace'
-    });
-    await open.click();
+    expect(await labels(ids[1])).toEqual(['Hide workspace', 'Workspace menu']);
+    await fromMenu(page, ids[1], 'Open workspace');
     await page.waitForURL(new RegExp(`/lab/workspaces/${ids[1]}(\\?.*)?$`));
   } finally {
     await deleteWorkspaces(page, ids);
@@ -1625,7 +1618,7 @@ test('WS-20 ACC-PANEL-214-HEADER-PLACE: every button in a card header is 24 x 24
     await expect(card(page, ids[2])).toBeVisible();
     await cardHeader(page, ids[1]).hover();
     await expect(
-      cardHeader(page, ids[1]).getByRole('button', { name: 'Open workspace' })
+      cardHeader(page, ids[1]).getByRole('button', { name: 'Hide workspace' })
     ).toBeVisible();
     const sizes = await page.locator(PANEL).evaluate(
       (panel, others) =>
@@ -1788,7 +1781,7 @@ test.describe('rows of terminals and kernels of the server', () => {
   // the tests start a kernel by REST; Galata would list only its page's own
   test.use({ kernels: null, sessions: null });
 
-  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row terminal <n>, its process and its time, a kernel row with no session its id, its state and its time; a terminal 3 h idle has its name in inverse layout colour 0 and 3h ago in inverse layout colour 1; the terminal names of the TERMINALS section, kernel ids and paths are in the code font; workspace names, times, process names and every card label, that of a terminal included, are in the UI font', async ({
+  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row its short label, its process and its time, a kernel row with no session its id, its state and its time; a terminal 3 h idle has its name in inverse layout colour 0 and 3h ago in inverse layout colour 1; the terminal names of the TERMINALS section, kernel ids and paths are in the code font; workspace names, times, process names and every card label, that of a terminal included, are in the UI font', async ({
     page
   }) => {
     const terminal = await startTerminal(page);
@@ -1810,6 +1803,7 @@ test.describe('rows of terminals and kernels of the server', () => {
               ? {
                   ...t,
                   process: 'bash',
+                  cwd: null,
                   last_activity: new Date(
                     Date.now() - 3 * 3600 * 1000
                   ).toISOString()
@@ -1830,10 +1824,10 @@ test.describe('rows of terminals and kernels of the server', () => {
       await triangle(page, ids[1]).click();
       const c = card(page, ids[1]);
       const tab = rowOf(c, 'notes.md');
-      const term = rowOf(c, `terminal ${terminal}`);
+      const term = rowOf(c, rowLabel(terminal));
       await expect(tab).toHaveText('notes.md');
       await expect(term).toHaveText(
-        `terminal ${terminal}bash3h ago`,
+        `${rowLabel(terminal)}bash3h ago`,
         UNDER_LOAD
       );
       await expect(
@@ -1902,7 +1896,7 @@ test.describe('rows of terminals and kernels of the server', () => {
       await openSection(page, 'terminals');
       expect(
         await font(
-          rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`).locator(
+          rowOf(sectionBody(page, 'terminals'), rowLabel(terminal)).locator(
             '.jp-WorkspaceManager-rowLabel'
           )
         )
@@ -1944,7 +1938,7 @@ test.describe('rows of terminals and kernels of the server', () => {
         a: { data: layout([`terminal:${terminal}`]) }
       });
       await triangle(page, ids[1]).click();
-      const term = rowOf(card(page, ids[1]), `terminal ${terminal}`);
+      const term = rowOf(card(page, ids[1]), rowLabel(terminal));
       const label = term.locator('.jp-WorkspaceManager-rowLabel');
       await expect(term).toHaveClass(/jp-mod-stale/, UNDER_LOAD);
       await page.mouse.move(0, 0);
@@ -2049,7 +2043,7 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
     // one section open at a time: the TERMINALS rows render with TERMINALS opened
     await openSection(page, 'terminals');
     const rows = terminals.map(t =>
-      rowOf(sectionBody(page, 'terminals'), `terminal ${t}`)
+      rowOf(sectionBody(page, 'terminals'), rowLabel(t))
     );
 
     // ROW-09: hover in a section
@@ -2077,6 +2071,9 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
     );
     await page.mouse.move(0, 0);
     expect((await paint(rows[0])).background).toEqual(layout2);
+    // the click opens the row's tab, which takes the focus: the row stays lit (DQ-32)
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminals[0]);
+    await expect(rows[0]).toHaveClass(/jp-mod-selected/);
     // ArrowDown moves the focus and the selection to the next row
     await rows[0].focus();
     const next = await rows[0].evaluate(
@@ -2087,10 +2084,12 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
     await expect(selected).toHaveCount(1);
     await expect(selected).toHaveAttribute('title', next);
     await expect(rows[0]).not.toHaveClass(/jp-mod-selected/);
-    // a refresh keeps it
+    // a refresh keeps it: its button takes the focus, so the row lit is the one whose tab is current (DQ-32)
+    await rows[0].click();
+    await expect(rows[0]).toHaveClass(/jp-mod-selected/);
     await refresh(page);
     await expect(selected).toHaveCount(1);
-    await expect(selected).toHaveAttribute('title', next);
+    await expect(rows[0]).toHaveClass(/jp-mod-selected/);
   } finally {
     await Promise.all(
       terminals.map(t => page.request.delete(`/api/terminals/${t}`))
@@ -2114,7 +2113,7 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
     await enterWorkspace(page, current);
     await openSection(page, 'terminals');
     const listed = () =>
-      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
+      rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
     // TERMINALS: a click opens the running terminal in a tab of this window
     await listed().click();
     await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
@@ -2125,10 +2124,7 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
     await page.keyboard.press('Enter');
     await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
     // another workspace's TERMINALS row opens its terminal here: this window stays
-    await rowOf(
-      sectionBody(page, 'terminals'),
-      `terminal ${elsewhere}`
-    ).click();
+    await rowOf(sectionBody(page, 'terminals'), rowLabel(elsewhere)).click();
     await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(elsewhere);
     await expect(page).toHaveURL(
       new RegExp(`/lab/workspaces/${current}(\\?.*)?$`)
@@ -2137,11 +2133,11 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
     // (one section open at a time: WORKSPACES is opened for the card rows)
     await openSection(page, 'workspaces');
     await openCard(page, current);
-    await rowOf(card(page, current), `terminal ${terminal}`).click();
+    await rowOf(card(page, current), rowLabel(terminal)).click();
     await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
     // another workspace's card: its row switches this window to that workspace
     await openCard(page, other);
-    await rowOf(card(page, other), `terminal ${elsewhere}`).click();
+    await rowOf(card(page, other), rowLabel(elsewhere)).click();
     await expect(page).toHaveURL(
       new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
     );
@@ -2155,7 +2151,7 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
   }
 });
 
-test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD, ACC-ACCORD-130-NOW-DOT: a terminal row reads terminal <n>, the shell at the prompt and now, its name in colour 1, its process and its time in colour 2; selected, it adds no text; with no readable process it shows no process', async ({
+test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-UNREAD, ACC-ACCORD-130-NOW-DOT: a terminal row reads its short label, the shell at the prompt and now, its name in colour 1, its process and its time in colour 2; selected, it adds no text; with no readable process it shows no process', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -2175,13 +2171,13 @@ test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-U
   const current = fresh('shell');
   try {
     await enterWorkspace(page, current);
-    const process = (await (await page.request.get(POLLED)).json()).find(
-      (t: any) => t.name === terminal
-    )?.process;
+    const { process, cwd } = (
+      await (await page.request.get(POLLED)).json()
+    ).find((t: any) => t.name === terminal);
     expect(process).toMatch(/sh$/);
     await openSection(page, 'terminals');
-    const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
-    await expect(row).toHaveText(`terminal ${terminal}${process}now`);
+    const row = rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
+    await expect(row).toHaveText(`${rowLabel(terminal)}${process}${cwd}now`);
     await expect(row).toHaveClass(/jp-mod-recentlyActive/);
     for (const [part, token] of [
       [
@@ -2199,15 +2195,17 @@ test('TERM-02 ACC-TERM-46-NAME, ACC-TERM-43-PROCESS-SHELL, ACC-TERM-44-PROCESS-U
       );
     }
     await row.focus();
-    await expect(row).toHaveText(`terminal ${terminal}${process}now`);
+    await expect(row).toHaveText(`${rowLabel(terminal)}${process}${cwd}now`);
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
     unread = true;
     await refresh(page);
+    // the refresh button took the focus, and this terminal has no tab (DQ-32)
+    await row.focus();
     await expect(row).toHaveClass(/jp-mod-selected/);
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
     await expect(row.locator('.jp-WorkspaceManager-rowProcess')).toHaveCount(0);
     await expect(row.locator('.jp-WorkspaceManager-rowLabel')).toHaveText(
-      `terminal ${terminal}`
+      rowLabel(terminal)
     );
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
@@ -2243,7 +2241,7 @@ test('TERM-03 ACC-TERM-200-ROW-LEAVES, ACC-TERM-111-SHUTDOWN: a failed shutdown 
     );
     await expect.poll(() => fs.existsSync(held), UNDER_LOAD).toBe(true);
     const row = (name: string) =>
-      rowOf(sectionBody(page, 'terminals'), `terminal ${name}`);
+      rowOf(sectionBody(page, 'terminals'), rowLabel(name));
     await expect(row(terminal)).toHaveCount(1);
     await expect(row(refused)).toHaveCount(1);
 
@@ -2252,10 +2250,7 @@ test('TERM-03 ACC-TERM-200-ROW-LEAVES, ACC-TERM-111-SHUTDOWN: a failed shutdown 
     const other = windows[0];
     await openPanel(other);
     await openSection(other, 'terminals');
-    const otherRow = rowOf(
-      sectionBody(other, 'terminals'),
-      `terminal ${terminal}`
-    );
+    const otherRow = rowOf(sectionBody(other, 'terminals'), rowLabel(terminal));
     await expect(otherRow).toHaveCount(1, UNDER_LOAD);
 
     // the route's records carry name, last_activity and process, no fingerprint
@@ -2344,7 +2339,7 @@ test('TERM-04 ACC-TERM-112-SHUTDOWN-SHARED: Stop terminal from a card asks with 
     const [a, b, c] = ids.slice(1);
     await triangle(page, a).click();
     await fromRowMenu(
-      rowOf(card(page, a), `terminal ${terminal}`),
+      rowOf(card(page, a), rowLabel(terminal)),
       'Stop terminal'
     );
     expect(await body()).toEqual({
@@ -2355,7 +2350,7 @@ test('TERM-04 ACC-TERM-112-SHUTDOWN-SHARED: Stop terminal from a card asks with 
     await cancel();
     await openSection(page, 'terminals');
     await fromRowMenu(
-      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`),
+      rowOf(sectionBody(page, 'terminals'), rowLabel(terminal)),
       'Shut down terminal'
     );
     expect(await body()).toEqual({
@@ -2468,7 +2463,7 @@ test('DLG-01 ACC-PANEL-204-DIALOG-FOOTER, ACC-TERM-112-SHUTDOWN-SHARED, ACC-KERN
     // Shut down all: unfilled in the error colour at the far left; the pointer shows no rim
     await openSection(page, 'terminals');
     await expect(
-      rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`)
+      rowOf(sectionBody(page, 'terminals'), rowLabel(terminal))
     ).toHaveCount(1, UNDER_LOAD);
     await sectionHeader(page, 'terminals')
       .getByRole('button', { name: 'Shut down all', exact: true })
@@ -2926,10 +2921,10 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
       ['current-notebook-row', notebookRow, '-1px', ['right'], notebookRow],
       [
         'current-terminal-row',
-        rowOf(mine, `terminal ${terminal}`),
+        rowOf(mine, rowLabel(terminal)),
         '-1px',
         ['right'],
-        rowOf(mine, `terminal ${terminal}`)
+        rowOf(mine, rowLabel(terminal))
       ],
       [
         'triangle',
@@ -3138,7 +3133,7 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
     await openSection(page, 'terminals');
     const sectionRow = rowOf(
       sectionBody(page, 'terminals'),
-      `terminal ${terminal}`
+      rowLabel(terminal)
     );
     await sectionRow.focus();
     await page.keyboard.press('Shift+Tab');
@@ -3172,7 +3167,7 @@ test('LEG-06 ACC-PANEL-96-LOAD-ERROR: a failed reload shows one banner in the er
   try {
     await enterWorkspace(page, current);
     await openSection(page, 'terminals');
-    const row = rowOf(sectionBody(page, 'terminals'), `terminal ${terminal}`);
+    const row = rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
     await expect(row).toHaveCount(1);
     fail = true;
     await refresh(page);

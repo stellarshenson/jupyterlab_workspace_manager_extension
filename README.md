@@ -8,7 +8,7 @@
 [![Brought To You By KOLOMOLO](https://img.shields.io/badge/Brought%20To%20You%20By-KOLOMOLO-00ffff?style=flat)](https://kolomolo.com)
 [![Donate PayPal](https://img.shields.io/badge/Donate-PayPal-blue?style=flat)](https://www.paypal.com/donate/?hosted_button_id=B4KPBJDLLXTSA)
 
-This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: a WORKSPACES section with one card per workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS sections listing everything that runs, docked at the bottom of the panel while one section at a time is open and fills the height above them.
+This extension replaces the built-in Running Terminals and Kernels sidebar with a panel organised by workspace: a WORKSPACES section with one card per workspace, then KERNELS, TERMINALS and LANGUAGE SERVERS sections listing everything that runs. One section at a time is open: the three lab sections stand at the bottom of the panel only while WORKSPACES is open and fills the height above them, and otherwise they follow WORKSPACES from the top.
 
 ![The workspace panel](docs/images/panel-full-window.png)
 
@@ -25,16 +25,16 @@ The panel groups them by workspace: what each project holds, what is running in 
 - **Workspace section** - an edge tab at the panel's left edge with the colour strip, the name and the age, and the purpose with the number of tabs, terminals and kernels while the card is open; the header and the rows carry the workspace colour, and this window's card has an outline
 - **Triangle** - opens or closes a section
 - **Several cards** - any number of workspace cards stay open at once, and closing one leaves the others open
-- **Tab rows** - an open card lists its tabs in one list, each marked by its icon; a document with a running kernel shows the kernel's state, and a right-click offers Close tab, Stop terminal or Shut down kernel
-- **Header** - a click on the name of another workspace switches this window to it, and a click on this window's workspace opens its card or closes it
-- **Menu** - open, open in a new browser tab, close all tabs, set description, colour, hide, move up, move down, delete
+- **Tab rows** - an open card lists its tabs in one list, each marked by its icon; a document with a running kernel shows the kernel's state, and a right-click offers Close tab, Detach from workspace, Move to workspace, and Stop terminal or Shut down kernel; Detach from workspace takes the tab out and leaves its terminal or kernel running, and Move to workspace sends the tab to another workspace
+- **Header** - a click on the name of another workspace switches this window to it, a click on this window's workspace opens its card or closes it, and a header carries two buttons, the eye that hides the workspace and the ... button
+- **Menu** - the ... button or a right-click on the header opens it: open, open in a new browser tab, close all tabs, set description, colour, hide, move up, move down, delete
 - **Card order** - the cards keep one fixed order that switching workspaces does not change, a drag or Move up and Move down moves a card, and a new workspace goes last
 - **Hide** - a hidden workspace leaves the panel, and the number of hidden workspaces sits under the last card of WORKSPACES
 - **Kernels, terminals and language servers** - three sections docked below the workspaces, always in view, for every running kernel and terminal, in a workspace or not, and the running language servers, each section with its count and a shut down all, so a background terminal or a headless kernel with no tab stays listed; the WORKSPACES band carries a clean up button that removes the other workspaces after a confirmation
-- **One section at a time** - opening a section closes the others, the open section takes the height above the docked bands and scrolls, and a reload keeps the same section open
+- **One section at a time** - opening a section closes the others, an open WORKSPACES takes the height above the three lab bands, any other open section is as tall as its rows, every open section scrolls when its rows exceed the height, and a reload keeps the same section open
 - **Kernel rows** - a KERNELS row shows the status dot, the name and the time; select it for the kernel type, the document, the memory and the CPU use
-- **Terminal rows** - a TERMINALS row shows the terminal's name, the process running in it and the time since its last activity, all without selection
-- **Tooltips** - hover a tab, terminal, kernel or language server for its details on several lines
+- **Terminal rows** - a terminal row shows its short label, `t7` for terminal 7, the name of its tab, or the process running in it while the tab has no name of its own, the path of that process in the free width with its end in view, and the time since its last activity, all without selection
+- **Tooltips** - hover a tab, terminal, kernel or language server for its details on several lines; a terminal's shows its tab, process, command, path, last activity with the exact time, and the workspaces that hold it
 - **Filter** - shows the workspaces whose name, purpose or rows match, and opens each of them
 - **New workspace** - the + button creates a workspace and asks for its name and an optional description
 - **Command line** - the `jupyterlab-workspace` tool drives the same workspaces, terminals and kernels from a shell, switches a window to a workspace and activates a tab

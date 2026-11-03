@@ -161,10 +161,10 @@
 }
 
 /*
-    One flex column of the panel's height (DQ-23): the open section takes the height
-    left between the panel header and the collapsed bands, KERNELS, TERMINALS and
-    LANGUAGE SERVERS keep their order and dock at the bottom, and no section scrolls
-    the panel. Nothing sits below the LANGUAGE SERVERS band.
+    One flex column of the panel's height (DQ-23): KERNELS, TERMINALS and LANGUAGE
+    SERVERS keep their order after WORKSPACES, and no section scrolls the panel. They
+    stand at the panel bottom only while WORKSPACES is open; while it is folded they
+    follow it from the top and the free height stands below the last band (DQ-33).
 */
 .jp-WorkspaceManager-list {
   display: flex;
@@ -181,19 +181,19 @@
   border-bottom: var(--jp-border-width) solid var(--jp-border-color3);
 }
 
-/* the open section fills the height left by the panel header and the collapsed bands */
+/* an open section is as tall as its rows and shrinks to keep every band in view; the band below it follows its last row (DQ-33) */
 .jp-WorkspaceManager-section.jp-mod-open {
+  flex: 0 1 auto;
+}
+
+/* only an open WORKSPACES section grows, which holds the lab bands at the panel bottom (DQ-33) */
+.jp-WorkspaceManager-section.jp-mod-open[data-section='workspaces'] {
   flex: 1 1 auto;
 }
 
 /* the divider above the first band, as every section ends with one (DQ-26): the title band's --jp-border-color2 line above it shows only in a theme where this one does not */
 .jp-WorkspaceManager-section[data-section='workspaces'] {
   border-top: var(--jp-border-width) solid var(--jp-border-color3);
-}
-
-/* with all four sections closed no section grows, so this margin docks the lab bands at the panel bottom */
-.jp-WorkspaceManager-section[data-section='kernels'] {
-  margin-top: auto;
 }
 
 /* A section header is a band on layout colour 2 (DQ-03): 6 px above and below the text, no shadow; the 5 px right padding stands the band's 22 px button under the WORKBENCH reload glyph */
@@ -217,13 +217,14 @@
   background: var(--jp-layout-color3);
 }
 
-/* the caret: a 14 px column on the band's 4 px left inset, so the label starts at 18 px */
+/* the caret: a 14 px column on the band's 4 px left inset, so the label starts at 18 px; the text glyph at the label's weight 600 has the size of the bookmarks panel's triangle */
 .jp-WorkspaceManager-sectionHeader > .jp-WorkspaceManager-caret {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
   width: 14px;
+  font-weight: 600;
   color: var(--jp-ui-font-color2);
 }
 
@@ -544,7 +545,7 @@
   stroke: var(--jp-ui-font-color1);
 }
 
-/* Open workspace, Close all tabs, the eye and ... keep their place on every card (DQ-12) */
+/* The eye and ... keep their place on every card (DQ-12) */
 .jp-WorkspaceManager-cardActions {
   display: flex;
   flex: 0 0 auto;
@@ -638,13 +639,45 @@
   outline-offset: -3px;
 }
 
-/* The time, on a row and in a card header, a hidden card's word, and a row's status word, process and detail lines are meta text at size 0; the workspace name and the rest of the header keep size 1 (DQ-21) */
+/* The time, on a row and in a card header, a hidden card's word, and a row's status word, process, path and detail lines are meta text at size 0; the workspace name and the rest of the header keep size 1 (DQ-21) */
 .jp-WorkspaceManager-age,
 .jp-WorkspaceManager-hiddenWord,
 .jp-WorkspaceManager-row .jp-WorkspaceManager-state,
 .jp-WorkspaceManager-rowProcess,
+.jp-WorkspaceManager-rowPath,
 .jp-WorkspaceManager-rowDetail {
   font-size: var(--jp-ui-font-size0);
+}
+
+/* A terminal row's path stands after the process (DQ-30): the slot's flex basis of 0 means it pushes nothing, so it takes only the width left after the name, the process and the time; its -6 px margin cancels the row's column gap, and the 6 px come back inside it as the path's margin, so a slot of no width leaves the row as it is without a path; the slot is a size container, so a path under 32 px of free width hides; the rtl direction puts the ellipsis at the start, so the end of the path stays in view, and the inner bdi keeps the characters in their own order; it follows the meta size rule above for no-descending-specificity */
+.jp-WorkspaceManager-rowProcess:has(+ .jp-WorkspaceManager-rowPathSlot) {
+  flex-grow: 0;
+}
+
+.jp-WorkspaceManager-rowPathSlot {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: -6px;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.jp-WorkspaceManager-rowPath {
+  display: block;
+  margin-left: 6px;
+  overflow: hidden;
+  color: var(--jp-ui-font-color2);
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* under 32 px the ellipsis leaves a letter or a sliver of the path, which is no path; the slot keeps its width (DQ-30) */
+@container (width < 32px) {
+  .jp-WorkspaceManager-rowPath {
+    visibility: hidden;
+  }
 }
 
 /* On a coloured card the header ink takes the theme's inverse layout colours: colour 1 measures 4.82:1 on the Steel base and 2.60:1 on a 30 % lemon tint, under the 4.5:1 floor, while inverse colours 0 and 1 measure at least 6.40:1 in Galaxa Steel, 8.06:1 in JupyterLab Dark and 12.80:1 in JupyterLab Light on the same tints; the name, the count and action glyphs and the caret take inverse colour 0, the meta text colour 1; plain cards, tally sections, menus and dialogs keep font colours 1 and 2 (DQ-07, DQ-28, ACC-PANEL-202) */
@@ -790,6 +823,9 @@
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardBody
   .jp-WorkspaceManager-rowProcess,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardBody
+  .jp-WorkspaceManager-rowPath,
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardBody
   .jp-WorkspaceManager-rowDetail,

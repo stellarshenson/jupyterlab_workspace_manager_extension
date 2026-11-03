@@ -1,4 +1,10 @@
-import type { IKernelRow, ISection, ITabRow, ITerminalRow } from './model';
+import {
+  type IKernelRow,
+  type ISection,
+  type ITabRow,
+  type ITerminalRow,
+  terminalLabel
+} from './model';
 
 /**
  * The match of the AI assistants panel: case, accents, spaces and the
@@ -68,6 +74,7 @@ export function filterSections(
     const terminals = keep(section.terminals, t => [
       t.process,
       `terminal ${t.name}`,
+      terminalLabel(t.name),
       t.title
     ]);
     const kernels = keep(section.kernels, k => [

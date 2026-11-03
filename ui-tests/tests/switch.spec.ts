@@ -12,6 +12,7 @@ import {
   countOf,
   deleteWorkspaces,
   enterWorkspace,
+  expectCurrent,
   expectRefused,
   fresh,
   layout,
@@ -170,9 +171,7 @@ test('ACC-CLI-219-SWITCH-WORKSPACE: workspaces switch --window moves that window
     // the panel of the switched window shows the target workspace as its own
     await appStarted(page);
     await openPanel(page);
-    await expect(
-      cardHeader(page, target).getByRole('button', { name: 'Open workspace' })
-    ).toBeDisabled();
+    await expectCurrent(page, target);
   } finally {
     await other?.close();
     await deleteWorkspaces(page, [current, target, bystander]);
@@ -234,9 +233,7 @@ test('ACC-CLI-219-SWITCH-WORKSPACE: an unknown workspace name is refused and not
     // no request was posted: the window does not move, and no card changes
     await page.waitForTimeout(2500);
     await expect(page).toHaveURL(workspaceURL(current));
-    await expect(
-      cardHeader(page, current).getByRole('button', { name: 'Open workspace' })
-    ).toBeDisabled();
+    await expectCurrent(page, current);
   } finally {
     await deleteWorkspaces(page, [current]);
   }

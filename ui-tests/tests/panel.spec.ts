@@ -19,6 +19,7 @@ import {
   panelWidth,
   putWorkspace,
   refresh,
+  rowLabel,
   rowOf,
   sectionBody,
   sectionCount,
@@ -216,7 +217,7 @@ test('ACC-PANEL-6-REFRESH: the refresh button shows a new terminal before the ne
     await expect(sectionHeader(page, 'terminals')).toContainText('TERMINALS');
     await openSection(page, 'terminals');
     await expect(
-      rowOf(sectionBody(page, 'terminals'), `terminal ${first}`)
+      rowOf(sectionBody(page, 'terminals'), rowLabel(first))
     ).toBeVisible();
 
     // right after a poll's reload the next poll is 10 s away
@@ -228,7 +229,7 @@ test('ACC-PANEL-6-REFRESH: the refresh button shows a new terminal before the ne
     try {
       await headerButton(page, 'Refresh').click();
       await expect(
-        rowOf(sectionBody(page, 'terminals'), `terminal ${second}`)
+        rowOf(sectionBody(page, 'terminals'), rowLabel(second))
       ).toBeVisible({ timeout: 2000 });
     } finally {
       await page.request.delete(`/api/terminals/${second}`);
@@ -625,14 +626,14 @@ test.describe('with the workspaces of the server', () => {
       }
     });
 
-    test('ACC-PANEL-230-DOCKED-BANDS: the three laboratory bands dock at the panel bottom in order, all three stay in view, and the open section body is the only scroll container', async ({
+    test('ACC-PANEL-230-DOCKED-BANDS: the three laboratory bands stand at the panel bottom only while WORKSPACES is open; while it is folded they follow it from the top; an open TERMINALS section is as tall as its rows, and past the panel height every band stays in view with its body the only scroll container', async ({
       page
     }) => {
       test.setTimeout(180000);
       const current = fresh('docked');
-      const many = Array.from({ length: 30 }, (_, i) => `${current}-${i}`);
-      await Promise.all(many.map(id => putWorkspace(page, id)));
+      await putWorkspace(page, current);
       const terminals: string[] = [];
+      let listed = 2;
       try {
         for (let i = 0; i < 12; i++) {
           terminals.push(await startTerminal(page));
@@ -641,13 +642,15 @@ test.describe('with the workspaces of the server', () => {
         await only(
           page,
           /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
-          t => terminals.includes(t.name)
+          t => terminals.slice(0, listed).includes(t.name)
         );
-        await onlyWorkspaces(page, id => id.startsWith(current));
+        await onlyWorkspaces(page, id => id === current);
         await gotoWorkspace(page, current);
         await openPanel(page);
         await refresh(page);
-        await expect(sectionCount(page, 'terminals')).toHaveText('(12)');
+        await expect(card(page, current)).toBeVisible();
+        await expect(sectionCount(page, 'workspaces')).toHaveText('(1)');
+        await expect(sectionCount(page, 'terminals')).toHaveText('(2)');
 
         const drawn = () =>
           page
@@ -662,13 +665,24 @@ test.describe('with the workspaces of the server', () => {
                   .getBoundingClientRect();
               const body = (e: Element) =>
                 e.querySelector('.jp-WorkspaceManager-sectionBody');
-              const last = box(sections[sections.length - 1]);
               return {
                 order: sections.map(s => s.dataset.section),
-                lastBottom: Math.round(last.bottom),
-                contentBottom: Math.round(c.bottom),
-                bands: [1, 2, 3].map(i => {
-                  const r = box(sections[i]);
+                // each band's top against the bottom of the section above it, its divider included
+                gaps: sections
+                  .slice(1)
+                  .map((s, i) =>
+                    Math.round(
+                      Math.abs(
+                        box(s).top - sections[i].getBoundingClientRect().bottom
+                      )
+                    )
+                  ),
+                // the height below the LANGUAGE SERVERS band
+                free: Math.round(
+                  c.bottom - box(sections[sections.length - 1]).bottom
+                ),
+                bands: sections.map(s => {
+                  const r = box(s);
                   return (
                     Math.round(r.top) >= Math.round(c.top) &&
                     Math.round(r.bottom) <= Math.round(c.bottom)
@@ -683,6 +697,7 @@ test.describe('with the workspaces of the server', () => {
               };
             });
 
+        // WORKSPACES open with one card: it grows, and nothing renders below the LANGUAGE SERVERS band
         const open = await drawn();
         expect(open.order).toEqual([
           'workspaces',
@@ -690,72 +705,51 @@ test.describe('with the workspaces of the server', () => {
           'terminals',
           'servers'
         ]);
-        // nothing renders below the LANGUAGE SERVERS band
-        expect(
-          Math.abs(open.lastBottom - open.contentBottom)
-        ).toBeLessThanOrEqual(1);
-        expect(open.bands).toEqual([true, true, true]);
         expect(open.bodies).toEqual(['workspaces', null, null, null]);
+        expect(open.gaps).toEqual([0, 0, 0]);
+        expect(open.free).toBeLessThanOrEqual(1);
+        expect(open.bands).toEqual([true, true, true, true]);
         expect(open.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
-        const filled = await sectionBody(page, 'workspaces').evaluate(n => ({
-          client: n.clientHeight,
-          scroll: n.scrollHeight
-        }));
-        expect(filled.client).toBeGreaterThan(10 * 24);
-        expect(filled.scroll).toBeGreaterThan(filled.client);
 
-        // KERNELS opened: the three bands stay in view and the kernels body takes the space left
-        await sectionHeader(page, 'kernels').click();
+        // all four folded: each band follows the one above it and the free height stands below the last
+        await sectionHeader(page, 'workspaces').click();
         await expect(sectionBody(page, 'workspaces')).toHaveCount(0);
-        const kern = await drawn();
-        expect(kern.order).toEqual([
-          'workspaces',
-          'kernels',
-          'terminals',
-          'servers'
-        ]);
-        expect(kern.bands).toEqual([true, true, true]);
-        expect(
-          Math.abs(kern.lastBottom - kern.contentBottom)
-        ).toBeLessThanOrEqual(1);
-        expect(kern.bodies).toEqual([null, 'kernels', null, null]);
-        expect(kern.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
-        const kernelsHeader = (await sectionHeader(
-          page,
-          'kernels'
-        ).boundingBox())!;
-        const kernelsBody = (await sectionBody(page, 'kernels').boundingBox())!;
-        const terminalsHeader = (await sectionHeader(
-          page,
-          'terminals'
-        ).boundingBox())!;
-        expect(
-          Math.abs(kernelsBody.y - (kernelsHeader.y + kernelsHeader.height))
-        ).toBeLessThanOrEqual(1);
-        expect(
-          Math.abs(kernelsBody.y + kernelsBody.height - terminalsHeader.y)
-        ).toBeLessThanOrEqual(1);
+        const folded = await drawn();
+        expect(folded.bodies).toEqual([null, null, null, null]);
+        expect(folded.gaps).toEqual([0, 0, 0]);
+        expect(folded.free).toBeGreaterThan(24);
+        expect(folded.scrollables).toEqual([]);
 
-        // KERNELS closed again: no section grows, every band stays docked and no body is drawn
-        await sectionHeader(page, 'kernels').click();
-        await expect(sectionBody(page, 'kernels')).toHaveCount(0);
-        const closed = await drawn();
-        expect(closed.order).toEqual([
-          'workspaces',
-          'kernels',
-          'terminals',
-          'servers'
-        ]);
-        expect(
-          Math.abs(closed.lastBottom - closed.contentBottom)
-        ).toBeLessThanOrEqual(1);
-        expect(closed.bodies).toEqual([null, null, null, null]);
-        expect(closed.scrollables).toEqual([]);
+        // TERMINALS open with few rows: the band below it follows its last row and the free height stands below that band
+        await sectionHeader(page, 'terminals').click();
+        const body = sectionBody(page, 'terminals');
+        await expect(rowOf(body, rowLabel(terminals[1]))).toBeVisible();
+        const few = await drawn();
+        expect(few.bodies).toEqual([null, null, 'terminals', null]);
+        expect(few.gaps).toEqual([0, 0, 0]);
+        expect(few.free).toBeGreaterThan(24);
+        expect(few.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
+
+        // TERMINALS open with more rows than fit: the section shrinks and only its body scrolls
+        listed = terminals.length;
+        await refresh(page);
+        await expect(sectionCount(page, 'terminals')).toHaveText('(12)');
+        await page.setViewportSize({ width: 1280, height: 400 });
+        await expect
+          .poll(
+            () => body.evaluate(n => n.scrollHeight > n.clientHeight),
+            UNDER_LOAD
+          )
+          .toBe(true);
+        const full = await drawn();
+        expect(full.bodies).toEqual([null, null, 'terminals', null]);
+        expect(full.bands).toEqual([true, true, true, true]);
+        expect(full.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
       } finally {
         await Promise.all(
           terminals.map(t => page.request.delete(`/api/terminals/${t}`))
         );
-        await deleteWorkspaces(page, [current, ...many]);
+        await deleteWorkspaces(page, [current]);
       }
     });
   });
@@ -1090,7 +1084,37 @@ test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: the title label and 
   });
 });
 
-test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of the width and colour of every section bottom border, with each section open, with all closed and with the filter field showing; flush neighbours touch; LANGUAGE SERVERS ends at the panel bottom', async ({
+test("ACC-PANEL-262-CARET-SIZE: each section band's triangle has the computed font size and weight of its label, weight 600, open and closed; a workspace card's caret does not read 600", async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+    await showSection(page, open);
+    for (const [name] of SECTIONS) {
+      const drawn = await sectionHeader(page, name).evaluate(band =>
+        ['.jp-WorkspaceManager-caret', '.jp-WorkspaceManager-sectionLabel'].map(
+          selector => {
+            const s = getComputedStyle(band.querySelector(selector)!);
+            return [s.fontSize, s.fontWeight];
+          }
+        )
+      );
+      const state = `${name}, ${open ?? 'all closed'} open`;
+      expect.soft(drawn[0], state).toEqual(drawn[1]);
+      expect.soft(drawn[0][1], state).toBe('600');
+    }
+  }
+  await showSection(page, 'workspaces');
+  expect(
+    await cardHeader(page, 'default')
+      .locator('.jp-WorkspaceManager-caret')
+      .evaluate(n => getComputedStyle(n).fontWeight)
+  ).not.toBe('600');
+});
+
+test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of the width and colour of every section bottom border, with each section open, with all closed and with the filter field showing; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with WORKSPACES open and never below it', async ({
   page
 }) => {
   await page.goto();
@@ -1177,21 +1201,19 @@ test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of 
         expect
           .soft(section.topRule[1], `${state}: ${section.name} top`)
           .toBe('0px');
-        // all closed, KERNELS alone stands apart: its margin docks the lab bands at the bottom
-        if (open || section.name !== 'kernels') {
-          expect
-            .soft(
-              Math.abs(section.top - drawn.sections[i].bottom),
-              `${state}: ${drawn.sections[i].name} to ${section.name}`
-            )
-            .toBeLessThanOrEqual(WITHIN);
-        }
+        expect
+          .soft(
+            Math.abs(section.top - drawn.sections[i].bottom),
+            `${state}: ${drawn.sections[i].name} to ${section.name}`
+          )
+          .toBeLessThanOrEqual(WITHIN);
       });
+      // the lab bands stand at the panel bottom only while WORKSPACES is open (DQ-33)
+      const below =
+        drawn.panelBottom - drawn.sections[drawn.sections.length - 1].bottom;
       expect
         .soft(
-          Math.abs(
-            drawn.sections[drawn.sections.length - 1].bottom - drawn.panelBottom
-          ),
+          open === 'workspaces' ? Math.abs(below) : -below,
           `${state}: LANGUAGE SERVERS to the panel bottom`
         )
         .toBeLessThanOrEqual(WITHIN);

@@ -9,7 +9,10 @@ import {
   IModelInput,
   ISection,
   kernelDot,
-  tabsOf
+  tabsOf,
+  terminalLabel,
+  terminalTabName,
+  withTab
 } from '../model/model';
 
 /** A saved workspace whose main area holds `keys`, with their saved data. */
@@ -134,7 +137,13 @@ describe('model', () => {
           })
         ],
         terminals: [
-          { name: '1', process: 'claude', last_activity: 't1' },
+          {
+            name: '1',
+            process: 'claude',
+            cwd: '/srv',
+            command: 'claude --resume',
+            last_activity: 't1'
+          },
           { name: '2', process: 'fish' },
           { name: '3' }
         ]
@@ -145,6 +154,8 @@ describe('model', () => {
       {
         name: '1',
         process: 'claude',
+        cwd: '/srv',
+        command: 'claude --resume',
         lastActivity: 't1',
         title: undefined,
         alsoIn: []
@@ -159,6 +170,32 @@ describe('model', () => {
       ['3', []]
     ]);
     expect(model.terminals[2].process).toBeNull();
+    expect(model.terminals[2].command).toBeNull();
+  });
+
+  it('ACC-TERM-257-SHORT-LABEL: a name of digits reads t<name>, any other name reads as it is', () => {
+    expect(terminalLabel('7')).toBe('t7');
+    expect(terminalLabel('12')).toBe('t12');
+    expect(terminalLabel('build')).toBe('build');
+    expect(terminalLabel('7a')).toBe('7a');
+  });
+
+  it('ACC-TERM-261-TAB-NAME: a title is the tab name; no title, the default Terminal <name> and the plain Terminal are none', () => {
+    expect(terminalTabName({ name: '7', title: 'my tab' })).toBe('my tab');
+    expect(terminalTabName({ name: '7' })).toBeNull();
+    expect(terminalTabName({ name: '7', title: 'Terminal 7' })).toBeNull();
+    expect(terminalTabName({ name: '7', title: 'Terminal' })).toBeNull();
+    // the default title of another terminal says more than this one's label
+    expect(terminalTabName({ name: '7', title: 'Terminal 8' })).toBe(
+      'Terminal 8'
+    );
+  });
+
+  it('ACC-TERM-256-PATH-UNREAD: a terminal with no cwd, as /api/terminals gives it, and one with cwd null both read null', () => {
+    const { terminals } = buildModel(
+      input({ terminals: [{ name: '1' }, { name: '2', cwd: null }] })
+    );
+    expect(terminals.map(t => t.cwd)).toEqual([null, null]);
   });
 
   it('ACC-LISTS-35-ASSIGN-KERNEL: a kernel goes to the workspace whose notebook has a session on it', () => {
@@ -481,6 +518,116 @@ describe('model', () => {
       { key: 'terminal:2', path: undefined, name: undefined }
     ]);
     expect(tabsOf({})).toEqual([]);
+  });
+
+  describe('ACC-LISTS-268-MOVE-TAB: withTab', () => {
+    const entry = { data: { name: '7' } };
+    const key = 'terminal:7';
+    const dock = (workspace: any) =>
+      workspace.data['layout-restorer:data'].main.dock;
+
+    it('appends to the first tab area of a split dock, depth first, with currentIndex unchanged and the source untouched', () => {
+      const saved = {
+        metadata: { id: 'w', last_modified: 'then' },
+        data: {
+          'layout-restorer:data': {
+            main: {
+              dock: {
+                type: 'split-area',
+                orientation: 'horizontal',
+                sizes: [0.5, 0.5],
+                children: [
+                  {
+                    type: 'split-area',
+                    orientation: 'vertical',
+                    sizes: [0.5, 0.5],
+                    children: [
+                      {
+                        type: 'tab-area',
+                        currentIndex: 1,
+                        widgets: ['editor:a.md', 'editor:b.md']
+                      },
+                      {
+                        type: 'tab-area',
+                        currentIndex: 0,
+                        widgets: ['editor:c.md']
+                      }
+                    ]
+                  },
+                  {
+                    type: 'tab-area',
+                    currentIndex: 0,
+                    widgets: ['editor:d.md']
+                  }
+                ]
+              }
+            },
+            down: { size: 0, widgets: [] }
+          },
+          'editor:a.md': { data: { path: 'a.md' } }
+        }
+      };
+      const before = JSON.stringify(saved);
+      const moved: any = withTab(saved as any, key, entry);
+      const [first, second] = dock(moved).children[0].children;
+      expect(first).toEqual({
+        type: 'tab-area',
+        currentIndex: 1,
+        widgets: ['editor:a.md', 'editor:b.md', key]
+      });
+      expect(second.widgets).toEqual(['editor:c.md']);
+      expect(dock(moved).children[1].widgets).toEqual(['editor:d.md']);
+      expect(moved.data[key]).toEqual(entry);
+      expect(moved.metadata).toEqual({ id: 'w' });
+      expect(tabsOf(moved.data).map(t => t.key)).toContain(key);
+      expect(JSON.stringify(saved)).toBe(before);
+    });
+
+    it('makes a new tab area on an empty dock', () => {
+      const empty: any = ws('w', 'then');
+      empty.data['layout-restorer:data'].main.dock = null;
+      expect(dock(withTab(empty, key, entry))).toEqual({
+        type: 'tab-area',
+        currentIndex: 0,
+        widgets: [key]
+      });
+    });
+
+    it('makes the layout when the workspace has none', () => {
+      const moved: any = withTab(
+        { data: {}, metadata: { id: 'w' } },
+        key,
+        entry
+      );
+      expect(tabsOf(moved.data)).toEqual([{ key, path: undefined, name: '7' }]);
+      expect(moved.data[key]).toEqual(entry);
+    });
+
+    it('DEF-PANEL-78-MOVE-SIDEBARS: a layout it makes shows the file browser in the left area, as a workspace with no layout opens; a saved layout keeps its sidebars', () => {
+      const moved: any = withTab(
+        { data: {}, metadata: { id: 'w' } },
+        key,
+        entry
+      );
+      expect(moved.data['layout-restorer:data']).toEqual({
+        left: { current: 'filebrowser' },
+        main: { dock: { type: 'tab-area', currentIndex: 0, widgets: [key] } }
+      });
+      const collapsed: any = ws('w', 'then');
+      collapsed.data['layout-restorer:data'].left = { collapsed: true };
+      const kept: any = withTab(collapsed, key, entry);
+      expect(kept.data['layout-restorer:data'].left).toEqual({
+        collapsed: true
+      });
+    });
+
+    it('returns a workspace that already holds the key unchanged, in the main or the down area', () => {
+      const main = ws('w', 'then', [key], { [key]: { data: { name: 'x' } } });
+      expect(withTab(main as any, key, entry)).toBe(main);
+      const down: any = ws('w', 'then');
+      down.data['layout-restorer:data'].down = { size: 0, widgets: [key] };
+      expect(withTab(down, key, entry)).toBe(down);
+    });
   });
 
   it('ACC-KERNEL-196-KERNEL-DETAILS: memory reads MB under 1 GB and GB from there, CPU a whole percent of one core, each a dash when unread', () => {
