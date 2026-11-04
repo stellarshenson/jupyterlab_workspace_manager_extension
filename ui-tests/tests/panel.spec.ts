@@ -850,7 +850,7 @@ test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the bu
   }
 });
 
-test('ACC-PANEL-201-HEADER-BAND: the panel header is a 24 to 30 px band on layout colour 2; WORKBENCH is 600, uppercase, 1 px tracking, size 0, colour 1, on one line, on the x of the section labels', async ({
+test('ACC-PANEL-201-HEADER-BAND: the panel header is the standard 37 px band on layout colour 2; WORKBENCH is 600, uppercase, 1 px tracking, size 0, colour 1, on one line, on the x of the section labels', async ({
   page
 }) => {
   await page.goto();
@@ -859,8 +859,7 @@ test('ACC-PANEL-201-HEADER-BAND: the panel header is a 24 to 30 px band on layou
   expect(await panelWidth(page)).toBe(250);
   const header = page.locator(`${PANEL} .jp-WorkspaceManager-header`);
   const box = (await header.boundingBox())!;
-  expect(box.height).toBeGreaterThanOrEqual(24);
-  expect(box.height).toBeLessThanOrEqual(30);
+  expect(box.height).toBeCloseTo(37, 1);
   expect(await header.evaluate(n => getComputedStyle(n).backgroundColor)).toBe(
     await token(page, 'backgroundColor', 'var(--jp-layout-color2)')
   );
@@ -899,6 +898,37 @@ test('ACC-PANEL-201-HEADER-BAND: the panel header is a 24 to 30 px band on layou
         (await x('.jp-WorkspaceManager-sectionLabel'))
     )
   ).toBeLessThanOrEqual(1);
+});
+
+test('DEF-PANEL-84-HEADER-HEIGHT: in JupyterLab Light and Galaxa Dark Theme - Steel the WORKBENCH header stands as tall as a standard .jp-SidePanel-header laid out by the live stylesheet, 37 px', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  for (const theme of ['JupyterLab Light', 'Galaxa Dark Theme - Steel']) {
+    await page.theme.setTheme(theme);
+    const [workbench, standard] = await page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>(
+        '.jp-WorkspaceManager-header'
+      )!;
+      // the standard header as JupyterLab lays it out: 2 px padding, a default 32 px toolbar and the 1 px border
+      const probe = document.createElement('div');
+      probe.className = 'jp-SidePanel-header';
+      const toolbar = document.createElement('div');
+      toolbar.className = 'jp-SidePanel-toolbar';
+      probe.appendChild(toolbar);
+      header.parentElement!.appendChild(probe);
+      const heights: [number, number] = [
+        header.offsetHeight,
+        probe.offsetHeight
+      ];
+      probe.remove();
+      return heights;
+    });
+    expect(workbench, theme).toBe(37);
+    expect(workbench, theme).toBe(standard);
+  }
 });
 
 /** The four sections in the order of the panel, with their labels. */
@@ -1114,7 +1144,7 @@ test("ACC-PANEL-262-CARET-SIZE: each section band's triangle has the computed fo
   ).not.toBe('600');
 });
 
-test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of the width and colour of every section bottom border, with each section open, with all closed and with the filter field showing; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with WORKSPACES open and never below it', async ({
+test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it draws one 1 px --jp-layout-color3 bottom line, and an open section and the last section draw none; the WORKSPACES top line stands under the title band and gives way to the filter field; the band starts 1 px below a drawn top line and at the section top without one; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with WORKSPACES open and never below it; in Light, Dark and Steel the title band line is 1 px solid --jp-border-color2', async ({
   page
 }) => {
   await page.goto();
@@ -1123,7 +1153,7 @@ test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of 
   const line = [
     'solid',
     '1px',
-    await token(page, 'borderTopColor', 'var(--jp-border-color3)')
+    await token(page, 'borderTopColor', 'var(--jp-layout-color3)')
   ];
   for (const filtering of [false, true]) {
     if (filtering) {
@@ -1155,6 +1185,7 @@ test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of 
             const r = section.getBoundingClientRect();
             return {
               name: section.dataset.section,
+              open: section.classList.contains('jp-mod-open'),
               top: r.top,
               bottom: r.bottom,
               bandTop: section
@@ -1168,24 +1199,48 @@ test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of 
       });
       const state = `${open ?? 'all closed'} open, filter ${filtering}`;
       const [workspaces] = drawn.sections;
-      expect.soft(workspaces.topRule, `${state}: WORKSPACES top`).toEqual(line);
-      for (const section of drawn.sections) {
+      // the line under the title band only while the band meets the band below it directly
+      if (filtering) {
         expect
-          .soft(section.bottomRule, `${state}: ${section.name} bottom`)
+          .soft(workspaces.topRule.slice(0, 2), `${state}: WORKSPACES top`)
+          .toEqual(['none', '0px']);
+      } else {
+        expect
+          .soft(workspaces.topRule, `${state}: WORKSPACES top`)
           .toEqual(line);
       }
-      // the line is the only thing between what stands above the WORKSPACES band and the band
+      // the line under a folded section that has a section below it, and none under an open
+      // section or the last one, because the fills already differ there
+      drawn.sections.forEach((section, i) => {
+        if (!section.open && i < drawn.sections.length - 1) {
+          expect
+            .soft(section.bottomRule, `${state}: ${section.name} bottom`)
+            .toEqual(line);
+        } else {
+          expect
+            .soft(
+              section.bottomRule.slice(0, 2),
+              `${state}: ${section.name} bottom`
+            )
+            .toEqual(['none', '0px']);
+        }
+      });
+      // the band starts 1 px below a drawn top line and at the section top without one
       expect
         .soft(
-          Math.abs(workspaces.bandTop - workspaces.top - parseFloat(line[1])),
-          `${state}: the line directly above the WORKSPACES band`
+          Math.abs(
+            workspaces.bandTop -
+              workspaces.top -
+              (filtering ? 0 : parseFloat(line[1]))
+          ),
+          `${state}: the band below the line above it`
         )
         .toBeLessThanOrEqual(WITHIN);
       if (filtering) {
         expect
           .soft(
             workspaces.top,
-            `${state}: the line below the filter field, not above it`
+            `${state}: the band below the filter field, not above it`
           )
           .toBeGreaterThanOrEqual(drawn.filterBottom!);
       } else {
@@ -1196,7 +1251,7 @@ test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of 
           )
           .toBeLessThanOrEqual(WITHIN);
       }
-      // one line between neighbours: the upper one's bottom border and no top border on the lower one
+      // the sections still touch, with no gap or line beyond the drawn one between them
       drawn.sections.slice(1).forEach((section, i) => {
         expect
           .soft(section.topRule[1], `${state}: ${section.name} top`)
@@ -1224,29 +1279,45 @@ test('ACC-PANEL-237-SECTION-DIVIDER: the WORKSPACES section has a top border of 
     page.locator(`${PANEL} .jp-WorkspaceManager-filter`)
   ).toHaveCount(0);
 
-  // the title band draws its own --jp-border-color2 line above the new one, and a line in the
-  // colour of the band beside it does not show: one of the two shows in each theme
+  // the title band keeps its --jp-border-color2 rule and the WORKSPACES band takes the
+  // --jp-layout-color3 line; both rules paint, and each colour is the token resolved in that theme
   await showSection(page, 'workspaces');
-  for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
+  for (const theme of [
+    'JupyterLab Light',
+    'JupyterLab Dark',
+    'Galaxa Dark Theme - Steel'
+  ]) {
     await page.theme.setTheme(theme);
     await page.mouse.move(0, 0);
-    const shown = await page.locator(PANEL).evaluate(panel => {
-      const title = getComputedStyle(
-        panel.querySelector('.jp-WorkspaceManager-header')!
-      );
-      const section = panel.querySelector('.jp-WorkspaceManager-section')!;
-      const band = getComputedStyle(
-        section.querySelector('.jp-WorkspaceManager-sectionHeader')!
-      );
-      const top = getComputedStyle(section);
-      return [
-        title.borderBottomColor !== title.backgroundColor &&
-          title.borderBottomWidth !== '0px',
-        top.borderTopColor !== band.backgroundColor &&
-          top.borderTopWidth !== '0px'
-      ].filter(Boolean).length;
+    const [titleLine, topLine] = [
+      await token(page, 'borderBottomColor', 'var(--jp-border-color2)'),
+      await token(page, 'borderTopColor', 'var(--jp-layout-color3)')
+    ];
+    const painted = await page.locator(PANEL).evaluate(panel => {
+      const rule = (s: CSSStyleDeclaration, side: 'Top' | 'Bottom') => [
+        s[`border${side}Style`],
+        s[`border${side}Width`],
+        s[`border${side}Color`]
+      ];
+      return {
+        title: rule(
+          getComputedStyle(panel.querySelector('.jp-WorkspaceManager-header')!),
+          'Bottom'
+        ),
+        section: rule(
+          getComputedStyle(
+            panel.querySelector('.jp-WorkspaceManager-section')!
+          ),
+          'Top'
+        )
+      };
     });
-    expect.soft(shown, `${theme}: visible lines above the band`).toBe(1);
+    expect
+      .soft(painted.title, `${theme}: the title band line`)
+      .toEqual(['solid', '1px', titleLine]);
+    expect
+      .soft(painted.section, `${theme}: the WORKSPACES top line`)
+      .toEqual(['solid', '1px', topLine]);
   }
 });
 

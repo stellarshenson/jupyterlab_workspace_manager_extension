@@ -6,6 +6,7 @@ import {
   card,
   cardHeader,
   commandOf,
+  COLOURS,
   countOf,
   cut,
   cwdOf,
@@ -180,7 +181,7 @@ const processIs = (
     }
   );
 
-test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a terminal row, in a card and in TERMINALS, shows its short label, the process the server reports and its age with no selection, the process in inverse layout colour 1 at the size of the time; selecting the row adds no text; another program shows at the next reload', async ({
+test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a terminal row, in a card and in TERMINALS, shows its short label, the process the server reports and its age with no selection, the process in inverse layout colour 1 at the row text size; selecting the row adds no text; another program shows at the next reload', async ({
   page
 }) => {
   // a shell starts and then runs a program, twice over
@@ -205,7 +206,7 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
       await rgba(page, 'var(--jp-inverse-layout-color1)')
     );
     expect(await css(process, 'fontSize')).toBe(
-      await css(row.locator(AGE), 'fontSize')
+      await css(row.locator(LABEL), 'fontSize')
     );
 
     // selected: the process once, in the line, and no detail line
@@ -240,6 +241,125 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
     await expect(listed).toHaveText(rowText(name, shell));
     await expect(listed).toHaveClass(SELECTED);
   } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-TERM-272-TOOLTIP-NUMBER: in a card and in TERMINALS the first tooltip line of a numbered terminal reads terminal <n> and of a named one terminal <name>, and the numbered row keeps its tN label', async ({
+  page
+}) => {
+  const current = fresh('tooltipnum');
+  const other = `${current}-other`;
+  const created: string[] = [];
+  try {
+    await enterWorkspace(page, current);
+    const numbered = await newTerminalTab(page);
+    expect(numbered).toMatch(/^\d+$/);
+    created.push(numbered);
+    const named = await startTerminal(page);
+    created.push(named);
+    await refresh(page);
+    await cardHeader(page, current).click();
+    const inCard = rowOf(card(page, current), rowLabel(numbered));
+    await expect(inCard).toBeVisible();
+    expect((await tooltip(inCard))[0]).toBe(`terminal ${numbered}`);
+    await expect(inCard.locator(LABEL)).toHaveText(`t${numbered}`);
+
+    // the same terminal and the named one in TERMINALS
+    await openSection(page, 'terminals');
+    const listed = sectionBody(page, 'terminals');
+    const numberedRow = rowOf(listed, rowLabel(numbered));
+    const namedRow = rowOf(listed, rowLabel(named));
+    await expect(numberedRow).toBeVisible();
+    await expect(namedRow).toBeVisible();
+    expect((await tooltip(numberedRow))[0]).toBe(`terminal ${numbered}`);
+    expect((await tooltip(namedRow))[0]).toBe(`terminal ${named}`);
+
+    // a named terminal in another workspace's card: the same first tooltip line as in TERMINALS
+    await putWorkspace(page, other, layout([`terminal:${named}`]));
+    await refresh(page);
+    await openSection(page, 'workspaces');
+    await openCard(page, other);
+    const namedInCard = rowOf(card(page, other), rowLabel(named));
+    await expect(namedInCard).toBeVisible();
+    expect((await tooltip(namedInCard))[0]).toBe(`terminal ${named}`);
+  } finally {
+    await Promise.all(
+      created.map(name => page.request.delete(`/api/terminals/${name}`))
+    );
+    await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test('ACC-LISTS-273-CURRENT-ROW: a tab switch moves jp-mod-current from the first tab row to the second, and a hovered or a selected row paints over the current tint', async ({
+  page
+}) => {
+  const current = fresh('rowlight');
+  const names: string[] = [];
+  try {
+    await enterWorkspace(page, current);
+    names.push(await newTerminalTab(page), await newTerminalTab(page));
+    await refresh(page);
+    await cardHeader(page, current).click();
+    const cardEl = card(page, current);
+    const [first, second] = names.map(n => rowOf(cardEl, rowLabel(n)));
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+    // the last terminal tab this window opened is its current tab
+    await expect(second).toHaveClass(/jp-mod-current/);
+    await expect(second).toHaveAttribute('aria-current', 'true');
+    await expect(first).not.toHaveClass(/jp-mod-current/);
+    await expect(first).not.toHaveAttribute('aria-current');
+
+    // a tab switch moves the class and the attribute
+    await page.evaluate(name => {
+      const app = (window as any).jupyterapp;
+      const w = Array.from<any>(app.shell.widgets('main')).find(
+        (w: any) => w.content?.session?.name === name
+      );
+      app.shell.activateById(w.id);
+    }, names[0]);
+    // the 10 s _reload poll re-renders the rows and restores aria-current, so read it once with no retry
+    expect(await first.getAttribute('aria-current')).toBe('true');
+    expect(await second.getAttribute('aria-current')).toBeNull();
+    await expect(first).toHaveClass(/jp-mod-current/);
+    await expect(second).not.toHaveClass(/jp-mod-current/);
+
+    // hover and selection paint their own surface over the current tint
+    const surface = async (l: Locator) =>
+      rgba(page, await css(l, 'backgroundColor'));
+    // every listed card takes a rotation colour, so the row is in a coloured card
+    const colour = await cardEl.evaluate(
+      (n, colours) => colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+      COLOURS
+    );
+    expect(await surface(first)).toEqual(
+      await rgba(
+        page,
+        `color-mix(in srgb, var(--wm-${colour}) 30%, var(--jp-layout-color1))`
+      )
+    );
+    const hover = await rgba(
+      page,
+      `color-mix(in srgb, var(--wm-${colour}) 12%, var(--jp-layout-color2))`
+    );
+    await first.hover();
+    expect(await surface(first)).toEqual(hover);
+    await page.mouse.move(0, 0);
+    await first.focus();
+    await expect(first).toHaveClass(SELECTED);
+    expect(await surface(first)).toEqual(hover);
+
+    // the TERMINALS row of the current terminal takes no current tint: the tint marks the workspace's own row
+    await openSection(page, 'terminals');
+    const listed = rowOf(sectionBody(page, 'terminals'), rowLabel(names[0]));
+    await expect(listed).toHaveClass(/jp-mod-current/);
+    await expect(listed).toHaveAttribute('aria-current', 'true');
+    expect(await css(listed, 'backgroundColor')).toBe('rgba(0, 0, 0, 0)');
+  } finally {
+    await Promise.all(
+      names.map(name => page.request.delete(`/api/terminals/${name}`))
+    );
     await deleteWorkspaces(page, [current]);
   }
 });

@@ -463,11 +463,13 @@ test.describe('the seeded scenario', () => {
       expect(labels.filter(l => l === rowLabel(s.tab))).toHaveLength(1);
 
       // ROW-01 in this window's card and in the TERMINALS section, at 300 px
-      const [colour1, colour2, inverse0, inverse1] = [
+      const [colour1, colour2, inverse0, inverse1, inverse2, inverse3] = [
         await rgba(page, 'var(--jp-ui-font-color1)'),
         await rgba(page, 'var(--jp-ui-font-color2)'),
         await rgba(page, 'var(--jp-inverse-layout-color0)'),
-        await rgba(page, 'var(--jp-inverse-layout-color1)')
+        await rgba(page, 'var(--jp-inverse-layout-color1)'),
+        await rgba(page, 'var(--jp-inverse-layout-color2)'),
+        await rgba(page, 'var(--jp-inverse-layout-color3)')
       ];
       const anatomy = async () =>
         page.locator(PANEL).evaluate(panel =>
@@ -493,6 +495,7 @@ test.describe('the seeded scenario', () => {
                 coloured: !!r.closest(
                   '.jp-WorkspaceManager-card.jp-mod-coloured'
                 ),
+                current: r.classList.contains('jp-mod-current'),
                 label: label ? getComputedStyle(label).color : '',
                 time: time ? getComputedStyle(time).color : null,
                 detail: detail ? getComputedStyle(detail).color : null,
@@ -522,7 +525,13 @@ test.describe('the seeded scenario', () => {
           if (r.time !== null) {
             expect
               .soft(await rgba(page, r.time), `${r.text} time colour`)
-              .toEqual(r.coloured ? inverse1 : colour2);
+              .toEqual(
+                r.coloured && r.current
+                  ? inverse2
+                  : r.coloured
+                    ? inverse3
+                    : colour2
+              );
           }
           if (r.detail !== null) {
             expect
@@ -1469,7 +1478,7 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
   }
 });
 
-test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads now and the header carries jp-mod-recentlyActive with no dot and no colour change; at 3 h the age reads 3h ago in inverse layout colour 1; over 7 days the row label alone is at opacity 0.65 with jp-mod-stale while the card name stays at full opacity', async ({
+test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads now and the header carries jp-mod-recentlyActive with no dot and no colour change; at 3 h the age reads 3h ago in inverse layout colour 2; over 7 days the row label alone is at opacity 0.65 with jp-mod-stale while the card name stays at full opacity', async ({
   page
 }) => {
   const current = fresh('recency');
@@ -1491,9 +1500,9 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
       );
     const name = (id: string) =>
       cardHeader(page, id).locator('.jp-WorkspaceManager-name');
-    const [inverse0, inverse1] = [
+    const [inverse0, inverse2] = [
       await rgba(page, 'var(--jp-inverse-layout-color0)'),
-      await rgba(page, 'var(--jp-inverse-layout-color1)')
+      await rgba(page, 'var(--jp-inverse-layout-color2)')
     ];
     const look = async (id: string) => ({
       age: await age(id).textContent(),
@@ -1513,7 +1522,7 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
       age: 'now',
       header: ['jp-mod-recentlyActive'],
       name: inverse0,
-      time: inverse1,
+      time: inverse2,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1522,7 +1531,7 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
       age: '3h ago',
       header: [],
       name: inverse0,
-      time: inverse1,
+      time: inverse2,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1531,7 +1540,7 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
       age: '9d ago',
       header: ['jp-mod-stale'],
       name: inverse0,
-      time: inverse1,
+      time: inverse2,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1781,7 +1790,7 @@ test.describe('rows of terminals and kernels of the server', () => {
   // the tests start a kernel by REST; Galata would list only its page's own
   test.use({ kernels: null, sessions: null });
 
-  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row its short label, its process and its time, a kernel row with no session its id, its state and its time; a terminal 3 h idle has its name in inverse layout colour 0 and 3h ago in inverse layout colour 1; the terminal names of the TERMINALS section, kernel ids and paths are in the code font; workspace names, times, process names and every card label, that of a terminal included, are in the UI font', async ({
+  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row its short label, its process and its time, a kernel row with no session its id, its state and its time; a terminal 3 h idle has its name in inverse layout colour 0 and 3h ago in inverse layout colour 3; the terminal names of the TERMINALS section, kernel ids and paths are in the code font; workspace names, times, process names and every card label, that of a terminal included, are in the UI font', async ({
     page
   }) => {
     const terminal = await startTerminal(page);
@@ -1833,9 +1842,9 @@ test.describe('rows of terminals and kernels of the server', () => {
       await expect(
         page.locator(`${PANEL} .jp-WorkspaceManager-rowDetail`)
       ).toHaveCount(0);
-      const [inverse0, inverse1] = [
+      const [inverse0, inverse3] = [
         await rgba(page, 'var(--jp-inverse-layout-color0)'),
-        await rgba(page, 'var(--jp-inverse-layout-color1)')
+        await rgba(page, 'var(--jp-inverse-layout-color3)')
       ];
       expect(
         await rgba(
@@ -1848,7 +1857,7 @@ test.describe('rows of terminals and kernels of the server', () => {
           page,
           await style(term.locator('.jp-WorkspaceManager-age'), 'color')
         )
-      ).toEqual(inverse1);
+      ).toEqual(inverse3);
 
       // LEG-09: the code font on identifiers only
       const code = await page.locator(PANEL).evaluate(panel => {

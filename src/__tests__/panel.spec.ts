@@ -1251,6 +1251,42 @@ describe('panel', () => {
     );
   });
 
+  it("ACC-LISTS-40-ROW-OTHER, ACC-TERM-215-TAB-MATCH: a terminal row of another workspace's card opens that workspace without activating the terminal's tab, while a row of this window's card activates it", async () => {
+    const server = standard();
+    // this window's workspace holds the same terminal as auto-6
+    server.workspaces[0] = workspace('default', 1, ['terminal:1']);
+    const terminal = new Widget();
+    terminal.id = 'terminal-1';
+    terminal.title.label = 'terminal 1';
+    (terminal as any).content = {
+      hasClass: (name: string) => name === 'jp-Terminal',
+      session: { name: '1' }
+    };
+    const { panel, app } = await mount(server, { live: [terminal] });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    const terminalRow = (key: string) =>
+      $$(panel, `[data-key="${key}"] .jp-WorkspaceManager-row`).find(r =>
+        r.title.startsWith('terminal 1\n')
+      )!;
+    // another workspace's card: the row opens that workspace and leaves the tab alone
+    triangle(panel, 'w:auto-6').click();
+    const other = terminalRow('w:auto-6');
+    expect(other).toBeDefined();
+    other.click();
+    expect(openWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'auto-6' })
+    );
+    expect(app.shell.activateById).not.toHaveBeenCalled();
+    // this window's card: the row activates the terminal's tab
+    triangle(panel, 'w:default').click();
+    const mine = terminalRow('w:default');
+    expect(mine).toBeDefined();
+    mine.click();
+    expect(app.shell.activateById).toHaveBeenCalledWith('terminal-1');
+  });
+
   it('ACC-TERM-215-TAB-MATCH: a terminal row activates the tab of its running terminal, never the kept tab of an ended one; without such a tab it opens one', async () => {
     const server = standard();
     server.terminals.push({ name: '2', last_activity: iso(0), process: 'vim' });
@@ -2052,6 +2088,79 @@ describe('panel', () => {
         'Workspaces: default, auto-6'
       ].join('\n')
     );
+  });
+
+  it('ACC-TERM-272-TOOLTIP-NUMBER: a numbered terminal tooltip starts with terminal 7 and its label reads t7, a named one starts with terminal build', async () => {
+    const server = standard();
+    server.terminals = [
+      { name: '7', last_activity: iso(0), process: 'claude' },
+      { name: 'build', last_activity: iso(0), process: 'make' }
+    ];
+    const { panel } = await mount(server);
+    const rows = Array.from(
+      openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    expect(rows.map(r => r.title.split('\n')[0])).toEqual([
+      'terminal 7',
+      'terminal build'
+    ]);
+    expect(
+      rows.map(
+        r => r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+      )
+    ).toEqual(['t7', 'build']);
+  });
+
+  it('ACC-LISTS-273-CURRENT-ROW: the row of the current widget carries jp-mod-current, no other row does, and a change of the current widget moves the class', async () => {
+    const server = standard();
+    const { tab } = liveTab('notes.md');
+    const terminal = new Widget();
+    terminal.title.label = 'terminal 1';
+    (terminal as any).content = {
+      hasClass: (name: string) => name === 'jp-Terminal',
+      session: { name: '1' }
+    };
+    Widget.attach(terminal, document.body);
+    const { panel, app } = await mount(server, { live: [tab, terminal] });
+    current(app, tab);
+    triangle(panel, 'w:default').click();
+    const rows = () =>
+      Array.from(
+        card(panel, 'w:default').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      );
+    // the document row first, the terminal row after it
+    expect(rows()).toHaveLength(2);
+    expect(rows()[0].classList).toContain('jp-mod-current');
+    expect(rows()[0].getAttribute('aria-current')).toBe('true');
+    expect(rows()[1].classList).not.toContain('jp-mod-current');
+    expect(rows()[1].getAttribute('aria-current')).toBeNull();
+
+    current(app, terminal);
+    expect(rows()[0].classList).not.toContain('jp-mod-current');
+    expect(rows()[0].getAttribute('aria-current')).toBeNull();
+    expect(rows()[1].classList).toContain('jp-mod-current');
+    expect(rows()[1].getAttribute('aria-current')).toBe('true');
+    // another card naming the same terminal: only this window's card follows the shell
+    triangle(panel, 'w:auto-6').click();
+    const other = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title.startsWith('terminal 1\n'))!;
+    expect(other).toBeDefined();
+    expect(other.classList).not.toContain('jp-mod-current');
+    expect(other.getAttribute('aria-current')).toBeNull();
+    // no kernel row takes the current light
+    expect($$(panel, '.jp-WorkspaceManager-row.jp-mod-current')).toEqual([
+      rows()[1]
+    ]);
+    expect($$(panel, '.jp-WorkspaceManager-row[aria-current="true"]')).toEqual([
+      rows()[1]
+    ]);
   });
 
   it('ACC-KERNEL-72-GLYPH, ACC-KERNEL-156-DISPLAY-NAME, ACC-KERNEL-48-ROW: a kernel row shows kernelIcon and, with no session, its id in the code font; selected, the display name of its kernelspec; its tooltip the display name and state', async () => {

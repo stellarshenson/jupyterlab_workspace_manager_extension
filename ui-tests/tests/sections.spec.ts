@@ -1371,7 +1371,7 @@ test('ACC-SERVER-64-PRESENCE: a window that moves to another workspace no longer
   }
 });
 
-test("ACC-ACCORD-69-CARD, EDGE-TAB-SURFACE: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, the header on the hue's 30% tint, the body on its 12% tint, and a 1 px hue rule between them", async ({
+test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, the header on the hue's 30% tint and the body on its 12% tint with no rule between them", async ({
   page
 }) => {
   const current = fresh('card');
@@ -1442,11 +1442,8 @@ test("ACC-ACCORD-69-CARD, EDGE-TAB-SURFACE: in Light and Dark every card, this w
         expect(await rgb(page, s.card), what).toEqual(
           await rgb(page, tint(hues[id], 12))
         );
-        // a 1 px hue rule joins the header to the body
-        expect(s.rule.slice(0, 2), what).toEqual(['1px', 'solid']);
-        expect(await rgb(page, s.rule[2]), what).toEqual(
-          await rgb(page, s.strip)
-        );
+        // ACC-PANEL-270-NO-DIVIDER: no rule joins the header to the body
+        expect([s.rule[1], s.rule[0]], what).toEqual(['none', '0px']);
         // an open card's body paints nothing over the 12 % surface; a closed card has no body
         expect(s.body, what).toBe(id === b ? null : 'rgba(0, 0, 0, 0)');
       }
@@ -2009,6 +2006,64 @@ test("ACC-ACCORD-164-HEADER-TOGGLE: a header click opens and closes this window'
   }
 });
 
+test('ACC-LISTS-273-CURRENT-ROW: in JupyterLab Light and Galaxa Dark Theme - Steel the current row takes brand colour 1 at 14 % over layout colour 1 on a plain card and the workspace hue at 30 % over layout colour 1 on a coloured card', async ({
+  page
+}) => {
+  const current = fresh('rowtint');
+  const names: string[] = [];
+  try {
+    await setUpExisting(page, current);
+    names.push(await newTerminalTab(page), await newTerminalTab(page));
+    await refresh(page);
+    await openCard(page, current);
+    const rows = names.map(n => rowOf(card(page, current), rowLabel(n)));
+    await expect(rows[1]).toBeVisible();
+    await expect(rows[1]).toHaveClass(/jp-mod-current/);
+    // every listed card takes a rotation colour, so the live current row carries the coloured recipe
+    const colour = await card(page, current).evaluate(
+      (n, colours) => colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+      COLOURS
+    );
+    const background = async (l: Locator) =>
+      rgb(page, await l.evaluate(n => getComputedStyle(n).backgroundColor));
+    for (const theme of ['JupyterLab Light', 'Galaxa Dark Theme - Steel']) {
+      await page.theme.setTheme(theme);
+      expect(await background(rows[1]), `${theme} coloured`).toEqual(
+        await rgb(
+          page,
+          `color-mix(in srgb, var(--wm-${colour}) 30%, var(--jp-layout-color1))`
+        )
+      );
+    }
+    // a card with no colour, as the class alone paints it: the plain recipe (DQ-36)
+    for (const theme of ['JupyterLab Light', 'Galaxa Dark Theme - Steel']) {
+      await page.theme.setTheme(theme);
+      const plain = await page.locator(PANEL).evaluate(panel => {
+        const probe = document.createElement('div');
+        probe.className = 'jp-WorkspaceManager-card';
+        const row = document.createElement('div');
+        row.className = 'jp-WorkspaceManager-row jp-mod-current';
+        probe.appendChild(row);
+        panel.appendChild(probe);
+        const drawn = getComputedStyle(row).backgroundColor;
+        probe.remove();
+        return drawn;
+      });
+      expect(await rgb(page, plain), `${theme} plain`).toEqual(
+        await rgb(
+          page,
+          'color-mix(in srgb, var(--jp-brand-color1) 14%, var(--jp-layout-color1))'
+        )
+      );
+    }
+  } finally {
+    await Promise.all(
+      names.map(name => page.request.delete(`/api/terminals/${name}`))
+    );
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
 test.describe('at 4x device scale', () => {
   test.use({ deviceScaleFactor: 4 });
 
@@ -2239,6 +2294,126 @@ test.describe('at 4x device scale', () => {
       });
     } finally {
       await deleteWorkspaces(page, [current]);
+    }
+  });
+
+  test('ACC-PANEL-270-NO-DIVIDER: in JupyterLab Light and Galaxa Dark Theme - Steel an open card header has no border-bottom and no line pixel between it and its first row, in a coloured card and a plain one', async ({
+    page
+  }) => {
+    const current = fresh('norule');
+    const coloured = `${current}-c`;
+    await putWorkspace(page, current);
+    await putWorkspace(page, coloured, layout(['editor:docs/notes.md']));
+    await patchMeta(page, coloured, { colour: 'sky' });
+    try {
+      await setUpExisting(page, current);
+      // every listed card takes a rotation colour; this window's card is not a chosen one
+      const hue = (id: string) =>
+        card(page, id).evaluate(
+          (n, colours) =>
+            colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+          COLOURS
+        );
+      // this window's coloured card and the sky one, both open
+      await cardHeader(page, current).click();
+      await triangle(page, coloured).click();
+      await expect(openCards(page)).toHaveCount(2);
+      // a card with no colour, as the class alone paints it, has no rule either
+      const plain = await page.locator(PANEL).evaluate(panel => {
+        const probe = document.createElement('div');
+        probe.className = 'jp-WorkspaceManager-card';
+        const header = document.createElement('div');
+        header.className = 'jp-WorkspaceManager-cardHeader';
+        probe.appendChild(header);
+        panel.appendChild(probe);
+        const s = getComputedStyle(header);
+        const drawn = [s.borderBottomWidth, s.borderBottomStyle];
+        probe.remove();
+        return drawn;
+      });
+      expect(plain).toEqual(['0px', 'none']);
+      for (const theme of ['JupyterLab Light', 'Galaxa Dark Theme - Steel']) {
+        await page.theme.setTheme(theme);
+        await page.mouse.move(0, 0);
+        for (const id of [current, coloured]) {
+          const colour = await hue(id);
+          const header = cardHeader(page, id);
+          expect(
+            await header.evaluate(n => {
+              const s = getComputedStyle(n);
+              return [s.borderBottomWidth, s.borderBottomStyle];
+            }),
+            `${theme} ${id}`
+          ).toEqual(['0px', 'none']);
+          // the device pixels from 2 CSS px above the header's bottom edge to 4 below it, in the left padding
+          const box = (await header.boundingBox())!;
+          const png = await page.screenshot({
+            clip: {
+              x: Math.round(box.x + 2),
+              y: Math.round(box.y + box.height - 2),
+              width: 1,
+              height: 6
+            }
+          });
+          const px = await page.evaluate(async b64 => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${b64}`;
+            await image.decode();
+            const canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(image, 0, 0);
+            return {
+              width: image.width,
+              data: Array.from(
+                ctx.getImageData(0, 0, image.width, image.height).data
+              )
+            };
+          }, png.toString('base64'));
+          const [above, below] = [
+            await rgb(
+              page,
+              `color-mix(in srgb, var(--wm-${colour}) 30%, var(--jp-layout-color1))`
+            ),
+            await rgb(
+              page,
+              `color-mix(in srgb, var(--wm-${colour}) 12%, var(--jp-layout-color1))`
+            )
+          ];
+          const near = (c: number[], tint: number[]) =>
+            c.every((v, i) => Math.abs(v - tint[i]) <= 8);
+          // every pixel lies between the header's tint and the body's: no line of another colour
+          const outside: number[][] = [];
+          let headerPixels = 0;
+          let bodyPixels = 0;
+          for (let i = 0; i < px.data.length; i += 4) {
+            const c = px.data.slice(i, i + 3);
+            if (
+              !c.every(
+                (v, n) =>
+                  v >= Math.min(above[n], below[n]) - 8 &&
+                  v <= Math.max(above[n], below[n]) + 8
+              )
+            ) {
+              outside.push(c);
+            }
+            if (near(c, above)) {
+              headerPixels++;
+            }
+            if (near(c, below)) {
+              bodyPixels++;
+            }
+          }
+          expect(outside.slice(0, 4), `${theme} ${id}`).toEqual([]);
+          expect(headerPixels, `${theme} ${id} header pixels`).toBeGreaterThan(
+            0
+          );
+          expect(bodyPixels, `${theme} ${id} body pixels`).toBeGreaterThan(0);
+        }
+      }
+    } finally {
+      await deleteWorkspaces(page, [current, coloured]);
     }
   });
 });

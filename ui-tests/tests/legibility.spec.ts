@@ -10,6 +10,7 @@ import {
   gotoWorkspace,
   headerButton,
   layout,
+  newTerminalTab,
   onlyWorkspaces,
   openCard,
   openPanel,
@@ -20,6 +21,9 @@ import {
   putWorkspace,
   refresh,
   rgba,
+  rowLabel,
+  rowOf,
+  sectionBody,
   sectionCount,
   sectionHeader,
   startTerminal,
@@ -68,7 +72,7 @@ function texts(page: Page): Promise<IText[]> {
         empty: !!el.closest('.jp-WorkspaceManager-empty'),
         coloured: !!el.closest('.jp-WorkspaceManager-card.jp-mod-coloured'),
         meta: !!el.closest(
-          '.jp-WorkspaceManager-age, .jp-WorkspaceManager-hiddenWord, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowProcess, .jp-WorkspaceManager-rowPath'
+          '.jp-WorkspaceManager-age, .jp-WorkspaceManager-hiddenWord, .jp-WorkspaceManager-row .jp-WorkspaceManager-state, .jp-WorkspaceManager-rowDetail, .jp-WorkspaceManager-rowPath'
         ),
         where: el.getAttribute('class') ?? el.tagName
       };
@@ -108,6 +112,14 @@ function contrast(a: number[], b: number[]): number {
   };
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
+}
+
+/** A colour drawn over an opaque surface: the channels the browser paints, 0-255. */
+function drawn(ink: number[], surface: number[]): number[] {
+  const alpha = (ink[3] ?? 255) / 255;
+  return [0, 1, 2].map(i =>
+    Math.round(alpha * ink[i] + (1 - alpha) * surface[i])
+  );
 }
 
 /** The size of a JupyterLab font-size variable, in px, as the panel resolves it. */
@@ -202,7 +214,7 @@ async function textsOfOpenCards(
   return found;
 }
 
-test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a section label and a row name are colour 1; a row detail, a note, the section count, the carets and the empty lines are colour 2; a coloured card keeps its name and row text at inverse layout colour 0 and its time, purpose and counts at inverse layout colour 1; no text is colour 3', async ({
+test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the root, a section label and a row name are colour 1; a row detail, a note, the section count, the carets and the empty lines are colour 2; a coloured card keeps its name and row text at inverse layout colour 0, its purpose and counts at inverse layout colour 1 and its header age at inverse layout colour 2; no text is colour 3', async ({
   page
 }) => {
   test.setTimeout(150000);
@@ -229,12 +241,13 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
     await openSection(page, 'workspaces');
     for (const theme of [DARK, LIGHT]) {
       await page.theme.setTheme(theme);
-      const [colour1, colour2, colour3, inverse0, inverse1] = [
+      const [colour1, colour2, colour3, inverse0, inverse1, inverse2] = [
         await rgba(page, 'var(--jp-ui-font-color1)'),
         await rgba(page, 'var(--jp-ui-font-color2)'),
         await rgba(page, 'var(--jp-ui-font-color3)'),
         await rgba(page, 'var(--jp-inverse-layout-color0)'),
-        await rgba(page, 'var(--jp-inverse-layout-color1)')
+        await rgba(page, 'var(--jp-inverse-layout-color1)'),
+        await rgba(page, 'var(--jp-inverse-layout-color2)')
       ];
       const colourOf = async (l: Locator, property = 'color') =>
         rgba(
@@ -246,7 +259,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         colour1
       );
 
-      // the aged card: a coloured card keeps its name at inverse layout colour 0 and its time, purpose and counts at inverse layout colour 1
+      // the aged card: a coloured card keeps its name at inverse layout colour 0, its purpose and counts at inverse layout colour 1 and its header age at inverse layout colour 2
       await openCard(page, aged);
       const header = cardHeader(page, aged);
       await expect(header.locator('.jp-WorkspaceManager-age')).toHaveText(
@@ -259,7 +272,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
           header.locator(
             '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
           ),
-          inverse1
+          inverse2
         ],
         ['purpose', header.locator('.jp-WorkspaceManager-purpose'), inverse1],
         [
@@ -392,6 +405,208 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         contrast(ink, surface),
         `${theme} ${ink} on ${surface}`
       ).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current, lemon]);
+  }
+});
+
+test('ACC-PANEL-274-TIME-DIM: in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel a coloured card header age takes --jp-inverse-layout-color2, a body row age --jp-inverse-layout-color3, a hovered and a selected coloured row age --jp-inverse-layout-color2 and a plain section row age --jp-ui-font-color2, each card ink at least 4.5:1 on its surface', async ({
+  page
+}) => {
+  test.setTimeout(240000);
+  const ids = await populate(page);
+  let terminal: string | undefined;
+  const colourOf = async (l: Locator, property = 'color') =>
+    rgba(
+      page,
+      await l.evaluate((n, p) => (getComputedStyle(n) as any)[p], property)
+    );
+  try {
+    // a terminal tab of this window: its row is this card's current row
+    terminal = await newTerminalTab(page);
+    await refresh(page);
+    await openSection(page, 'workspaces');
+    await openCard(page, ids.coloured[0]);
+    await page.mouse.move(0, 0);
+    for (const theme of [LIGHT, 'JupyterLab Dark', DARK]) {
+      await page.theme.setTheme(theme);
+      const [inverse2, inverse3, colour2] = [
+        await rgba(page, 'var(--jp-inverse-layout-color2)'),
+        await rgba(page, 'var(--jp-inverse-layout-color3)'),
+        await rgba(page, 'var(--jp-ui-font-color2)')
+      ];
+      const cardEl = card(page, ids.coloured[0]);
+      const header = cardHeader(page, ids.coloured[0]);
+      const headerAge = header.locator(
+        '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
+      );
+      await expect(headerAge).toHaveCount(1);
+      // the 30 % header tint
+      expect(await colourOf(headerAge), `${theme} header`).toEqual(inverse2);
+      const headerSurface = await colourOf(header, 'backgroundColor');
+      expect(headerSurface[3], `${theme} header surface`).toBe(255);
+      expect(
+        contrast(
+          drawn(await colourOf(headerAge), headerSurface),
+          headerSurface
+        ),
+        `${theme} header`
+      ).toBeGreaterThanOrEqual(4.5);
+
+      // the 12 % body tint, at rest
+      await page.mouse.move(0, 0);
+      const body = cardEl
+        .locator('.jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row')
+        .filter({ has: page.locator('.jp-WorkspaceManager-age') })
+        .first();
+      const bodyAge = body.locator('.jp-WorkspaceManager-age');
+      await expect(bodyAge).toHaveCount(1);
+      expect(await colourOf(bodyAge), `${theme} body`).toEqual(inverse3);
+      const bodySurface = await colourOf(cardEl, 'backgroundColor');
+      expect(bodySurface[3], `${theme} body surface`).toBe(255);
+      expect(
+        contrast(drawn(await colourOf(bodyAge), bodySurface), bodySurface),
+        `${theme} body`
+      ).toBeGreaterThanOrEqual(4.5);
+
+      // the hovered surface: the hue at 12 % over layout colour 2
+      await body.hover();
+      expect(await colourOf(bodyAge), `${theme} hovered`).toEqual(inverse2);
+      const hoverSurface = await colourOf(body, 'backgroundColor');
+      expect(hoverSurface[3], `${theme} hovered surface`).toBe(255);
+      expect(
+        contrast(drawn(await colourOf(bodyAge), hoverSurface), hoverSurface),
+        `${theme} hovered`
+      ).toBeGreaterThanOrEqual(4.5);
+
+      // the selected surface, the same mix, with the pointer away
+      await body.focus();
+      await page.mouse.move(0, 0);
+      await expect(body).toHaveClass(/jp-mod-selected/);
+      expect(await colourOf(bodyAge), `${theme} selected`).toEqual(inverse2);
+      const selectedSurface = await colourOf(body, 'backgroundColor');
+      expect(selectedSurface[3], `${theme} selected surface`).toBe(255);
+      expect(
+        contrast(
+          drawn(await colourOf(bodyAge), selectedSurface),
+          selectedSurface
+        ),
+        `${theme} selected`
+      ).toBeGreaterThanOrEqual(4.5);
+      // release the selection before the card closes, so the next theme reads a row at rest
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement | null)?.blur()
+      );
+      await expect(body).not.toHaveClass(/jp-mod-selected/);
+
+      // a plain section row keeps the theme's own meta ink
+      await openSection(page, 'terminals');
+      await page.mouse.move(0, 0);
+      const plain = page
+        .locator(`${PANEL} [data-section="terminals"] .jp-WorkspaceManager-row`)
+        .first();
+      const plainAge = plain.locator('.jp-WorkspaceManager-age');
+      await expect(plainAge).toHaveCount(1);
+      expect(await colourOf(plainAge), `${theme} plain`).toEqual(colour2);
+      const plainSurface = await colourOf(
+        page.locator(PANEL),
+        'backgroundColor'
+      );
+      const plainContrast = contrast(
+        drawn(await colourOf(plainAge), plainSurface),
+        plainSurface
+      );
+      // the 4.5 floor is the card ink's; Steel's own --jp-ui-font-color2 measures 3.25:1 on layout colour 1, a theme value this change does not touch
+      expect(plainContrast, `${theme} plain`).toBeGreaterThanOrEqual(
+        theme === DARK ? 3.2 : 4.5
+      );
+      // the next theme reads the card again
+      await openSection(page, 'workspaces');
+      await openCard(page, ids.coloured[0]);
+    }
+
+    // this window's card is coloured too: its current row at rest stands on the 30 % hue tint
+    await openSection(page, 'workspaces');
+    await openCard(page, ids.current);
+    const currentRow = rowOf(card(page, ids.current), rowLabel(terminal));
+    await expect(currentRow).toBeVisible();
+    await expect(currentRow).toHaveClass(/jp-mod-current/);
+    await expect(currentRow).not.toHaveClass(/jp-mod-selected/);
+    const currentAge = currentRow.locator('.jp-WorkspaceManager-age');
+    await expect(currentAge).toHaveCount(1);
+    for (const theme of [LIGHT, 'JupyterLab Dark', DARK]) {
+      await page.theme.setTheme(theme);
+      await page.mouse.move(0, 0);
+      expect(await colourOf(currentAge), `${theme} current`).toEqual(
+        await rgba(page, 'var(--jp-inverse-layout-color2)')
+      );
+      const currentSurface = await colourOf(currentRow, 'backgroundColor');
+      expect(currentSurface[3], `${theme} current surface`).toBe(255);
+      expect(
+        contrast(
+          drawn(await colourOf(currentAge), currentSurface),
+          currentSurface
+        ),
+        `${theme} current`
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    if (terminal) {
+      await page.request.delete(`/api/terminals/${terminal}`);
+    }
+    await ids.cleanup();
+  }
+});
+
+test('ACC-TERM-271-NAME-SIZE: in JupyterLab Light and Galaxa Dark Theme - Steel a terminal row name, in a card and in TERMINALS, has the font size of a document row label and --jp-ui-font-size1, colour 2 in TERMINALS and inverse layout colour 1 in a coloured card', async ({
+  page
+}) => {
+  test.setTimeout(150000);
+  const terminal = await startTerminal(page);
+  const current = fresh('namesize');
+  const lemon = `${current}-lemon`;
+  const keys = [`terminal:${terminal}`, 'editor:docs/notes.md'];
+  await putWorkspace(page, lemon, layout(keys));
+  await patchMeta(page, lemon, { colour: 'lemon' });
+  const process = '.jp-WorkspaceManager-rowProcess';
+  const label = '.jp-WorkspaceManager-rowLabel';
+  const size = (l: Locator) =>
+    l.evaluate(n => parseFloat(getComputedStyle(n).fontSize));
+  const ink = (l: Locator) => l.evaluate(n => getComputedStyle(n).color);
+  try {
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    await refresh(page);
+    await openCard(page, lemon);
+    const size1 = await fontSize(page, '--jp-ui-font-size1');
+    for (const theme of [LIGHT, DARK]) {
+      await page.theme.setTheme(theme);
+      const name = rowOf(card(page, lemon), rowLabel(terminal));
+      await expect(name).toBeVisible();
+      const nameSize = await size(name.locator(process));
+      // the terminal name at the document label's size, which is size 1
+      expect(nameSize, theme).toBe(size1);
+      expect(nameSize, `${theme} label`).toBe(
+        await size(rowOf(card(page, lemon), 'notes.md').locator(label))
+      );
+      expect(
+        await rgba(page, await ink(name.locator(process))),
+        `${theme} card ink`
+      ).toEqual(await rgba(page, 'var(--jp-inverse-layout-color1)'));
+    }
+    // TERMINALS: the same name at the same size, in the section's colour 2
+    await openSection(page, 'terminals');
+    const listed = rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
+    await expect(listed).toBeVisible();
+    for (const theme of [LIGHT, DARK]) {
+      await page.theme.setTheme(theme);
+      expect(await size(listed.locator(process)), theme).toBe(size1);
+      expect(
+        await rgba(page, await ink(listed.locator(process))),
+        `${theme} section ink`
+      ).toEqual(await rgba(page, 'var(--jp-ui-font-color2)'));
     }
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);

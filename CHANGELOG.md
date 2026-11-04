@@ -2,6 +2,26 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.35] - 2026-11-04
+
+### Added
+
+- A terminal row's tooltip opens with `terminal <name>`, so its number reads without the row text
+- The row of this window's current tab carries `aria-current="true"` beside its tint, set by the render and by the tab switch, so assistive technology announces the row the tint shows
+
+### Changed
+
+- The card header and its body are one surface: the 1 px hue rule between them is gone
+- A terminal row's name, its tab's name or else its process, is at the normal UI size after the `tN` label
+- The current tab's row carries the bookmarks panel's current-row tint: brand colour 1 at 14 % over layout colour 1 on a plain surface, the workspace hue at 30 % on a coloured one
+- The WORKBENCH header is the standard 37 px band: 2 px padding above and below a 32 px toolbar and its 1 px rule
+- The time-ago marker is dimmed: inverse layout colour 2 on the coloured card header and on a current, hovered or selected row, inverse layout colour 3 on a resting body row, font colour 2 on a plain surface
+- The section band separator is one 1 px `--jp-layout-color3` line, one step from the band fill, drawn only under a folded section that has a section below it and under the title band above WORKSPACES
+
+### Fixed
+
+- The WORKBENCH header stands as tall as a standard side panel header (`DEF-PANEL-84-HEADER-HEIGHT`)
+
 ## [0.8.34] - 2026-11-03
 
 ### Added

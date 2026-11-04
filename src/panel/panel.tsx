@@ -239,7 +239,10 @@ export class WorkspacePanel
     pressed(this._hiddenButton, false);
 
     this._root = createRoot(this.content.node);
-    this._app.shell.currentChanged?.connect(() => this._releaseRow(), this);
+    this._app.shell.currentChanged?.connect(() => {
+      this._markCurrent();
+      this._releaseRow();
+    }, this);
     this.content.node.addEventListener('focusout', e => this._releaseRow(e));
     // the lit row's detail lines stay for the press: removed, they pull what is below from under the pointer and lose its click
     this.content.node.addEventListener(
@@ -1119,6 +1122,28 @@ export class WorkspacePanel
     };
   }
 
+  /** Move the current-row light to the rows of the shell's current widget without a render, so the scroll position stays (ACC-LISTS-273-CURRENT-ROW). */
+  private _markCurrent(): void {
+    this._liveTabs();
+    const current = this._app.shell.currentWidget;
+    for (const row of Array.from(
+      this.content.node.querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row[data-row-key]'
+      )
+    )) {
+      // a card row counts only in this window's card, as at render
+      const card = row.closest('.jp-WorkspaceManager-card');
+      const mine = !card || card.classList.contains('jp-mod-current');
+      const isCurrent = mine && this._live.get(row.dataset.rowKey!) === current;
+      row.classList.toggle('jp-mod-current', isCurrent);
+      if (isCurrent) {
+        row.setAttribute('aria-current', 'true');
+      } else {
+        row.removeAttribute('aria-current');
+      }
+    }
+  }
+
   /** The selected row stays lit while the focus is on it or its tab is the current tab of this window (DQ-32), and until a press in the panel ends. */
   private _releaseRow(event?: FocusEvent): void {
     const row = this.content.node.querySelector(
@@ -1199,6 +1224,7 @@ export class WorkspacePanel
     return row({
       key: tab.key,
       ...this._selection(keyOf(section), tab.key),
+      current: live === this._app.shell.currentWidget,
       icon,
       label: tab.label,
       detail: [[[dirname(tab.path), CODE]]],
@@ -1240,6 +1266,8 @@ export class WorkspacePanel
     const when = age(t.lastActivity, now, this._translation);
     const key = `terminal:${t.name}`;
     const inCard = section !== null && !listed;
+    // a card row follows its shell widget only with its own workspace current
+    const live = inCard && !section!.current ? undefined : this._live.get(key);
     const trans = this._translation;
     const tab = terminalTabName(t);
     const holders = (inCard ? [section!.id, ...t.alsoIn] : t.alsoIn).join(', ');
@@ -1250,6 +1278,7 @@ export class WorkspacePanel
     return row({
       key,
       ...this._selection(listed ? 'terminals' : keyOf(section!), key),
+      current: live === this._app.shell.currentWidget,
       icon: terminalGlyph,
       label: terminalLabel(t.name),
       code: listed,
@@ -2255,6 +2284,8 @@ function row(props: {
   key: string;
   /** the panel's one selected row */
   selected: boolean;
+  /** the row of the shell's current widget: a pale tint under hover and selection (ACC-LISTS-273-CURRENT-ROW) */
+  current?: boolean;
   select: () => void;
   icon: LabIcon | React.ReactElement;
   label: React.ReactNode;
@@ -2288,12 +2319,15 @@ function row(props: {
     'jp-WorkspaceManager-row',
     props.child ? 'jp-mod-child' : '',
     props.selected ? 'jp-mod-selected' : '',
+    props.current ? 'jp-mod-current' : '',
     when?.mod ?? ''
   ];
   return (
     <div
       key={props.key}
       className={classes.filter(Boolean).join(' ')}
+      aria-current={props.current ? 'true' : undefined}
+      data-row-key={props.key}
       // the list's tab stop is set on the DOM (_render), where React never resets it
       tabIndex={-1}
       title={props.title}

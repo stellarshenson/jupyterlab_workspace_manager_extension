@@ -99,7 +99,7 @@ describe('palette', () => {
     expect(rest).not.toMatch(/var\(--wm-(rose|peach|lemon|mint|sky|lavender)/);
   });
 
-  it('EDGE-TAB-SURFACE: the card is an edge tab 2 px from the panel edge, its hue strip the left border, the header and body joined by a 1 px hue rule', () => {
+  it('ACC-PANEL-270-NO-DIVIDER, ACC-PANEL-242-EDGE-TAB: the card is an edge tab 2 px from the panel edge, its hue strip the left border, and the header meets the body with no rule', () => {
     const text = css();
     const body = (selector: string) =>
       (text.match(new RegExp(`${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? '')
@@ -113,11 +113,30 @@ describe('palette', () => {
     expect(card).toContain('background: var(--wm-rows);');
     // no other border: the strip is the card's one edge
     expect(card).not.toMatch(/(^|[^-])border:/);
+    // the header carries its tint and declares no border of any kind
     const header = body('\\.jp-WorkspaceManager-cardHeader');
-    expect(header).toContain('border-bottom: 1px solid var(--wm-hue);');
     expect(header).toContain('background: var(--wm-shade);');
+    expect(header).not.toMatch(/border/);
     // the removed groups leave no styles behind
     expect(text).not.toMatch(/jp-WorkspaceManager-group/);
+  });
+
+  it('ACC-TERM-271-NAME-SIZE: the size-0 meta list names no rowProcess, and no rule sets the process slot a size, so a terminal name takes the row size 1', () => {
+    const text = css();
+    const rules = [
+      ...text.matchAll(
+        /([^{}]*)\{([^{}]*font-size:\s*var\(--jp-ui-font-size0\);[^{}]*)\}/g
+      )
+    ];
+    const meta = rules.find(m => m[1].includes('.jp-WorkspaceManager-rowPath'));
+    expect(meta).toBeDefined();
+    expect(meta![1]).not.toContain('.jp-WorkspaceManager-rowProcess');
+    // the slot's own rules set no size: it inherits size 1 from its row
+    const slot = [
+      ...text.matchAll(/\.jp-WorkspaceManager-rowProcess[^{]*\{([^}]*)\}/g)
+    ].map(m => m[1]);
+    expect(slot.length).toBeGreaterThan(0);
+    expect(slot.some(body => /font-size\s*:/.test(body))).toBe(false);
   });
 
   it('ACC-PANEL-203-TOKENS-ONLY: the stylesheet and the TypeScript hold exactly the six palette values in the one palette block and the one black of the recessed filter field, with no theme branch', () => {
