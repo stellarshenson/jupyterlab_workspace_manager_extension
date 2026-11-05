@@ -5,6 +5,7 @@ import {
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
 import { PageConfig } from '@jupyterlab/coreutils';
+import { IDocumentManager } from '@jupyterlab/docmanager';
 import {
   IRunningSessionManagers,
   IRunningSessionSidebar
@@ -14,6 +15,7 @@ import { UUID } from '@lumino/coreutils';
 
 import { report } from './api';
 import { panelIcon } from './icons';
+import { pagePlugin } from './page';
 // eslint-disable-next-line jupyter/prefer-lazy-imports -- activate builds the sidebar synchronously, so the panel class cannot wait for a later import
 import { WorkspacePanel } from './panel/panel';
 
@@ -43,11 +45,12 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
     'Workspace-driven Running panel: workspaces as coloured accordion sections with their tabs, terminals and kernels',
   autoStart: true,
   provides: IRunningSessionSidebar,
-  requires: [IRunningSessionManagers],
+  requires: [IRunningSessionManagers, IDocumentManager],
   optional: [ILayoutRestorer, ILabShell, ITranslator],
   activate: (
     app: JupyterFrontEnd,
     managers: IRunningSessionManagers,
+    docManager: IDocumentManager,
     restorer: ILayoutRestorer | null,
     labShell: ILabShell | null,
     translator: ITranslator | null
@@ -59,6 +62,7 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
     const id = windowId();
     const panel = new WorkspacePanel({
       app,
+      docManager,
       current,
       window: id,
       managers,
@@ -90,4 +94,4 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
   }
 };
 
-export default plugin;
+export default [plugin, pagePlugin];

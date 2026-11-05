@@ -45,8 +45,8 @@ test('ACC-CULLER-65-CULLED: a workspace, a terminal and a kernel removed outside
     await enterWorkspace(page, current);
     await expect(card(page, gone)).toBeVisible();
     await openCard(page, held);
-    await expect(countOf(card(page, held), 'Terminals')).toHaveText('1');
-    await expect(countOf(card(page, held), 'Kernels')).toHaveText('1');
+    // the terminal tab and the notebook tab
+    await expect(countOf(card(page, held))).toHaveText('(2)');
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => {
       // the browser logs the 500 jupyter_server answers on the kernel list while
@@ -69,13 +69,10 @@ test('ACC-CULLER-65-CULLED: a workspace, a terminal and a kernel removed outside
 
     await expect(card(page, gone)).toHaveCount(0);
     // the server's list lags the DELETE; the row leaves at the next 10 s poll
-    await expect(countOf(card(page, held), 'Terminals')).toHaveText(
-      '0',
-      UNDER_LOAD
-    );
-    await expect(countOf(card(page, held), 'Kernels')).toHaveText('0');
+    // the terminal's row leaves; the notebook tab stays
+    await expect(countOf(card(page, held))).toHaveText('(1)', UNDER_LOAD);
     await expect(
-      page.locator(PANEL).getByText(rowLabel(terminal), { exact: true })
+      page.locator(`${PANEL} [data-row-key="terminal:${terminal}"]`)
     ).toHaveCount(0, UNDER_LOAD);
     await expect(
       page.locator(`${PANEL} .jp-WorkspaceManager-error`)
@@ -123,7 +120,7 @@ test('ACC-CULLER-67-NO-SHUTDOWN: thirty seconds of the open panel and its polls 
   try {
     await enterWorkspace(page, current);
     await openCard(page, held);
-    await expect(countOf(card(page, held), 'Kernels')).toHaveText('1');
+    await expect(countOf(card(page, held))).toHaveText('(2)');
     const before = [await saved(page, held), await saved(page, empty)];
     const start = polls;
 
@@ -138,8 +135,8 @@ test('ACC-CULLER-67-NO-SHUTDOWN: thirty seconds of the open panel and its polls 
       expect.arrayContaining([current, held, empty])
     );
     expect([await saved(page, held), await saved(page, empty)]).toEqual(before);
-    await expect(countOf(card(page, held), 'Terminals')).toHaveText('1');
-    await expect(countOf(card(page, held), 'Kernels')).toHaveText('1');
+    // the terminal tab and the notebook tab
+    await expect(countOf(card(page, held))).toHaveText('(2)');
   } finally {
     await page.request.delete(`/api/sessions/${session.id}`);
     await page.request.delete(`/api/kernels/${session.kernel.id}`);

@@ -13,7 +13,7 @@ import {
   gotoWorkspace,
   headerButton,
   listed,
-  menuButton,
+  openCardMenu,
   menuItem,
   onlyWorkspaces,
   openCard,
@@ -34,7 +34,7 @@ test.use({ autoGoto: false, mockState: false });
 const MENU = [
   'Open workspace',
   'Open in new browser tab',
-  'Close all tabs',
+  'Clear workspace',
   'Set description...',
   'Colour',
   'Hide workspace',
@@ -72,24 +72,24 @@ async function strip(page: Page, id: string): Promise<number[]> {
 }
 
 async function openColours(page: Page, id: string): Promise<void> {
-  await menuButton(page, id).click();
+  await openCardMenu(page, id);
   await menuItem(page, 'Colour').click();
   await expect(items(page, '.jp-WorkspaceManager-colourMenu')).toHaveCount(6);
 }
 
-test('ACC-ACCORD-29-MENU: the ... button opens the workspace menu with its nine items in order', async ({
+test('ACC-ACCORD-29-MENU: a right-click on the card header opens the workspace menu with its nine items in order', async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'menu');
   try {
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     await expect(items(page).locator('.lm-Menu-itemLabel')).toHaveText(MENU);
   } finally {
     await deleteWorkspaces(page, [current, other]);
   }
 });
 
-test("ACC-ACCORD-263-HEADER-MENU: a right-click on a card header, its buttons included, opens the ... menu at the pointer; the context-menu key opens it below the header; a hidden card's header opens no menu; a section band opens no workspace menu", async ({
+test("ACC-ACCORD-263-HEADER-MENU: a right-click on a card header, the eye included, opens the workspace menu at the pointer; the context-menu key opens it below the header; a hidden card's header opens no menu; a section band opens no workspace menu", async ({
   page
 }) => {
   const { current, other } = await setUp(page, 'hdrmenu');
@@ -163,7 +163,7 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, openIcon and cl
 }) => {
   const { current, other } = await setUp(page, 'icons', 'mint');
   try {
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     const icons = await items(page).evaluateAll(nodes =>
       nodes.map(n => {
         const svg = n.querySelector('.lm-Menu-itemIcon svg');
@@ -246,7 +246,7 @@ test('ACC-ACCORD-148-MENU-ICONS: a 16px icon before every label, openIcon and cl
     await page.keyboard.press('Escape');
     await expect(items(page)).toHaveCount(0);
 
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     const keyed = menuItem(page, 'Delete workspace');
     // ArrowDown steps over the one item that does not apply to this card
     let reached = false;
@@ -349,7 +349,7 @@ test('ACC-ACCORD-31-DELETE: two separate clicks delete the workspace', async ({
 }) => {
   const { current, other } = await setUp(page, 'delete');
   try {
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     await menuItem(page, 'Delete workspace').click();
     // the first click arms; the menu stays
     await expect(menuItem(page, 'Confirm delete')).toBeVisible();
@@ -380,7 +380,7 @@ test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace and, armed, Confirm delete d
   try {
     for (const theme of ['JupyterLab Light', 'Galaxa Dark Theme - Steel']) {
       await page.theme.setTheme(theme);
-      await menuButton(page, other).click();
+      await openCardMenu(page, other);
       const error = await page.evaluate(() => {
         const probe = document.createElement('span');
         probe.style.color = 'var(--jp-error-color1)';
@@ -474,7 +474,7 @@ test("ACC-ACCORD-32-DELETE-CURRENT: Delete workspace and Open in new browser tab
 }) => {
   const { current, other } = await setUp(page, 'delcur');
   try {
-    await menuButton(page, current).click();
+    await openCardMenu(page, current);
     for (const label of ['Delete workspace', 'Open in new browser tab']) {
       await expect(menuItem(page, label)).toHaveClass(/lm-mod-disabled/);
       await expect(menuItem(page, label)).toHaveAttribute(
@@ -488,7 +488,7 @@ test("ACC-ACCORD-32-DELETE-CURRENT: Delete workspace and Open in new browser tab
     await page.keyboard.press('Escape');
     expect(await listed(page)).toContain(current);
     // the others' menus have both
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     await expect(menuItem(page, 'Delete workspace')).not.toHaveClass(
       /lm-mod-disabled/
     );
@@ -597,9 +597,9 @@ test('ACC-ACCORD-19-SET-PURPOSE: Set description sets and clears the purpose; bo
     await dialog(page)
       .locator('.jp-Dialog-button', { hasText: 'Save' })
       .click();
-    await expect(purpose).toHaveText('');
+    await expect(purpose).toHaveCount(0);
     await reload();
-    await expect(purpose).toHaveText('');
+    await expect(purpose).toHaveCount(0);
     const response = await page.request.get(
       '/jupyterlab-workspace-manager-extension/meta'
     );

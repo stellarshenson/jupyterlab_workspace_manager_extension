@@ -55,13 +55,25 @@ export const powerIcon = new LabIcon({
   )
 });
 
-/** Close all tabs: a crossed tab before another. */
+/** Clear workspace: a crossed tab before another. */
 export const closeTabsIcon = new LabIcon({
   name: `${NS}:close-tabs`,
   svgstr: svg(
     line('<rect x="2" y="4" width="10" height="9" rx="1"/>', 1.1) +
       line('<path d="M4 4V2.5h10v9h-2"/>', 1.1) +
       line('<path d="M4.8 6.3l4.4 4.4M9.2 6.3l-4.4 4.4"/>', 1.1)
+  )
+});
+
+/** A page with no icon of its own: the standard comment bubble. */
+export const pageIcon = new LabIcon({
+  name: `${NS}:page`,
+  svgstr: svg(
+    line(
+      '<path d="M4 3h16a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-7.6l-4.4 3.5V17H4a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/>'
+    ) +
+      '<circle class="jp-icon3" fill="currentColor" cx="12" cy="10" r="2.2"/>',
+    24
   )
 });
 

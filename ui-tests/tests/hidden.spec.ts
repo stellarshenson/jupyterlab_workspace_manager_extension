@@ -10,7 +10,7 @@ import {
   gotoWorkspace,
   headerButton,
   HEAVY_LOAD,
-  menuButton,
+  openCardMenu,
   menuItem,
   onlyWorkspaces,
   openPanel,
@@ -254,7 +254,7 @@ test("ACC-HIDDEN-87-NOT-CURRENT: this window's workspace keeps its card and cann
   await putWorkspace(page, `${current}-second`);
   const second = await secondWindow(page, `${current}-second`);
   try {
-    await menuButton(page, current).click();
+    await openCardMenu(page, current);
     await expect(menuItem(page, 'Hide workspace')).toHaveClass(
       /lm-mod-disabled/
     );

@@ -128,11 +128,15 @@ const tabTitle = (page: Page): Promise<string> =>
 const tooltip = async (row: Locator): Promise<string[]> =>
   (await row.getAttribute('title'))!.split('\n');
 
-/** The whole text of a terminal row: its name, its process and path when one is known and its time. */
-const rowText = (name: string, process = ''): RegExp =>
+/** The whole text of a terminal row: its label (a card row drops the tN of a numbered terminal, ACC-TERM-275-CARD-LABEL; a TERMINALS row numbers it in a badge, ACC-TERM-285-NUMBER-BADGE), its process and path when one is known and its time. */
+const rowText = (name: string, process = '', card = false): RegExp =>
   new RegExp(
-    `^${rowLabel(name)}${process}${process && '(/.*)?'}(now|\\d+m ago)$`
+    `^${card && /^\d+$/.test(name) ? '' : name}${process}${process && '(/.*)?'}(now|\\d+m ago)$`
   );
+
+/** The whole text of a numbered terminal's row in a card or in TERMINALS: the label is optional. */
+const rowTextEither = (name: string, process = ''): RegExp =>
+  new RegExp(`^(?:${name})?${process}${process && '(/.*)?'}(now|\\d+m ago)$`);
 
 /** A computed style of an element. */
 const css = (l: Locator, property: string): Promise<string> =>
@@ -195,7 +199,7 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
     const process = row.locator(PROCESS);
     await expect(process).toBeVisible();
     await expect(process).toHaveText((await processOf(page, name))!);
-    await expect(row).toHaveText(rowText(name, 'sleep'));
+    await expect(row).toHaveText(rowText(name, 'sleep', true));
     expect(await oneLine(row)).toBe(true);
     expect(await shows(row, PROCESS)).toMatchObject({
       inside: true,
@@ -213,7 +217,7 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
     await row.focus();
     await expect(row).toHaveClass(SELECTED);
     await expect(row.getByText('sleep', { exact: true })).toHaveCount(1);
-    await expect(row).toHaveText(rowText(name, 'sleep'));
+    await expect(row).toHaveText(rowText(name, 'sleep', true));
     await expect(row.locator(DETAIL)).toHaveCount(0);
     // the selection stays while the terminal tab has the focus
     await terminalTab(page).click();
@@ -245,7 +249,7 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
   }
 });
 
-test('ACC-TERM-272-TOOLTIP-NUMBER: in a card and in TERMINALS the first tooltip line of a numbered terminal reads terminal <n> and of a named one terminal <name>, and the numbered row keeps its tN label', async ({
+test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-BADGE: in a card and in TERMINALS the first tooltip line of a numbered terminal reads terminal <n> and of a named one terminal <name>; the card row drops the tN, the TERMINALS row draws the number in a box badge, and a named terminal keeps its name', async ({
   page
 }) => {
   const current = fresh('tooltipnum');
@@ -263,7 +267,8 @@ test('ACC-TERM-272-TOOLTIP-NUMBER: in a card and in TERMINALS the first tooltip 
     const inCard = rowOf(card(page, current), rowLabel(numbered));
     await expect(inCard).toBeVisible();
     expect((await tooltip(inCard))[0]).toBe(`terminal ${numbered}`);
-    await expect(inCard.locator(LABEL)).toHaveText(`t${numbered}`);
+    // a card row drops the tN of a numbered terminal (ACC-TERM-275-CARD-LABEL)
+    await expect(inCard.locator(LABEL)).toHaveText('');
 
     // the same terminal and the named one in TERMINALS
     await openSection(page, 'terminals');
@@ -272,6 +277,46 @@ test('ACC-TERM-272-TOOLTIP-NUMBER: in a card and in TERMINALS the first tooltip 
     const namedRow = rowOf(listed, rowLabel(named));
     await expect(numberedRow).toBeVisible();
     await expect(namedRow).toBeVisible();
+    // ACC-TERM-285-NUMBER-BADGE: the number in a box badge, in the row's ink, read as the number
+    await expect(numberedRow.locator(LABEL)).toHaveText(numbered);
+    const badge = numberedRow.locator(
+      `${LABEL} .jp-WorkspaceManager-terminalBadge`
+    );
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveAttribute('role', 'img');
+    await expect(badge).toHaveAttribute('aria-label', numbered);
+    const ink = await numberedRow
+      .locator(LABEL)
+      .evaluate(n => getComputedStyle(n).color);
+    expect(
+      await badge.locator('rect').evaluate(n => {
+        const svg = n.ownerSVGElement!.getBoundingClientRect();
+        const s = getComputedStyle(n);
+        return {
+          width: Math.round(svg.width),
+          height: Math.round(svg.height),
+          radius: n.getAttribute('rx'),
+          stroke: s.stroke,
+          strokeWidth: n.getAttribute('stroke-width')
+        };
+      })
+    ).toEqual({
+      width: 20,
+      height: 15,
+      radius: '3',
+      stroke: ink,
+      strokeWidth: '1.2'
+    });
+    // the number sits centred in its box
+    expect(
+      await badge.evaluate(n => {
+        const svg = n.getBoundingClientRect();
+        const text = n.querySelector('text')!.getBoundingClientRect();
+        return Math.abs(
+          text.left + text.width / 2 - (svg.left + svg.width / 2)
+        );
+      })
+    ).toBeLessThanOrEqual(1);
     expect((await tooltip(numberedRow))[0]).toBe(`terminal ${numbered}`);
     expect((await tooltip(namedRow))[0]).toBe(`terminal ${named}`);
 
@@ -336,12 +381,12 @@ test('ACC-LISTS-273-CURRENT-ROW: a tab switch moves jp-mod-current from the firs
     expect(await surface(first)).toEqual(
       await rgba(
         page,
-        `color-mix(in srgb, var(--wm-${colour}) 30%, var(--jp-layout-color1))`
+        `color-mix(in srgb, var(--wm-${colour}) 24%, var(--jp-layout-color1))`
       )
     );
     const hover = await rgba(
       page,
-      `color-mix(in srgb, var(--wm-${colour}) 12%, var(--jp-layout-color2))`
+      `color-mix(in srgb, var(--wm-${colour}) 9.6%, var(--jp-layout-color2))`
     );
     await first.hover();
     expect(await surface(first)).toEqual(hover);
@@ -430,10 +475,10 @@ test('ACC-TERM-44-PROCESS-UNREAD: a terminal row whose process cannot be read, s
   await putWorkspace(page, held, layout([`terminal:${terminal}`]));
   const check = async (row: Locator) => {
     await expect(row.locator(PROCESS)).toHaveCount(0);
-    await expect(row).toHaveText(rowText(terminal));
+    await expect(row).toHaveText(rowTextEither(terminal));
     await row.focus();
     await expect(row).toHaveClass(SELECTED);
-    await expect(row).toHaveText(rowText(terminal));
+    await expect(row).toHaveText(rowTextEither(terminal));
     await expect(row.locator(DETAIL)).toHaveCount(0);
   };
   try {
@@ -498,7 +543,8 @@ test('ACC-PANEL-185-ROW-TOOLTIP: the tooltip of a terminal row is its name, the 
       `Command: ${await commandOf(page, name)}`,
       `Path: ${await cwdOf(page, name)}`
     ]);
-    expect(lines[4]).toContain(`Last activity: ${age} (`);
+    expect(lines[4]).toMatch(/^Memory: (\d+(\.\d)? (MB|GB)|-)$/);
+    expect(lines[5]).toContain(`Last activity: ${age} (`);
 
     // OSC 2 sets the window title, which the terminal tab shows; the tooltip
     // holds it on its own line and keeps the terminal's own details
@@ -529,7 +575,7 @@ async function terminalIn(
   return { name, row };
 }
 
-test('ACC-TERM-253-PATH-TOOLTIP: the tooltip of a terminal row, in a card and in TERMINALS, is its name, the process, the command, the path on its own line, the time and the workspaces', async ({
+test('ACC-TERM-253-PATH-TOOLTIP, ACC-TERM-279-TOOLTIP-MEMORY: the tooltip of a terminal row, in a card and in TERMINALS, is its name, the process, the command, the path on its own line, the memory, the time and the workspaces', async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -548,8 +594,10 @@ test('ACC-TERM-253-PATH-TOOLTIP: the tooltip of a terminal row, in a card and in
         `Command: ${command}`,
         `Path: ${path}`
       ]);
-      expect(lines[4]).toContain(`Last activity: ${age} (`);
-      expect(lines.slice(5)).toEqual([`Workspaces: ${current}`]);
+      // the route supplies the foreground process's resident bytes (ACC-TERM-279-TOOLTIP-MEMORY)
+      expect(lines[4]).toMatch(/^Memory: (\d+(\.\d)? (MB|GB)|-)$/);
+      expect(lines[5]).toContain(`Last activity: ${age} (`);
+      expect(lines.slice(6)).toEqual([`Workspaces: ${current}`]);
     };
     await check(row);
     await openSection(page, 'terminals');
@@ -715,7 +763,7 @@ test('ACC-TERM-255-PATH-TAIL: a path wider than the free width, in a card and in
   }
 });
 
-test('ACC-TERM-257-SHORT-LABEL: a numbered terminal reads t<n> in a card and in TERMINALS and a named one reads its name; the tooltip and the shutdown dialog keep terminal <n>', async ({
+test('ACC-TERM-257-SHORT-LABEL, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-BADGE: a numbered terminal reads no label in a card and its number in a box badge in TERMINALS, a named one reads its name in both; the tooltip and the shutdown dialog keep terminal <n>', async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -725,7 +773,7 @@ test('ACC-TERM-257-SHORT-LABEL: a numbered terminal reads t<n> in a card and in 
   try {
     const { name, row } = await terminalHere(page, current);
     expect(name).toMatch(/^\d+$/);
-    await expect(row.locator(LABEL)).toHaveText(`t${name}`);
+    await expect(row.locator(LABEL)).toHaveText('');
     expect((await tooltip(row))[0]).toBe(`terminal ${name}`);
 
     await putWorkspace(page, other, layout([`terminal:${name}`]));
@@ -741,7 +789,7 @@ test('ACC-TERM-257-SHORT-LABEL: a numbered terminal reads t<n> in a card and in 
 
     await openSection(page, 'terminals');
     const list = sectionBody(page, 'terminals');
-    await expect(rowOf(list, `t${name}`).locator(LABEL)).toHaveText(`t${name}`);
+    await expect(rowOf(list, `t${name}`).locator(LABEL)).toHaveText(name);
     expect((await tooltip(rowOf(list, `t${name}`)))[0]).toBe(
       `terminal ${name}`
     );
@@ -754,7 +802,7 @@ test('ACC-TERM-257-SHORT-LABEL: a numbered terminal reads t<n> in a card and in 
   }
 });
 
-test('ACC-TERM-259-TOOLTIP-DETAILS: the tooltip of a terminal row, in a card and in TERMINALS, holds its seven lines in order, the exact local time among them, and neither a PID nor a memory figure', async ({
+test('ACC-TERM-259-TOOLTIP-DETAILS, ACC-TERM-279-TOOLTIP-MEMORY: the tooltip of a terminal row, in a card and in TERMINALS, holds its eight lines in order, the exact local time among them, a memory figure after Path and no PID', async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -793,18 +841,19 @@ test('ACC-TERM-259-TOOLTIP-DETAILS: the tooltip of a terminal row, in a card and
     const check = async (r: Locator) => {
       const age = await r.locator(AGE).textContent();
       const lines = await tooltip(r);
-      expect(lines.slice(0, 6)).toEqual([
+      expect(lines.slice(0, 5)).toEqual([
         `terminal ${name}`,
         'Tab: my tab',
         'Process: vim',
         'Command: vim notes.md',
-        'Path: /srv/work',
-        `Last activity: ${age} (${exact})`
+        'Path: /srv/work'
       ]);
-      expect(lines[6].replace('Workspaces: ', '').split(', ').sort()).toEqual(
+      expect(lines[5]).toMatch(/^Memory: (\d+(\.\d)? (MB|GB)|-)$/);
+      expect(lines[6]).toBe(`Last activity: ${age} (${exact})`);
+      expect(lines[7].replace('Workspaces: ', '').split(', ').sort()).toEqual(
         [current, other].sort()
       );
-      expect(lines).toHaveLength(7);
+      expect(lines).toHaveLength(8);
     };
     await check(row);
     await openSection(page, 'terminals');
@@ -835,7 +884,7 @@ test('ACC-TERM-261-TAB-NAME: a terminal row, in a card and in TERMINALS, shows t
     await refresh(page);
     const check = async (r: Locator) => {
       await expect(r.locator(PROCESS)).toHaveText('my tab');
-      await expect(r).toHaveText(rowText(name, 'my tab'));
+      await expect(r).toHaveText(rowTextEither(name, 'my tab'));
       await expect(r.getByText('bash', { exact: true })).toHaveCount(0);
       expect((await tooltip(r)).slice(1, 3)).toEqual([
         'Tab: my tab',
@@ -981,9 +1030,11 @@ test('ACC-TERM-111-SHUTDOWN: Stop terminal ends the terminal, and its row leaves
     );
     // the route leaves out the ended pty, so the row leaves at the load after the DELETE
     await expect(
-      page.locator(PANEL).getByText(rowLabel(terminal), { exact: true })
+      card(page, other).locator(
+        `.jp-WorkspaceManager-row[data-row-key="terminal:${terminal}"]`
+      )
     ).toHaveCount(0);
-    await expect(countOf(card(page, other), 'Terminals')).toHaveText('0');
+    await expect(countOf(card(page, other))).toHaveText('(0)');
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(terminal);
@@ -1024,12 +1075,14 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
     await fromRowMenu(row(), 'Stop terminal');
     await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
     // the route leaves out the ended pty at the load after the DELETE
-    await expect(
-      page.locator(PANEL).getByText(rowLabel(terminal), { exact: true })
-    ).toHaveCount(0);
     for (const id of [a, b]) {
       await openCard(page, id);
-      await expect(countOf(card(page, id), 'Terminals')).toHaveText('0');
+      await expect(
+        card(page, id).locator(
+          `.jp-WorkspaceManager-row[data-row-key="terminal:${terminal}"]`
+        )
+      ).toHaveCount(0);
+      await expect(countOf(card(page, id))).toHaveText('(0)');
     }
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)

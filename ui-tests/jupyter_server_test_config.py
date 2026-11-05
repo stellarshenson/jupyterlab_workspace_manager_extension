@@ -36,8 +36,9 @@ c.LabApp.user_settings_dir = mkdtemp(prefix="galata-settings-")
 # exported-but-empty JUPYTER_TEST_PORT must fall back here too (playwright.config.js)
 c.ServerApp.port = int(os.environ.get("JUPYTER_TEST_PORT") or "8888")
 
-# The test lab loads Galata and the lab extensions below only, as on CI: this extension and
-# the theme legibility.spec.ts reads the panel in. Every other lab extension installed on the
+# The test lab loads Galata and the lab extensions below only, as on CI: this extension, the
+# theme legibility.spec.ts reads the panel in, and jupyterlab-notify's frontend, whose toast
+# spec clicks an action. Every other lab extension installed on the
 # machine adds work to each page load on the single-threaded server (its settings schemas, the
 # theme file search, the requests its plugins send at start). With the 71 of the workstation
 # image, 12 windows loading at once took 12 s of the 15 s that Galata's page.goto() waits for
@@ -45,7 +46,11 @@ c.ServerApp.port = int(os.environ.get("JUPYTER_TEST_PORT") or "8888")
 # take 4.5 s. A built copy in extra_labextensions_path loads as before; an installed copy is
 # copied into the one folder that replaces the standard paths.
 only = mkdtemp(prefix="galata-labextensions-")
-for name in ["@stellarshenson/jupyterlab-workspace-manager-extension", "galaxalabs_jupyterlab_steel_dark_theme"]:
+for name in [
+    "@stellarshenson/jupyterlab-workspace-manager-extension",
+    "galaxalabs_jupyterlab_steel_dark_theme",
+    "@stellarshenson/jupyterlab-notifications-extension",
+]:
     for path in jupyter_path("labextensions"):
         if os.path.isdir(os.path.join(path, name)):
             shutil.copytree(os.path.join(path, name), os.path.join(only, name))

@@ -12,7 +12,7 @@
     The workspace palette (DQ-28): the coloured tabs extension's default palette, rose 2
     degrees pinker, peach 3 points darker, lemon 1 point lighter and 2 degrees cooler, and
     mint 2 points darker, so rose and peach stop reading as one pair. A workspace card
-    mixes its hue over the theme's layout colour 1: 30 % for the header, 12 % for the
+    mixes its hue over the theme's layout colour 1: 24 % for the header, 9.6 % for the
     body, and the full hue for the 4 px strip. The stored colour names stay unchanged.
 */
 :root {
@@ -39,20 +39,10 @@
   font-size: var(--jp-ui-font-size1);
 }
 
-.jp-WorkspaceManager-count svg,
 .jp-WorkspaceManager-rowIcon svg {
   display: block;
   width: 16px;
   height: 16px;
-}
-
-/* the count glyphs in inverse layout colour 3, kernelIcon's jp-icon2 included */
-.jp-WorkspaceManager-count [class*='jp-icon'][fill] {
-  fill: var(--jp-inverse-layout-color3);
-}
-
-.jp-WorkspaceManager-count [class*='jp-icon'][stroke] {
-  stroke: var(--jp-inverse-layout-color3);
 }
 
 /* One line: the title gives way before a button wraps */
@@ -327,7 +317,7 @@
 /*
     A card (DQ-02, DQ-28): an edge tab 2 px from the panel's left edge, its left corners
     square and its right corners 2 px; the 4 px full-strength hue strip is its left
-    border, the header carries the 30 % tint and the body the 12 % tint, with no rule
+    border, the header carries the 24 % tint and the body the 9.6 % tint, with no rule
     between them; a card with no colour paints the plain surfaces. The stored colour
     names stay unchanged.
 */
@@ -347,43 +337,43 @@
 .jp-WorkspaceManager-card.jp-mod-rose,
 .jp-WorkspaceManager-swatch.jp-mod-rose {
   --wm-hue: var(--wm-rose);
-  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
-  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-peach,
 .jp-WorkspaceManager-swatch.jp-mod-peach {
   --wm-hue: var(--wm-peach);
-  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
-  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-lemon,
 .jp-WorkspaceManager-swatch.jp-mod-lemon {
   --wm-hue: var(--wm-lemon);
-  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
-  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-mint,
 .jp-WorkspaceManager-swatch.jp-mod-mint {
   --wm-hue: var(--wm-mint);
-  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
-  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-sky,
 .jp-WorkspaceManager-swatch.jp-mod-sky {
   --wm-hue: var(--wm-sky);
-  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
-  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-lavender,
 .jp-WorkspaceManager-swatch.jp-mod-lavender {
   --wm-hue: var(--wm-lavender);
-  --wm-shade: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
-  --wm-rows: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
+  --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
+  --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 /* This window's card keeps its 2 px outline, painted inside the card's box (DQ-19, DQ-26) */
@@ -401,7 +391,7 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header carries the card's 30 % tint, meeting the body's 12 % tint with no rule between them (DQ-02, DQ-28); the 6 px left padding starts the name and the purpose at the row label's left edge */
+/* the header carries the card's 24 % tint, meeting the body's 9.6 % tint with no rule between them (DQ-02, DQ-28, ACC-PANEL-278-TINT-ALPHA); the 6 px left padding starts the name and the purpose at the row label's left edge */
 .jp-WorkspaceManager-cardHeader {
   padding: 6px 10px 6px 6px;
   background: var(--wm-shade);
@@ -420,7 +410,7 @@
 }
 
 .jp-WorkspaceManager-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -451,6 +441,11 @@
 
 .jp-WorkspaceManager-counts {
   gap: 10px;
+}
+
+/* the name keeps its text width and the free space falls after the count, so the count follows the name by the line's 6 px gap (ACC-ACCORD-276-NAME-COUNT) */
+.jp-WorkspaceManager-count {
+  margin-right: auto;
 }
 
 /* the name ellipsises, as a terminal's process does first; a basis of 0 never pushes the time onto the detail line */
@@ -561,7 +556,7 @@
   stroke: var(--jp-ui-font-color1);
 }
 
-/* The eye and ... keep their place on every card (DQ-12) */
+/* The eye keeps its place on every card (DQ-12, ACC-ACCORD-283-NO-DOTS) */
 .jp-WorkspaceManager-cardActions {
   display: flex;
   flex: 0 0 auto;
@@ -591,10 +586,10 @@
   );
 }
 
-/* On a coloured card the current row keeps the card's hue: the hue at 30 % over layout colour 1 (DQ-36, ACC-LISTS-273-CURRENT-ROW) */
+/* On a coloured card the current row keeps the card's hue: the hue at 24 % over layout colour 1 (DQ-36, ACC-LISTS-273-CURRENT-ROW, ACC-PANEL-278-TINT-ALPHA) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-row.jp-mod-current {
-  background: color-mix(in srgb, var(--wm-hue) 30%, var(--jp-layout-color1));
+  background: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
 }
 
 /* hover and selection on layout colour 2; the text keeps its colours (DQ-10) */
@@ -614,9 +609,38 @@
   height: 16px;
 }
 
+/* A document row with a running kernel shows kernelIcon beside its own icon: a flex slot of 16 px glyphs with a 2 px gap (ACC-LISTS-277-KERNEL-GLYPH) */
+.jp-WorkspaceManager-rowIcons {
+  flex: 0 0 auto;
+  width: auto;
+  gap: 2px;
+}
+
+.jp-WorkspaceManager-rowIcons > span {
+  display: flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+
+/* A kernel row's memory stands in the line, selected or not, in the meta ink (ACC-KERNEL-281-ROW-MEMORY) */
+.jp-WorkspaceManager-rowMemory {
+  flex: 0 0 auto;
+  color: var(--jp-ui-font-color2);
+  font-size: var(--jp-ui-font-size0);
+  white-space: nowrap;
+}
+
 /* identifiers: terminal names, kernel ids and paths (DQ-18) */
 .jp-WorkspaceManager-code {
   font-family: var(--jp-code-font-family);
+}
+
+/* a numbered terminal in TERMINALS: its number in a small box in the row's ink (ACC-TERM-285-NUMBER-BADGE) */
+.jp-WorkspaceManager-terminalBadge {
+  display: block;
+  width: 20px;
+  height: 15px;
 }
 
 /* A terminal row's process stands in one line between the name and the time (DQ-24): it takes the free width, and shrink shares are proportional to the width, so a factor of 1e5 keeps the name whole until the process has no width left */
@@ -645,14 +669,14 @@
   padding-right: 8px;
 }
 
-/* In a coloured card the surface keeps the card's hue: the hue at 12 % over layout colour 2 (DQ-10) */
+/* In a coloured card the surface keeps the card's hue: the hue at 9.6 % over layout colour 2 (DQ-10, ACC-PANEL-278-TINT-ALPHA) */
 .jp-WorkspaceManager-card.jp-mod-coloured .jp-WorkspaceManager-row:hover,
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-row.jp-mod-selected {
-  background: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color2));
+  background: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color2));
 }
 
-/* The brand ring falls under 3:1 on the lemon, mint and sky header tints in the dark theme (2.86-2.97:1) and to 2.34:1 on the sky surface of a selected row, the surface a focused row always stands on; the inverse layout colour 0 keeps at least 6.40:1 on every 30 % tint (Steel, Dark, Light), so a coloured card's header, its buttons and its rows take it; plain cards, section rows, section bands and the panel header keep the brand ring (DQ-19, ACC-PANEL-93-FOCUS) */
+/* The brand ring falls under 3:1 on the 24 % header tints in JupyterLab Light (1.80-1.92:1) and on the 9.6 % surface of a selected row (1.80-1.83:1), the surface a focused row always stands on; the inverse layout colour 0 keeps at least 7.24:1 on every 24 % tint (Steel, Dark, Light), so a coloured card's header, its buttons and its rows take it; plain cards, section rows, section bands and the panel header keep the brand ring (DQ-19, ACC-PANEL-93-FOCUS) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   > .jp-WorkspaceManager-cardHeader:focus-visible,
 .jp-WorkspaceManager-card.jp-mod-coloured
@@ -710,7 +734,7 @@
   }
 }
 
-/* On a coloured card the header ink takes the theme's inverse layout colours: colour 1 measures 4.82:1 on the Steel base and 2.60:1 on a 30 % lemon tint, under the 4.5:1 floor, while inverse colours 0 and 1 measure at least 6.40:1 in Galaxa Steel, 8.06:1 in JupyterLab Dark and 12.80:1 in JupyterLab Light on the same tints; the name, the count and action glyphs and the caret take inverse colour 0, the counts, the purpose and the hidden word colour 1, and the time the dimmer inverse colour 2 of DQ-37, at least 5.51:1 on the tint; plain cards, tally sections, menus and dialogs keep font colours 1 and 2 (DQ-07, DQ-28, ACC-PANEL-202) */
+/* On a coloured card the header ink takes the theme's inverse layout colours: colour 1 measures 4.82:1 on the Steel base and 2.94:1 on a 24 % lemon tint, under the 4.5:1 floor, while inverse colours 0 and 1 measure at least 7.24:1 in Galaxa Steel, 9.38:1 in JupyterLab Dark and 13.41:1 in JupyterLab Light on the same tints; the name and action glyphs and the caret take inverse colour 0, the counts, the purpose and the hidden word colour 1, and the time the dimmer inverse colour 2 of DQ-37, at least 6.24:1 on the tint; plain cards, tally sections, menus and dialogs keep font colours 1 and 2 (DQ-07, DQ-28, ACC-PANEL-202) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-name {
@@ -732,7 +756,7 @@
   color: var(--jp-inverse-layout-color1);
 }
 
-/* The header's time takes the dimmest ink that holds the floor on the 30 % tint: inverse layout colour 2 measures at least 5.51:1, where inverse layout colour 3 falls to 4.29:1 in JupyterLab Dark and 3.40:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
+/* The header's time takes the dimmest ink that holds the floor on the 24 % tint: inverse layout colour 2 measures at least 6.24:1, where inverse layout colour 3 falls to 4.99:1 in JupyterLab Dark and 3.85:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-age {
@@ -741,19 +765,11 @@
 
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
-  .jp-WorkspaceManager-count
-  [class*='jp-icon'][fill],
-.jp-WorkspaceManager-card.jp-mod-coloured
-  .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-cardActions
   [class*='jp-icon'][fill] {
   fill: var(--jp-inverse-layout-color0);
 }
 
-.jp-WorkspaceManager-card.jp-mod-coloured
-  .jp-WorkspaceManager-cardHeader
-  .jp-WorkspaceManager-count
-  [class*='jp-icon'][stroke],
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-cardActions
@@ -768,7 +784,7 @@
   color: var(--jp-inverse-layout-color0);
 }
 
-/* A stale label at 0.65 falls to 4.15:1 on the lemon surface, so it takes full opacity in these two states (DQ-09) */
+/* A stale label at 0.65 falls to 4.28:1 on the lemon surface, so it takes full opacity in these two states (DQ-09) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-row:hover
   .jp-WorkspaceManager-rowLabel,
@@ -866,21 +882,21 @@
   color: var(--jp-inverse-layout-color1);
 }
 
-/* The body row's time takes the dimmest ink that holds the floor on the 12 % tint: inverse layout colour 3 measures at least 4.96:1, where inverse layout colour 4 falls under it (DQ-37, ACC-PANEL-274-TIME-DIM) */
+/* The body row's time takes the dimmest ink that holds the floor on the 9.6 % tint: inverse layout colour 3 measures at least 5.21:1, where inverse layout colour 4 falls under it (DQ-37, ACC-PANEL-274-TIME-DIM) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardBody
   .jp-WorkspaceManager-age {
   color: var(--jp-inverse-layout-color3);
 }
 
-/* The current row at rest sits on the same 30 % hue tint as the card header, so its time takes inverse layout colour 2: inverse layout colour 3 measures 4.29:1 in JupyterLab Dark and 3.40:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
+/* The current row at rest sits on the same 24 % hue tint as the card header, so its time takes inverse layout colour 2: inverse layout colour 3 measures 4.99:1 in JupyterLab Dark and 3.85:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-row.jp-mod-current
   .jp-WorkspaceManager-age {
   color: var(--jp-inverse-layout-color2);
 }
 
-/* The hovered or selected surface lifts the time back to inverse layout colour 2, which holds at least 6.21:1 there; inverse layout colour 3 falls to 4.26:1 in JupyterLab Dark and 3.84:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
+/* The hovered or selected surface lifts the time back to inverse layout colour 2, which holds at least 6.49:1 there; inverse layout colour 3 falls to 4.45:1 in JupyterLab Dark and 4.01:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-row:hover
   .jp-WorkspaceManager-age,

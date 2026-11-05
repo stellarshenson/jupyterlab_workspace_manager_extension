@@ -185,7 +185,7 @@ test('ACC-LISTS-266-DETACH: Detach from workspace on a notebook with unsaved cha
   }
 });
 
-test('ACC-KERNEL-48-ROW, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a card document row shows its notebook, its kernel state word and dot, and its age and, selected, its folder; Shut down kernel ends the kernel and the notebook stays open', async ({
+test('ACC-KERNEL-48-ROW, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN, ACC-LISTS-277-KERNEL-GLYPH: a card document row shows its notebook icon then kernelIcon, its kernel state word and dot, and its age and, selected, its folder; Shut down kernel ends the kernel and the notebook stays open', async ({
   page,
   tmpPath
 }) => {
@@ -221,6 +221,12 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a card do
     await expect(
       row.locator('.jp-WorkspaceManager-state .jp-WorkspaceManager-dot')
     ).toHaveAttribute('aria-label', 'idle');
+    // the document's own icon, then JupyterLab's kernel icon (ACC-LISTS-277-KERNEL-GLYPH)
+    expect(
+      await row
+        .locator('.jp-WorkspaceManager-rowIcons > span svg')
+        .evaluateAll(nodes => nodes.map(n => n.getAttribute('data-icon')))
+    ).toEqual(['ui-components:notebook', 'ui-components:kernel']);
     // selected, the detail line: the folder
     await row.focus();
     await expect(row).toHaveClass(/jp-mod-selected/);
@@ -291,7 +297,7 @@ test('ACC-KERNEL-48-ROW, ACC-KERNEL-49-STATE, ACC-KERNEL-114-SHUTDOWN: a card do
   }
 });
 
-test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK: a KERNELS row shows its notebook, state and age; selected, its detail line shows the kernel type, the notebook path, the memory in MB or GB and the CPU percent; its path on a line of its own; from 300 to 560 px a 29-character file name shows whole and at 300 px the kernel type and the folder are cut first; the row has no also in mark and its hover text names no workspace', async ({
+test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-281-ROW-MEMORY, ACC-KERNEL-282-TOOLTIP-MEMORY, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK: a KERNELS row shows its notebook, its memory, its state and its age; selected, its detail line shows the kernel type, the notebook path and the CPU percent; its path on a line of its own; from 300 to 560 px a 29-character file name shows whole and at 300 px the kernel type and the folder are cut first; the row has no also in mark and its hover text names no workspace', async ({
   page,
   tmpPath
 }) => {
@@ -351,16 +357,19 @@ test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK
     );
     await expect(row.locator('.jp-WorkspaceManager-rowDetail')).toHaveCount(0);
     await expect(row).not.toContainText('also in');
-    await expect(row).toHaveAttribute('title', `${display}\n${notebook}\nidle`);
-    // selected, the detail line: the kernel type, the folder, the file name, the memory and the CPU
+    // the line carries the memory, selected or not (ACC-KERNEL-281-ROW-MEMORY)
+    const memory = row.locator('.jp-WorkspaceManager-rowMemory');
+    await expect(memory).toHaveText(/^\d+(\.\d)? (MB|GB)$/);
+    const title = (await row.getAttribute('title'))!.split('\n');
+    expect(title.slice(0, 3)).toEqual([display, notebook, 'idle']);
+    expect(title[3]).toMatch(/^Memory: \d+(\.\d)? (MB|GB)$/);
+    // selected, the detail line: the kernel type and the CPU; under them the path
     await row.click();
     await expect(row).toHaveClass(/jp-mod-selected/);
-    // the kernel type, the memory and the CPU; under them the path
     await expect(
       row.locator('.jp-WorkspaceManager-rowDetail > span')
     ).toHaveText([
       display,
-      /^\d+(\.\d)? (MB|GB)$/,
       /^\d+%$/,
       `${tmpPath}/projects/clients/acme/`,
       'eda.ipynb'
@@ -419,27 +428,25 @@ test('ACC-KERNEL-196-KERNEL-DETAILS, ACC-KERNEL-48-ROW, ACC-LISTS-154-TAB-SHRINK
           })
         };
       });
-      const [type, memory, cpu, folder, file] = parts;
+      const [type, cpu, folder, file] = parts;
       expect(file, `file name at ${width} px`).toMatchObject({
         text: 'quarterly_revenue_stats.ipynb',
         cut: false,
         inside: true
       });
-      for (const figure of [memory, cpu]) {
-        expect(figure, `figure at ${width} px`).toMatchObject({
-          cut: false,
-          inside: true
-        });
-      }
+      expect(cpu, `figure at ${width} px`).toMatchObject({
+        cut: false,
+        inside: true
+      });
       if (width === 300) {
         // the kernel type and the folder give way first (KERN-02); the folder is cut at its start
         expect(folder).toMatchObject({ cut: true, style: 'ellipsis rtl' });
         expect(type.style).toBe('ellipsis ltr');
         // a whole type is a type whose line fits; a cut type gave way, since the figures stay whole
         if (!type.cut) {
-          expect(
-            type.width + memory.width + cpu.width + 2 * gap
-          ).toBeLessThanOrEqual(content + 0.5);
+          expect(type.width + cpu.width + gap).toBeLessThanOrEqual(
+            content + 0.5
+          );
         }
       }
     }
@@ -594,11 +601,17 @@ test.describe('kernels and sessions of the server', () => {
         .not.toContain(session.kernel.id);
       for (const id of [a, b]) {
         await openCard(page, id);
-        await expect(countOf(card(page, id), 'Kernels')).toHaveText(
-          '0',
-          NEXT_POLL
-        );
+        // the notebook tab stays; its kernel state row goes
+        await expect(countOf(card(page, id))).toHaveText('(1)');
+        await expect(
+          rowOf(card(page, id), 'shared.ipynb').locator(
+            '.jp-WorkspaceManager-state'
+          )
+        ).toHaveCount(0, NEXT_POLL);
       }
+      await expect(
+        rowOf(sectionBody(page, 'kernels'), 'shared.ipynb')
+      ).toHaveCount(0, NEXT_POLL);
     } finally {
       await page.request.delete(`/api/sessions/${session.id}`);
       await page.request.delete(`/api/kernels/${session.kernel.id}`);

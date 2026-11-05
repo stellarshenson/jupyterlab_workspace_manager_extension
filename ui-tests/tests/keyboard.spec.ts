@@ -73,44 +73,30 @@ test('DEF-PANEL-7-MENU-FOCUS: closing a card or row menu, by Escape or by an act
 }) => {
   await page.goto();
   await openPanel(page);
-  await tabToCardHeader(page);
-  // the triangle, then up to two card buttons (DQ-12)
-  for (let i = 0; i < 6; i++) {
-    await page.keyboard.press('Tab');
-    if (
-      await page.evaluate(
-        () =>
-          document.activeElement?.getAttribute('aria-label') ===
-          'Workspace menu'
-      )
-    ) {
-      break;
-    }
-  }
-  // mark the focused element: the locators below find that one element again
+  const opener = await tabToCardHeader(page);
+  // the context-menu key on the focused header opens the menu; there is no ... button (ACC-ACCORD-283-NO-DOTS)
   const mark = (name: string) =>
     page.evaluate(
       n => document.activeElement!.setAttribute('data-test', n),
       name
     );
-  await mark('menu-button');
-  const button = page.locator('[data-test="menu-button"]');
-  await expect(button).toHaveAttribute('aria-label', 'Workspace menu');
+  await mark('menu-opener');
+  const header = page.locator('[data-test="menu-opener"]');
   const menu = page.locator('.jp-WorkspaceManager-menu');
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('ContextMenu');
   await expect(menu).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
-  await expect(button).toBeFocused();
+  await expect(header).toBeFocused();
 
   // an action: Set description... opens a dialog, Escape closes it
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('ContextMenu');
   await menuItem(page, 'Set description...').click();
   await expect(page.locator('.jp-Dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.jp-Dialog')).toHaveCount(0);
-  await expect(button).toBeFocused();
+  await expect(header).toBeFocused();
 
   // a row: the context-menu key opens its menu, Escape closes it
   await card(page, 'default')
@@ -260,7 +246,7 @@ test.describe('with the workspaces of the server', () => {
               label: b.getAttribute('aria-label') ?? ''
             }))
         );
-      // every card holds the eye and ...; a filter text adds its clear button
+      // every card holds the eye; a filter text adds its clear button
       const buttons = await unnamed();
       await headerButton(page, 'Filter').click();
       await page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`).fill('a');
@@ -276,7 +262,6 @@ test.describe('with the workspaces of the server', () => {
           'Clear filter',
           'Expand',
           'Hide workspace',
-          'Workspace menu',
           'Show workspace again'
         ])
       );

@@ -291,9 +291,7 @@ test.describe('with the workspaces of the server', () => {
       const count = sectionCount(page, 'workspaces');
       await expect(count).toHaveText('(4)');
 
-      await card(page, three[0])
-        .locator('button[aria-label="Workspace menu"]')
-        .click();
+      await cardHeader(page, three[0]).click({ button: 'right' });
       await page
         .locator('.jp-WorkspaceManager-menu .lm-Menu-item', {
           hasText: 'Hide workspace'

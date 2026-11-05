@@ -176,7 +176,7 @@ export function workspaceMenu(
     actions.openInNewTab,
     () => !current
   );
-  add('close-all', 'Close all tabs', closeTabsIcon, actions.closeAll);
+  add('close-all', 'Clear workspace', closeTabsIcon, actions.closeAll);
   menu.addItem({ type: 'separator' });
   add('describe', 'Set description...', editIcon, actions.describe);
 

@@ -20,7 +20,7 @@ import {
   KERNEL_START,
   languageServer,
   layout,
-  menuButton,
+  openCardMenu,
   menuItem,
   newTerminalTab,
   only,
@@ -308,7 +308,7 @@ test('ACC-ACCORD-241-MANY-OPEN: deleting a workspace closes its card and leaves 
   try {
     await triangle(page, other).click();
     await expect(card(page, other)).toHaveClass(/jp-mod-open/);
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     await menuItem(page, 'Delete workspace').click();
     // the first click arms; the menu stays
     await expect(menuItem(page, 'Confirm delete')).toBeVisible();
@@ -735,10 +735,10 @@ test('ACC-ACCORD-18-PURPOSE: the purpose shows while its card is open, on the ca
     await expect(
       card(page, a).locator('.jp-WorkspaceManager-purpose')
     ).toHaveCount(0);
-    // no purpose line: the element holds no text and takes no width
-    const purpose = card(page, b).locator('.jp-WorkspaceManager-purpose');
-    await expect(purpose).toHaveText('');
-    expect((await purpose.boundingBox())?.height ?? 0).toBe(0);
+    // no purpose line: the element is not rendered
+    await expect(
+      card(page, b).locator('.jp-WorkspaceManager-purpose')
+    ).toHaveCount(0);
     // a hidden workspace's open card shows its purpose and counts too
     await patchMeta(page, a, { hidden: true });
     await refresh(page);
@@ -748,7 +748,7 @@ test('ACC-ACCORD-18-PURPOSE: the purpose shows while its card is open, on the ca
       card(page, a).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('Review of the feature branch');
     await expect(
-      card(page, a).locator('.jp-WorkspaceManager-counts')
+      card(page, a).locator('.jp-WorkspaceManager-count')
     ).toBeVisible();
   } finally {
     await deleteWorkspaces(page, [current, a, b]);
@@ -783,14 +783,13 @@ test('ACC-ACCORD-20-AGE: the header shows the age of the workspace, now under 60
   }
 });
 
-/** The numbers of a card's Tabs and Terminals counts, with the labels of its flat rows. */
+/** The row count of a card's header, with the keys of its flat rows. */
 const holds = async (page: Page, id: string) => ({
-  tabs: await countOf(card(page, id), 'Tabs').textContent(),
-  terminals: await countOf(card(page, id), 'Terminals').textContent(),
+  count: await countOf(card(page, id)).textContent(),
   rows: (
     await card(page, id)
-      .locator('.jp-WorkspaceManager-rowLabel')
-      .allTextContents()
+      .locator('.jp-WorkspaceManager-row')
+      .evaluateAll(nodes => nodes.map(n => n.getAttribute('data-row-key')))
   ).sort()
 });
 
@@ -823,28 +822,18 @@ test("ACC-ACCORD-70-COUNT-TABS: another workspace's card counts every tab of its
     await setUpExisting(page, current);
     await openCard(page, six);
     expect(await holds(page, six)).toEqual({
-      tabs: '6',
-      terminals: '6',
-      rows: terminals.map(rowLabel).sort()
+      count: '(6)',
+      rows: terminals.map(t => `terminal:${t}`).sort()
     });
     await openCard(page, mixed);
     expect(await holds(page, mixed)).toEqual({
-      tabs: '3',
-      terminals: '1',
-      rows: ['a.md', 'b.txt', rowLabel(terminals[0])].sort()
+      count: '(3)',
+      rows: [`editor:${tmpPath}/a.md`, `editor:${tmpPath}/b.txt`, one].sort()
     });
     await openCard(page, kept);
-    expect(await holds(page, kept)).toEqual({
-      tabs: '1',
-      terminals: '1',
-      rows: [rowLabel(terminals[0])]
-    });
+    expect(await holds(page, kept)).toEqual({ count: '(1)', rows: [one] });
     await openCard(page, gone);
-    expect(await holds(page, gone)).toEqual({
-      tabs: '0',
-      terminals: '0',
-      rows: []
-    });
+    expect(await holds(page, gone)).toEqual({ count: '(0)', rows: [] });
   } finally {
     await Promise.all(
       terminals.map(t => page.request.delete(`/api/terminals/${t}`))
@@ -863,22 +852,21 @@ test("ACC-ACCORD-70-COUNT-TABS: this window's card counts its live tabs, documen
   const current = fresh('livecount');
   const shown = async () => {
     await refresh(page);
-    return [
-      await countOf(card(page, current), 'Tabs').textContent(),
-      await countOf(card(page, current), 'Terminals').textContent()
-    ];
+    return Number(
+      (await countOf(card(page, current)).textContent())!.replace(/[()]/g, '')
+    );
   };
   const names: string[] = [];
   try {
     await setUpExisting(page, current);
     await openCard(page, current);
     // the tabs the window opened with, such as the Launcher
-    const [base] = (await shown()).map(Number);
+    const base = await shown();
 
     names.push(await newTerminalTab(page), await newTerminalTab(page));
-    await expect.poll(shown, UNDER_LOAD).toEqual([String(base + 2), '2']);
+    await expect.poll(shown, UNDER_LOAD).toBe(base + 2);
     await openDocument(page, doc);
-    await expect.poll(shown, UNDER_LOAD).toEqual([String(base + 3), '2']);
+    await expect.poll(shown, UNDER_LOAD).toBe(base + 3);
 
     // the tab outlives its terminal, as a terminal with closeOnExit off does
     await page.evaluate(name => {
@@ -891,7 +879,7 @@ test("ACC-ACCORD-70-COUNT-TABS: this window's card counts its live tabs, documen
     await expect
       .poll(() => terminalNames(page), UNDER_LOAD)
       .not.toContain(names[0]);
-    await expect.poll(shown, UNDER_LOAD).toEqual([String(base + 2), '1']);
+    await expect.poll(shown, UNDER_LOAD).toBe(base + 2);
   } finally {
     await Promise.all(
       names.map(t => page.request.delete(`/api/terminals/${t}`))
@@ -904,7 +892,7 @@ test.describe('kernels and sessions of the server', () => {
   // Galata lists only the kernels and sessions its page started; this test starts them by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-ACCORD-22-COUNTS, ACC-ACCORD-70-COUNT-TABS: an open card counts its tabs, terminals and kernels in its header; a closed card shows no counts', async ({
+  test('ACC-ACCORD-276-NAME-COUNT, ACC-ACCORD-70-COUNT-TABS: a card header counts its tabs and terminals right after the name, folded or open, and counts no kernels', async ({
     page,
     tmpPath
   }) => {
@@ -935,31 +923,17 @@ test.describe('kernels and sessions of the server', () => {
       );
       await setUpExisting(page, current);
       const counts = (id: string) =>
-        card(page, id)
-          .locator('.jp-WorkspaceManager-count')
-          .evaluateAll(nodes =>
-            Object.fromEntries(
-              nodes.map(n => [n.getAttribute('title'), n.textContent])
-            )
-          );
-      // DQ-17: no counts on a closed card
-      expect(await counts(held)).toEqual({});
-      expect(await counts(docs)).toEqual({});
+        card(page, id).locator('.jp-WorkspaceManager-count').textContent();
+      // the count stands right after the name, folded or open
+      expect(await counts(held)).toBe('(3)');
+      expect(await counts(docs)).toBe('(2)');
       await openCard(page, held);
-      // ACC-ACCORD-70: the notebook tab and the two terminal tabs
-      expect(await counts(held)).toEqual({
-        Tabs: '3',
-        Terminals: '2',
-        Kernels: '1'
-      });
+      // the notebook tab and the two terminal tabs; the kernel takes no row
+      expect(await counts(held)).toBe('(3)');
       await openCard(page, docs);
       await triangle(page, held).click();
-      expect(await counts(held)).toEqual({});
-      expect(await counts(docs)).toEqual({
-        Tabs: '2',
-        Terminals: '0',
-        Kernels: '0'
-      });
+      expect(await counts(held)).toBe('(3)');
+      expect(await counts(docs)).toBe('(2)');
     } finally {
       await page.request.delete(`/api/sessions/${session.id}`);
       await page.request.delete(`/api/kernels/${session.kernel.id}`);
@@ -1012,10 +986,13 @@ test.describe('kernels and sessions of the server', () => {
         'Command: sleep 600',
         `Path: ${await cwdOf(page, terminal)}`
       ]);
-      expect(lines[4]).toContain(`Last activity: ${age} (`);
-      expect(lines).toHaveLength(5);
+      // the Memory line follows Path (ACC-TERM-279-TOOLTIP-MEMORY)
+      expect(lines[4]).toMatch(/^Memory: /);
+      expect(lines[5]).toContain(`Last activity: ${age} (`);
+      expect(lines).toHaveLength(6);
 
-      // a kernel row: its kernelspec display name, the session path and its state
+      // a kernel row: its kernelspec display name, the session path, its state
+      // and the memory (ACC-KERNEL-282-TOOLTIP-MEMORY)
       // a REST-created session has no client, so the server keeps 'starting' until one connects
       await openDocument(page, notebook);
       const state = () =>
@@ -1025,12 +1002,18 @@ test.describe('kernels and sessions of the server', () => {
       await expect.poll(state, KERNEL_START).toBe('idle');
       await openSection(page, 'kernels');
       await refresh(page);
-      await expect(
-        rowOf(sectionBody(page, 'kernels'), 'tips.ipynb')
-      ).toHaveAttribute(
-        'title',
-        `${await displayName(page, session.kernel.name)}\n${notebook}\nidle`
-      );
+      const kernelLines = (await rowOf(
+        sectionBody(page, 'kernels'),
+        'tips.ipynb'
+      ).getAttribute('title'))!.split('\n');
+      expect(kernelLines.slice(0, 3)).toEqual([
+        await displayName(page, session.kernel.name),
+        notebook,
+        'idle'
+      ]);
+      // the Memory line is last (ACC-KERNEL-282-TOOLTIP-MEMORY)
+      expect(kernelLines[3]).toMatch(/^Memory: /);
+      expect(kernelLines).toHaveLength(4);
 
       // a language server row: its id and its language
       await languageServer(page, true);
@@ -1086,7 +1069,7 @@ test('ACC-ACCORD-23-OPEN: Open loads the workspace in this window with its tabs'
   }
 });
 
-test('ACC-ACCORD-25-CLOSE-CURRENT: Close all tabs of this window closes every main-area tab; an unsaved document asks', async ({
+test('ACC-ACCORD-25-CLOSE-CURRENT, ACC-ACCORD-284-CLEAR-WORKSPACE: Clear workspace of this window closes every main-area tab and stops its terminal; an unsaved document asks', async ({
   page,
   tmpPath
 }) => {
@@ -1136,10 +1119,10 @@ test('ACC-ACCORD-25-CLOSE-CURRENT: Close all tabs of this window closes every ma
     await refresh(page);
     await page.mouse.move(0, 0);
 
-    await fromMenu(page, current, 'Close all tabs');
+    await fromMenu(page, current, 'Clear workspace');
     // the terminal tab: Close all asks once (ACC-ACCORD-27)
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
-      `Close all tabs of ${current}?`
+      `Clear workspace ${current}?`
     );
     await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
     // JupyterLab's own question for the unsaved document
@@ -1174,7 +1157,7 @@ test.describe('a kernel of the server', () => {
   // Galata lists only the kernels and sessions its page started; this test starts them by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-ACCORD-26-CLOSE-OTHER: Close all tabs of another workspace empties its layout; the terminal and the kernel run on', async ({
+  test('ACC-ACCORD-26-CLOSE-OTHER, ACC-ACCORD-284-CLEAR-WORKSPACE: Clear workspace of another workspace empties its layout and stops its terminal and its kernel', async ({
     page,
     tmpPath
   }) => {
@@ -1196,14 +1179,15 @@ test.describe('a kernel of the server', () => {
     await putWorkspace(page, other, layout(keys));
     try {
       await setUpExisting(page, current);
-      const count = (title: string) =>
-        card(page, other).locator(
-          `.jp-WorkspaceManager-count[title="${title}"]`
-        );
+      const count = card(page, other).locator('.jp-WorkspaceManager-count');
       // the kernel belongs to the workspace through its notebook tab
       await openCard(page, other);
-      await expect(count('Kernels')).toHaveText('1');
-      await fromMenu(page, other, 'Close all tabs');
+      await expect(count).toHaveText('(2)');
+      await fromMenu(page, other, 'Clear workspace');
+      // the one confirmation names the terminal it stops
+      await expect(dialog(page).locator('.jp-Dialog-body')).toContainText(
+        `terminal ${terminal}`
+      );
       await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
       await expect(dialog(page)).toHaveCount(0);
 
@@ -1215,10 +1199,14 @@ test.describe('a kernel of the server', () => {
         expect(data).not.toHaveProperty([key]);
       }
       expect(data['layout-restorer:data'].main.dock).toBeNull();
-      await expect(count('Terminals')).toHaveText('0');
-      await expect(count('Kernels')).toHaveText('0');
-      expect(await terminalNames(page)).toContain(terminal);
-      expect(await kernelIds(page)).toContain(session.kernel.id);
+      await expect(count).toHaveText('(0)');
+      // the terminal and the kernel stop
+      await expect
+        .poll(() => terminalNames(page), UNDER_LOAD)
+        .not.toContain(terminal);
+      await expect
+        .poll(() => kernelIds(page), UNDER_LOAD)
+        .not.toContain(session.kernel.id);
     } finally {
       await page.request.delete(`/api/sessions/${session.id}`);
       await page.request.delete(`/api/kernels/${session.kernel.id}`);
@@ -1228,7 +1216,7 @@ test.describe('a kernel of the server', () => {
   });
 });
 
-test('ACC-ACCORD-27-CLOSE-WARN: Close all tabs asks when the workspace holds a terminal; Cancel changes nothing', async ({
+test('ACC-ACCORD-27-CLOSE-WARN, ACC-ACCORD-284-CLEAR-WORKSPACE: Clear workspace asks when the workspace holds a terminal and names it; Cancel changes nothing', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -1238,12 +1226,12 @@ test('ACC-ACCORD-27-CLOSE-WARN: Close all tabs asks when the workspace holds a t
   try {
     await setUpExisting(page, current);
     const before = await saved(page, other);
-    await fromMenu(page, other, 'Close all tabs');
+    await fromMenu(page, other, 'Clear workspace');
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
-      `Close all tabs of ${other}?`
+      `Clear workspace ${other}?`
     );
     await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
-      'The workspace holds 1 terminal. They keep running without a tab, and the culler may then shut them down after its idle time.'
+      `The workspace holds terminal ${terminal}. Clearing it stops it and closes every tab.`
     );
     await dialog(page)
       .locator('.jp-Dialog-button', { hasText: 'Cancel' })
@@ -1282,11 +1270,11 @@ test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows
     await fromMenu(page, x, 'Open in new browser tab');
     await expectRefused(page, 'Open in new browser tab');
 
-    await fromMenu(page, x, 'Close all tabs');
-    await expectRefused(page, 'Close all tabs');
+    await fromMenu(page, x, 'Clear workspace');
+    await expectRefused(page, 'Clear workspace');
 
     // Delete workspace: the first click arms, the second deletes
-    await menuButton(page, x).click();
+    await openCardMenu(page, x);
     await menuItem(page, 'Delete workspace').click();
     await menuItem(page, 'Confirm delete').click();
     await expectRefused(page, 'Delete workspace');
@@ -1321,9 +1309,9 @@ test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows
     await openPanel(third);
     await refresh(third);
     await expect(card(third, current)).toBeVisible();
-    await fromMenu(third, current, 'Close all tabs');
-    await expectRefused(third, 'Close all tabs');
-    await menuButton(third, current).click();
+    await fromMenu(third, current, 'Clear workspace');
+    await expectRefused(third, 'Clear workspace');
+    await openCardMenu(third, current);
     await menuItem(third, 'Delete workspace').click();
     await menuItem(third, 'Confirm delete').click();
     await expectRefused(third, 'Delete workspace');
@@ -1371,7 +1359,7 @@ test('ACC-SERVER-64-PRESENCE: a window that moves to another workspace no longer
   }
 });
 
-test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, the header on the hue's 30% tint and the body on its 12% tint with no rule between them", async ({
+test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, the header on the hue's 24% tint and the body on its 9.6% tint with no rule between them", async ({
   page
 }) => {
   const current = fresh('card');
@@ -1435,16 +1423,16 @@ test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, 
         expect(await rgb(page, s.strip), what).toEqual(
           await rgb(page, `var(--wm-${hues[id]})`)
         );
-        // the header takes the hue at 30 %, the body's surface at 12 %
+        // the header takes the hue at 24 %, the body's surface at 9.6 %
         expect(await rgb(page, s.header), what).toEqual(
-          await rgb(page, tint(hues[id], 30))
+          await rgb(page, tint(hues[id], 24))
         );
         expect(await rgb(page, s.card), what).toEqual(
-          await rgb(page, tint(hues[id], 12))
+          await rgb(page, tint(hues[id], 9.6))
         );
         // ACC-PANEL-270-NO-DIVIDER: no rule joins the header to the body
         expect([s.rule[1], s.rule[0]], what).toEqual(['none', '0px']);
-        // an open card's body paints nothing over the 12 % surface; a closed card has no body
+        // an open card's body paints nothing over the 9.6 % surface; a closed card has no body
         expect(s.body, what).toBe(id === b ? null : 'rgba(0, 0, 0, 0)');
       }
       // close both again: every theme starts from no open card
@@ -1457,7 +1445,7 @@ test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, 
   }
 });
 
-test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the hue on its 4 px strip, the hue's 30% tint on its header and 12% tint on its body, the same for this window's card and the others, and a card with no colour keeps the plain header and a transparent strip", async ({
+test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the hue on its 4 px strip, the hue's 24% tint on its header and 9.6% tint on its body, the same for this window's card and the others, and a card with no colour keeps the plain header and a transparent strip", async ({
   page
 }) => {
   const current = fresh('shade');
@@ -1520,13 +1508,13 @@ test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a colo
       ] as const) {
         const what = `${theme} ${id}`;
         expect(await rgb(page, s.header), what).toEqual(
-          await rgb(page, tint(colour, 30))
+          await rgb(page, tint(colour, 24))
         );
         expect(await rgb(page, s.strip), what).toEqual(
           await rgb(page, `var(--wm-${colour})`)
         );
         expect(await rgb(page, s.card), what).toEqual(
-          await rgb(page, tint(colour, 12))
+          await rgb(page, tint(colour, 9.6))
         );
         // no wash: the header carries the tint as its flat colour
         expect(s.image, what).toBe('none');
@@ -1541,7 +1529,7 @@ test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a colo
   }
 });
 
-test("TINTS-CONTRAST: the inverse layout colours on every hue's 30% header tint, 12% body tint and 12% over layout colour 2 surface of a hovered or selected row keep at least 4.5:1 in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel", async ({
+test("TINTS-CONTRAST: the inverse layout colours on every hue's 24% header tint, 9.6% body tint and 9.6% over layout colour 2 surface of a hovered or selected row keep at least 4.5:1 in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel", async ({
   page
 }) => {
   const current = await setUp(page, 'contrast');
@@ -1571,9 +1559,9 @@ test("TINTS-CONTRAST: the inverse layout colours on every hue's 30% header tint,
       ];
       for (const colour of COLOURS) {
         for (const [percent, base] of [
-          [30, 1],
-          [12, 1],
-          [12, 2]
+          [24, 1],
+          [9.6, 1],
+          [9.6, 2]
         ]) {
           const tint = await rgb(
             page,
@@ -1664,7 +1652,7 @@ test('ACC-ACCORD-97-ELLIPSIS: a long name ends in an ellipsis, the purpose wraps
   }
 });
 
-test("ACC-ACCORD-98-HOVER-ACTIONS: the eye and ... keep their place on a closed, a hovered, a focused, an open, a hidden and this window's card; one that does not apply is disabled", async ({
+test("ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-283-NO-DOTS: the eye keeps its place on a closed, a hovered, a focused, an open, a hidden and this window's card, and no card carries a ... button; one that does not apply is disabled", async ({
   page
 }) => {
   const suffix = 'a-name-too-long-for-the-card';
@@ -1672,7 +1660,7 @@ test("ACC-ACCORD-98-HOVER-ACTIONS: the eye and ... keep their place on a closed,
   const [other, hidden] = [`${current}-${suffix}`, `${current}-h`];
   const header = cardHeader(page, other);
   const name = header.locator('.jp-WorkspaceManager-name');
-  /** The two buttons after the age: label, x, shown, disabled, pressed. */
+  /** The eye after the age: label, x, shown, disabled, pressed. */
   const buttons = (id: string) =>
     card(page, id)
       .locator('.jp-WorkspaceManager-cardActions button')
@@ -1706,15 +1694,15 @@ test("ACC-ACCORD-98-HOVER-ACTIONS: the eye and ... keep their place on a closed,
     const rest = await buttons(other);
     const xs = rest.map(b => b.x);
     const nameWidth = await width();
-    expect(rest).toEqual(
-      ['Hide workspace', 'Workspace menu'].map((label, i) => ({
-        label,
-        x: xs[i],
+    expect(rest).toEqual([
+      {
+        label: 'Hide workspace',
+        x: xs[0],
         shown: true,
         disabled: false,
-        pressed: label === 'Hide workspace' ? 'false' : null
-      }))
-    );
+        pressed: 'false'
+      }
+    ]);
     await expect(header.locator('.jp-WorkspaceManager-age')).toBeVisible();
 
     const same = async (id: string, what: string) => {
@@ -1746,11 +1734,10 @@ test("ACC-ACCORD-98-HOVER-ACTIONS: the eye and ... keep their place on a closed,
     expect(await width()).toBe(nameWidth);
 
     const mine = await same(current, "this window's card");
-    expect(mine.map(b => b.disabled)).toEqual([true, false]);
+    expect(mine.map(b => b.disabled)).toEqual([true]);
     const shown = await same(hidden, 'hidden card');
     expect(shown.map(b => [b.label, b.disabled, b.pressed])).toEqual([
-      ['Show workspace again', false, 'true'],
-      ['Workspace menu', true, null]
+      ['Show workspace again', false, 'true']
     ]);
   } finally {
     await deleteWorkspaces(page, ids(current, suffix, 'h'));
@@ -1777,10 +1764,8 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its button
     await expect(mine).toHaveAttribute('aria-expanded', 'false');
     await expect(mine).toBeFocused();
     await page.mouse.move(0, 0);
-    await expect(myIcons).toHaveCount(2);
-    for (let i = 0; i < 2; i++) {
-      await expect(myIcons.nth(i)).toBeVisible();
-    }
+    await expect(myIcons).toHaveCount(1);
+    await expect(myIcons.first()).toBeVisible();
 
     // a click on a button keeps the focus where it was: the triangle opens
     // the other card, and a second click closes it
@@ -1788,11 +1773,9 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its button
     await triangle(page, other).click();
     await page.mouse.move(0, 0);
     await expect(mine).toBeFocused();
-    for (let i = 0; i < 2; i++) {
-      await expect(icons.nth(i)).toBeVisible();
-    }
+    await expect(icons.first()).toBeVisible();
 
-    // Tab moves from the header through the triangle and the two buttons;
+    // Tab moves from the header through the triangle and the eye;
     // Tab from the WORKSPACES header, above every card
     await sectionHeader(page, 'workspaces').focus();
     for (let i = 0; i < 12; i++) {
@@ -1806,14 +1789,17 @@ test('DEF-PANEL-12-HOVER-CLICK: after a click in a card header and on its button
     await focused('Expand');
     await page.keyboard.press('Tab');
     await focused('Hide workspace');
+    // the next Tab leaves the card: it holds no third button
     await page.keyboard.press('Tab');
-    await focused('Workspace menu');
+    await expect(
+      header.locator('button[aria-label="Workspace menu"]')
+    ).toHaveCount(0);
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
   }
 });
 
-test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, without Open or Close all tabs; both stay in its ... menu and neither is in the card header", async ({
+test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, without Open or Clear workspace; both stay in its header menu and neither is in the card header", async ({
   page,
   tmpPath
 }) => {
@@ -1825,7 +1811,7 @@ test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, wit
   try {
     await triangle(page, other).click();
     await expect(body.locator('.jp-WorkspaceManager-row')).toHaveCount(2);
-    for (const name of ['Open', 'Close all tabs']) {
+    for (const name of ['Open', 'Clear workspace']) {
       await expect(body.getByRole('button', { name, exact: true })).toHaveCount(
         0
       );
@@ -1837,22 +1823,22 @@ test("ACC-ACCORD-167-NO-BUTTONS: an open card's body ends with its last row, wit
         n.lastElementChild?.classList.contains('jp-WorkspaceManager-row')
       )
     ).toBe(true);
-    for (const name of ['Open workspace', 'Close all tabs']) {
+    for (const name of ['Open workspace', 'Clear workspace']) {
       await expect(
         cardHeader(page, other).getByRole('button', { name, exact: true })
       ).toHaveCount(0);
     }
 
-    await menuButton(page, other).click();
+    await openCardMenu(page, other);
     await expect(menuItem(page, 'Open workspace')).toBeVisible();
-    await expect(menuItem(page, 'Close all tabs')).toBeVisible();
+    await expect(menuItem(page, 'Clear workspace')).toBeVisible();
     await page.keyboard.press('Escape');
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
   }
 });
 
-test('ACC-ACCORD-264-HEADER-ICONS: no card header has an Open workspace or a Close all tabs button; it keeps the eye then ...; both actions work from the ... menu; the name takes the free width', async ({
+test('ACC-ACCORD-283-NO-DOTS: no card header has a ... button, the eye stays, the header right-click opens the workspace menu, and its actions work; the name keeps its text width and the count follows it', async ({
   page,
   tmpPath
 }) => {
@@ -1887,25 +1873,33 @@ test('ACC-ACCORD-264-HEADER-ICONS: no card header has an Open workspace or a Clo
           nodes.map(n => n.getAttribute('aria-label'))
         ),
         id
-      ).toEqual([eye, 'Workspace menu']);
-      for (const name of ['Open workspace', 'Close all tabs']) {
+      ).toEqual([eye]);
+      for (const name of [
+        'Open workspace',
+        'Clear workspace',
+        'Workspace menu'
+      ]) {
         await expect(
           cardHeader(page, id).getByRole('button', { name, exact: true })
         ).toHaveCount(0);
       }
     }
 
-    // the name fills the line up to the age, less the 6 px gap of the line
+    // the count follows the name by the line's 6 px gap; the age stays to its right
     const header = cardHeader(page, target);
     const name = (await header
       .locator('.jp-WorkspaceManager-name')
       .boundingBox())!;
+    const counter = (await header
+      .locator('.jp-WorkspaceManager-count')
+      .boundingBox())!;
     const age = (await header
       .locator('.jp-WorkspaceManager-age')
       .boundingBox())!;
-    expect(Math.round(age.x - (name.x + name.width))).toBe(6);
+    expect(Math.round(counter.x - (name.x + name.width))).toBe(6);
+    expect(age.x).toBeGreaterThan(counter.x);
 
-    // a name shorter than the line still takes the free width: its box is wider than its text
+    // a name shorter than the line keeps its text width: its box is no wider than its text
     await sidebarTo(page, 500);
     const [box, text] = await header
       .locator('.jp-WorkspaceManager-name')
@@ -1917,9 +1911,9 @@ test('ACC-ACCORD-264-HEADER-ICONS: no card header has an Open workspace or a Clo
           range.getBoundingClientRect().width
         ];
       });
-    expect(box - text).toBeGreaterThan(100);
+    expect(box - text).toBeLessThan(1);
 
-    await fromMenu(page, held, 'Close all tabs');
+    await fromMenu(page, held, 'Clear workspace');
     await expect.poll(() => savedTabs(page, held), UNDER_LOAD).toEqual([]);
 
     await fromMenu(page, target, 'Open workspace');
@@ -1931,7 +1925,7 @@ test('ACC-ACCORD-264-HEADER-ICONS: no card header has an Open workspace or a Clo
   }
 });
 
-test('ACC-PANEL-243-HEADER: the first line of a card header holds the caret, the name, the age, the eye and ...; the second line of an open card holds the tab, terminal and kernel counts with their glyphs', async ({
+test('ACC-PANEL-243-HEADER, ACC-ACCORD-276-NAME-COUNT: the first line of a card header holds the caret, the name, the row count, the age and the eye; the second line of an open card holds the purpose only, with no count glyphs', async ({
   page
 }) => {
   const current = await setUp(page, 'hdrline', { a: {} });
@@ -1942,29 +1936,23 @@ test('ACC-PANEL-243-HEADER: the first line of a card header holds the caret, the
     const lines = cardHeader(page, other).locator(
       '.jp-WorkspaceManager-headerLine'
     );
-    await expect(lines).toHaveCount(2);
+    await expect(lines).toHaveCount(1);
     const first = lines.first();
     await expect(
       first.locator('button.jp-WorkspaceManager-caret')
     ).toBeVisible();
     await expect(first.locator('.jp-WorkspaceManager-name')).toHaveText(other);
+    await expect(first.locator('.jp-WorkspaceManager-count')).toHaveText('(0)');
     await expect(first.locator('.jp-WorkspaceManager-age')).toBeVisible();
     await expect(
       first.getByRole('button', { name: 'Hide workspace' })
     ).toBeVisible();
     await expect(
       first.getByRole('button', { name: 'Workspace menu' })
-    ).toBeVisible();
-    expect(
-      await lines
-        .last()
-        .locator('.jp-WorkspaceManager-count svg')
-        .evaluateAll(nodes => nodes.map(n => n.getAttribute('data-icon')))
-    ).toEqual([
-      'ui-components:tab',
-      '@stellarshenson/jupyterlab-workspace-manager-extension:terminal',
-      'ui-components:kernel'
-    ]);
+    ).toHaveCount(0);
+    expect(await first.locator('.jp-WorkspaceManager-count svg').count()).toBe(
+      0
+    );
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
   }
@@ -2006,7 +1994,7 @@ test("ACC-ACCORD-164-HEADER-TOGGLE: a header click opens and closes this window'
   }
 });
 
-test('ACC-LISTS-273-CURRENT-ROW: in JupyterLab Light and Galaxa Dark Theme - Steel the current row takes brand colour 1 at 14 % over layout colour 1 on a plain card and the workspace hue at 30 % over layout colour 1 on a coloured card', async ({
+test('ACC-LISTS-273-CURRENT-ROW: in JupyterLab Light and Galaxa Dark Theme - Steel the current row takes brand colour 1 at 14 % over layout colour 1 on a plain card and the workspace hue at 24 % over layout colour 1 on a coloured card', async ({
   page
 }) => {
   const current = fresh('rowtint');
@@ -2031,7 +2019,7 @@ test('ACC-LISTS-273-CURRENT-ROW: in JupyterLab Light and Galaxa Dark Theme - Ste
       expect(await background(rows[1]), `${theme} coloured`).toEqual(
         await rgb(
           page,
-          `color-mix(in srgb, var(--wm-${colour}) 30%, var(--jp-layout-color1))`
+          `color-mix(in srgb, var(--wm-${colour}) 24%, var(--jp-layout-color1))`
         )
       );
     }
@@ -2108,11 +2096,11 @@ test.describe('at 4x device scale', () => {
       for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
         await page.theme.setTheme(theme);
         await page.mouse.move(0, 0);
-        // both cards carry the same hue; the header its 30 % tint (ACC-PANEL-239-HEADER-SHADE)
+        // both cards carry the same hue; the header its 24 % tint (ACC-PANEL-239-HEADER-SHADE)
         const strip = await rgb(page, await shade(page, 'mint'));
         const header = await rgb(
           page,
-          'color-mix(in srgb, var(--wm-mint) 30%, var(--jp-layout-color1))'
+          'color-mix(in srgb, var(--wm-mint) 24%, var(--jp-layout-color1))'
         );
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
@@ -2374,11 +2362,11 @@ test.describe('at 4x device scale', () => {
           const [above, below] = [
             await rgb(
               page,
-              `color-mix(in srgb, var(--wm-${colour}) 30%, var(--jp-layout-color1))`
+              `color-mix(in srgb, var(--wm-${colour}) 24%, var(--jp-layout-color1))`
             ),
             await rgb(
               page,
-              `color-mix(in srgb, var(--wm-${colour}) 12%, var(--jp-layout-color1))`
+              `color-mix(in srgb, var(--wm-${colour}) 9.6%, var(--jp-layout-color1))`
             )
           ];
           const near = (c: number[], tint: number[]) =>

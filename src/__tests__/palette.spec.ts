@@ -24,9 +24,9 @@ const PALETTE = {
 /** The declarations of the workspace colour rule of `colour`, in order (DQ-28). */
 const SHADE_RULE = (colour: string) =>
   `--wm-hue: var(--wm-${colour}); ` +
-  '--wm-shade: color-mix(in srgb, var(--wm-hue) 30%, ' +
+  '--wm-shade: color-mix(in srgb, var(--wm-hue) 24%, ' +
   'var(--jp-layout-color1)); ' +
-  '--wm-rows: color-mix(in srgb, var(--wm-hue) 12%, ' +
+  '--wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, ' +
   'var(--jp-layout-color1));';
 
 /** The --wm- declarations of a palette block, in the order they are stated. */

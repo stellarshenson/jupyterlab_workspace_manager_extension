@@ -1,10 +1,11 @@
-"""The terminals endpoint: each terminal's name, last activity, foreground process, its directory and its command."""
+"""The terminals endpoint: each terminal's name, last activity, foreground process, its memory, its directory and its command."""
 import asyncio
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 
+import psutil
 import pytest
 
 NAMESPACE = "jupyterlab-workspace-manager-extension"
@@ -67,7 +68,7 @@ async def wait_for_command(jp_fetch, name, expected):
 
 
 async def test_two_terminals_with_their_fields(jp_fetch, jp_serverapp):
-    """ACC-SERVER-62, ACC-TERM-200: both terminals with name, last_activity and process; no fingerprint."""
+    """ACC-SERVER-62, ACC-TERM-200, ACC-TERM-280-MEMORY-ROUTE: both terminals with name, last_activity, process, memory, cwd and command; no fingerprint."""
     names = {await new_terminal(jp_fetch), await new_terminal(jp_fetch)}
     for name in names:
         assert await wait_for_process(jp_fetch, name, "bash") == "bash"
@@ -76,7 +77,7 @@ async def test_two_terminals_with_their_fields(jp_fetch, jp_serverapp):
 
     assert {t["name"] for t in terminals} == names
     for terminal in terminals:
-        assert set(terminal) == {"name", "last_activity", "process", "cwd", "command"}
+        assert set(terminal) == {"name", "last_activity", "process", "memory", "cwd", "command"}
         datetime.fromisoformat(terminal["last_activity"])
         assert terminal["process"] == "bash"
 
@@ -234,6 +235,31 @@ async def test_command_unreadable_or_empty(jp_fetch, monkeypatch, read):
     terminals = await get_terminals(jp_fetch)
 
     assert [(t["name"], t["process"], t["command"]) for t in terminals] == [(name, "bash", None)]
+
+
+async def test_memory_of_the_foreground_process(jp_fetch):
+    """ACC-TERM-280-MEMORY-ROUTE: a live terminal reports the resident bytes of its foreground process as a positive integer."""
+    name = await new_terminal(jp_fetch)
+    assert await wait_for_process(jp_fetch, name, "bash") == "bash"
+
+    terminals = await get_terminals(jp_fetch)
+
+    assert [(t["name"], type(t["memory"]), t["memory"] > 0) for t in terminals] == [(name, int, True)]
+
+
+async def test_memory_unreadable(jp_fetch, monkeypatch):
+    """ACC-TERM-280-MEMORY-ROUTE: a failing memory read gives memory null and still 200; the process is unaffected."""
+    name = await new_terminal(jp_fetch)
+    assert await wait_for_process(jp_fetch, name, "bash") == "bash"
+
+    def refuse(self):
+        raise psutil.AccessDenied(self.pid)
+
+    monkeypatch.setattr(psutil.Process, "memory_info", refuse)
+
+    terminals = await get_terminals(jp_fetch)
+
+    assert [(t["name"], t["process"], t["memory"]) for t in terminals] == [(name, "bash", None)]
 
 
 @pytest.mark.parametrize("jp_server_config", [False], indirect=True)

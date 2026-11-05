@@ -56,6 +56,14 @@ def process_name(pty):
         return None
 
 
+def process_memory(pty):
+    """Resident memory in bytes of the foreground process of a terminal's pty; None when it cannot be read."""
+    try:
+        return psutil.Process(os.tcgetpgrp(pty.ptyproc.fd)).memory_info().rss
+    except (psutil.Error, OSError):
+        return None
+
+
 def process_cwd(pty):
     """Working directory of the foreground process of a terminal's pty; None when it cannot be read."""
     try:
@@ -87,6 +95,7 @@ class TerminalsHandler(APIHandler):
             if pty.ptyproc.terminated or not pty.ptyproc.isalive():
                 continue
             model["process"] = process_name(pty)
+            model["memory"] = process_memory(pty)
             model["cwd"] = process_cwd(pty)
             model["command"] = process_command(pty)
             live.append(model)

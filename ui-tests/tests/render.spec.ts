@@ -22,7 +22,7 @@ import {
   languageServer,
   layout,
   listed,
-  menuButton,
+  openCardMenu,
   menuItem,
   newTerminalTab,
   only,
@@ -460,7 +460,12 @@ test.describe('the seeded scenario', () => {
         .locator('.jp-WorkspaceManager-rowLabel')
         .allTextContents();
       expect(labels.filter(l => l === 'analysis.ipynb')).toHaveLength(1);
-      expect(labels.filter(l => l === rowLabel(s.tab))).toHaveLength(1);
+      // a card's numbered terminal row drops the tN (ACC-TERM-275-CARD-LABEL)
+      await expect(
+        rowOf(mineCard, rowLabel(s.tab)).locator(
+          '.jp-WorkspaceManager-rowLabel'
+        )
+      ).toHaveText('');
 
       // ROW-01 in this window's card and in the TERMINALS section, at 300 px
       const [colour1, colour2, inverse0, inverse1, inverse2, inverse3] = [
@@ -477,8 +482,9 @@ test.describe('the seeded scenario', () => {
             .filter(r => (r as HTMLElement).offsetParent !== null)
             .map(r => {
               const box = r.getBoundingClientRect();
+              // one glyph: a document with a kernel carries two in one slot
               const icon = r
-                .querySelector('.jp-WorkspaceManager-rowIcon')
+                .querySelector('.jp-WorkspaceManager-rowIcon svg')
                 ?.getBoundingClientRect();
               const age = r
                 .querySelector('.jp-WorkspaceManager-age')
@@ -821,7 +827,7 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
       page,
       current,
       Object.fromEntries(
-        Array.from({ length: 12 }, (_, i) => [
+        Array.from({ length: 16 }, (_, i) => [
           `${i}`,
           i === 0 ? { data: layout(['editor:README.md']) } : {}
         ])
@@ -834,7 +840,7 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
     );
     await triangle(page, ids[1]).click();
     await expect(card(page, ids[1])).toHaveClass(/jp-mod-open/);
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     await expect(page.locator('.jp-WorkspaceManager-menu')).toBeVisible();
     // a row of the open card, focused: the panel's one selected row. It has no tab here, so
     // it stays lit only with the focus (DQ-32), and the menu takes the focus as it opens
@@ -1312,7 +1318,7 @@ test('ACC-ACCORD-238-PALETTE-SHADES: in JupyterLab Dark and JupyterLab Light eac
         'data-jp-theme-light',
         String(theme === LIGHT)
       );
-      await menuButton(page, `${current}-sky`).click();
+      await openCardMenu(page, `${current}-sky`);
       await menuItem(page, 'Colour').click();
       for (const [i, colour] of COLOURS.entries()) {
         const value = await rgba(page, await shade(page, colour));
@@ -1346,7 +1352,7 @@ test('WS-02 ACC-ACCORD-190-FIXED-ORDER, WS-12 ACC-ACCORD-69-CARD: a description 
   try {
     ids = await setUp(page, current, { a: {}, b: {} });
     await expect.poll(() => order(page)).toEqual(ids);
-    await menuButton(page, ids[0]).click();
+    await openCardMenu(page, ids[0]);
     await menuItem(page, 'Set description...').click();
     await dialog(page).locator('textarea').fill('A purpose set here');
     await dialog(page).locator('textarea').press('Enter');
@@ -1355,7 +1361,7 @@ test('WS-02 ACC-ACCORD-190-FIXED-ORDER, WS-12 ACC-ACCORD-69-CARD: a description 
       card(page, ids[0]).locator('.jp-WorkspaceManager-purpose')
     ).toHaveText('A purpose set here');
     expect(await order(page)).toEqual(ids);
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     await menuItem(page, 'Colour').click();
     await page
       .locator('.jp-WorkspaceManager-colourMenu .lm-Menu-item')
@@ -1471,7 +1477,7 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
     await openCard(page, ids[2]);
     await expect(
       card(page, ids[2]).locator('.jp-WorkspaceManager-purpose')
-    ).toHaveText('');
+    ).toHaveCount(0);
     expect(alerts).toEqual([]);
   } finally {
     await deleteWorkspaces(page, ids);
@@ -1550,41 +1556,30 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
   }
 });
 
-test('WS-18 ACC-ACCORD-71-COUNT-ICONS, ACC-ACCORD-22-COUNTS: a closed card shows no counts; open, the three header counts each have their own glyph in inverse layout colour 0 and a bare number in inverse layout colour 1', async ({
+test('WS-18 ACC-ACCORD-276-NAME-COUNT: the card name line carries a bare row count in brackets, folded or open, in inverse layout colour 1 and with no glyph', async ({
   page
 }) => {
   const current = fresh('glyphs');
   try {
     await enterWorkspace(page, current);
     const header = cardHeader(page, current);
-    await expect(header.locator('.jp-WorkspaceManager-count')).toHaveCount(0);
+    const count = header.locator('.jp-WorkspaceManager-count');
+    await expect(count).toHaveText(/^\(\d+\)$/);
+    await expect(count.locator('svg')).toHaveCount(0);
+    expect(
+      await rgba(page, await style(count, 'color')),
+      'count number'
+    ).toEqual(await rgba(page, 'var(--jp-inverse-layout-color1)'));
+    const folded = await count.textContent();
     await openCard(page, current);
-    const [inverse0, inverse1] = [
-      await rgba(page, 'var(--jp-inverse-layout-color0)'),
-      await rgba(page, 'var(--jp-inverse-layout-color1)')
-    ];
-    const icons: string[] = [];
-    for (const title of ['Tabs', 'Terminals', 'Kernels']) {
-      const count = header.locator(
-        `.jp-WorkspaceManager-count[title="${title}"]`
-      );
-      await expect(count).toHaveText(/^\d+$/);
-      const svg = count.locator('svg');
-      icons.push((await svg.getAttribute('data-icon')) ?? '');
-      for (const c of await glyph(svg)) {
-        expect.soft(await rgba(page, c), `${title} glyph`).toEqual(inverse0);
-      }
-      expect
-        .soft(await rgba(page, await style(count, 'color')), `${title} number`)
-        .toEqual(inverse1);
-    }
-    expect(new Set(icons).size).toBe(3);
+    await expect(count).toHaveText(folded!);
+    await expect(count.locator('svg')).toHaveCount(0);
   } finally {
     await deleteWorkspaces(page, [current]);
   }
 });
 
-test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: every card shows the eye and ... at rest; the eye is disabled on this window's card; Open workspace in the ... menu of another card switches this window to that workspace", async ({
+test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-283-NO-DOTS, ACC-ACCORD-23-OPEN: every card shows the eye at rest and no ... button; the eye is disabled on this window's card; Open workspace in the header menu of another card switches this window to that workspace", async ({
   page
 }) => {
   const current = fresh('hoveropen');
@@ -1601,11 +1596,8 @@ test("WS-19 ACC-ACCORD-98-HOVER-ACTIONS, ACC-ACCORD-23-OPEN: every card shows th
               `${n.getAttribute('aria-label')}${(n as HTMLButtonElement).disabled ? ' disabled' : ''}${(n as HTMLElement).offsetParent === null ? ' not shown' : ''}`
           )
         );
-    expect(await labels(current)).toEqual([
-      'Hide workspace disabled',
-      'Workspace menu'
-    ]);
-    expect(await labels(ids[1])).toEqual(['Hide workspace', 'Workspace menu']);
+    expect(await labels(current)).toEqual(['Hide workspace disabled']);
+    expect(await labels(ids[1])).toEqual(['Hide workspace']);
     await fromMenu(page, ids[1], 'Open workspace');
     await page.waitForURL(new RegExp(`/lab/workspaces/${ids[1]}(\\?.*)?$`));
   } finally {
@@ -1646,7 +1638,8 @@ test('WS-20 ACC-PANEL-214-HEADER-PLACE: every button in a card header is 24 x 24
         ),
       [ids[1], ids[2]]
     );
-    expect(sizes.length).toBeGreaterThanOrEqual(6);
+    // each card header holds its caret and its eye; the ... button is gone (ACC-ACCORD-283)
+    expect(sizes.length).toBe(4);
     expect(sizes).toEqual(
       sizes.map(s =>
         s.replace(/\d+ x \d+, glyph \d+ x \d+$/, '24 x 24, glyph 14 x 14')
@@ -1790,7 +1783,7 @@ test.describe('rows of terminals and kernels of the server', () => {
   // the tests start a kernel by REST; Galata would list only its page's own
   test.use({ kernels: null, sessions: null });
 
-  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row its short label, its process and its time, a kernel row with no session its id, its state and its time; a terminal 3 h idle has its name in inverse layout colour 0 and 3h ago in inverse layout colour 3; the terminal names of the TERMINALS section, kernel ids and paths are in the code font; workspace names, times, process names and every card label, that of a terminal included, are in the UI font', async ({
+  test('ROW-01 ACC-LISTS-209-ROW-LINE, ACC-TERM-46-NAME, LEG-09 ACC-PANEL-206-CODE-FONT: unselected, a tab row reads its file name, a terminal row its short label, its process and its time, a kernel row with no session its id, its memory, its state and its time; a terminal 3 h idle has its name in inverse layout colour 0 and 3h ago in inverse layout colour 3; the terminal names of the TERMINALS section, kernel ids and paths are in the code font; workspace names, times, process names and every card label, that of a terminal included, are in the UI font', async ({
     page
   }) => {
     const terminal = await startTerminal(page);
@@ -1835,10 +1828,8 @@ test.describe('rows of terminals and kernels of the server', () => {
       const tab = rowOf(c, 'notes.md');
       const term = rowOf(c, rowLabel(terminal));
       await expect(tab).toHaveText('notes.md');
-      await expect(term).toHaveText(
-        `${rowLabel(terminal)}bash3h ago`,
-        UNDER_LOAD
-      );
+      // a card row keeps a named terminal's name and drops the tN of a numbered one (ACC-TERM-275-CARD-LABEL)
+      await expect(term).toHaveText(`${terminal}bash3h ago`, UNDER_LOAD);
       await expect(
         page.locator(`${PANEL} .jp-WorkspaceManager-rowDetail`)
       ).toHaveCount(0);
@@ -1895,8 +1886,9 @@ test.describe('rows of terminals and kernels of the server', () => {
       // one section open at a time: the KERNELS row renders with KERNELS opened
       await openSection(page, 'kernels');
       const kern = rowOf(sectionBody(page, 'kernels'), kernel);
+      // the row carries its memory before its state (ACC-KERNEL-281-ROW-MEMORY)
       await expect(kern).toHaveText(
-        /^[0-9a-f-]{36}(idle|starting|busy)(now|\d+m ago)$/
+        /^[0-9a-f-]{36}(\d+(\.\d)? (MB|GB)|-)(idle|starting|busy)(now|\d+m ago)$/
       );
       expect(await font(kern.locator('.jp-WorkspaceManager-rowLabel'))).toBe(
         code
@@ -1997,7 +1989,7 @@ test('EDGE-NAME-COLUMN: an open card keeps one text column: its name and its pur
   }
 });
 
-test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS: a hovered row keeps its text colours and is, in a coloured card, the card hue at 12 % over layout colour 2 and, in a section, layout colour 2; a click selects a row: the one selected row, on the same surface, its process once in its line and no detail line; ArrowDown moves the selection; a refresh keeps it', async ({
+test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-42-PROCESS: a hovered row keeps its text colours and is, in a coloured card, the card hue at 9.6 % over layout colour 2 and, in a section, layout colour 2; a click selects a row: the one selected row, on the same surface, its process once in its line and no detail line; ArrowDown moves the selection; a refresh keeps it', async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -2016,7 +2008,7 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
     // a coloured card's row keeps the hue: never the neutral layout colour 2
     const surface = await rgba(
       page,
-      `color-mix(in srgb, ${await stripColour(card(page, ids[1]))} 12%, var(--jp-layout-color2))`
+      `color-mix(in srgb, ${await stripColour(card(page, ids[1]))} 9.6%, var(--jp-layout-color2))`
     );
     expect(surface).not.toEqual(layout2);
     const paint = async (row: Locator) => ({
@@ -2456,7 +2448,7 @@ test('DLG-01 ACC-PANEL-204-DIALOG-FOOTER, ACC-TERM-112-SHUTDOWN-SHARED, ACC-KERN
     await expect(dialog(page)).toHaveCount(0);
 
     // Set description: Save filled, Cancel the surface button
-    await menuButton(page, current).click();
+    await openCardMenu(page, current);
     await menuItem(page, 'Set description...').click();
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       `Set description of ${current}`
@@ -2608,12 +2600,12 @@ test("MENU-03 ACC-ACCORD-32-DELETE-CURRENT, ACC-HIDDEN-87-NOT-CURRENT: on this w
       .allTextContents();
   try {
     ids = await setUp(page, current, { a: {}, b: {} });
-    await menuButton(page, current).click();
+    await openCardMenu(page, current);
     expect((await disabled()).filter(l => FOUR.includes(l)).sort()).toEqual(
       [...FOUR].sort()
     );
     await page.keyboard.press('Escape');
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     expect((await disabled()).filter(l => FOUR.includes(l))).toEqual([]);
     await page.keyboard.press('Escape');
   } finally {
@@ -2628,13 +2620,13 @@ test('MENU-05 ACC-ACCORD-103-DELETE-DISARM: the second click of a double-click d
   let ids: string[] = [];
   try {
     ids = await setUp(page, current, { a: {} });
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     await menuItem(page, 'Delete workspace').dblclick();
     await page.waitForTimeout(500);
     expect(await listed(page)).toContain(ids[1]);
     await page.keyboard.press('Escape');
 
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     await menuItem(page, 'Delete workspace').click();
     await expect(menuItem(page, 'Confirm delete')).toHaveCount(1);
     await page.waitForTimeout(4100);
@@ -2644,7 +2636,7 @@ test('MENU-05 ACC-ACCORD-103-DELETE-DISARM: the second click of a double-click d
     await menuItem(page, 'Delete workspace').click();
     await expect(menuItem(page, 'Confirm delete')).toHaveCount(1);
     await page.keyboard.press('Escape');
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     await expect(menuItem(page, 'Delete workspace')).toHaveCount(1);
     await page.keyboard.press('Escape');
     expect(await listed(page)).toContain(ids[1]);
@@ -2660,7 +2652,7 @@ test('MENU-06 ACC-PANEL-149-DESC-COUNT: the Set description counter reads <n>/10
   let ids: string[] = [];
   try {
     ids = await setUp(page, current, { a: { record: { purpose: 'abc' } } });
-    await menuButton(page, ids[1]).click();
+    await openCardMenu(page, ids[1]);
     await menuItem(page, 'Set description...').click();
     const counter = dialog(page).locator('.jp-WorkspaceManager-counter');
     await expect(counter).toHaveText('3/100');

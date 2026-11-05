@@ -1,6 +1,7 @@
 import type { JupyterFrontEnd } from '@jupyterlab/application';
 import { showErrorMessage } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
+import type { IDocumentManager } from '@jupyterlab/docmanager';
 import type {
   IRunningSessionManagers,
   IRunningSessions,
@@ -13,7 +14,6 @@ import {
   caretDownIcon,
   caretRightIcon,
   closeIcon,
-  ellipsesIcon,
   fileIcon,
   filterIcon,
   kernelIcon,
@@ -167,6 +167,8 @@ export namespace WorkspacePanel {
   export interface IOptions {
     /** the shell, the commands and the service manager of the lab */
     app: JupyterFrontEnd;
+    /** the lab's documents: to close them the way JupyterLab's close-all does */
+    docManager: IDocumentManager;
     /** this window's workspace id */
     current: string;
     /** the id of this browser window for presence */
@@ -194,6 +196,7 @@ export class WorkspacePanel
   constructor(options: WorkspacePanel.IOptions) {
     super({ content: new Panel() });
     this._app = options.app;
+    this._docManager = options.docManager;
     this._current = options.current;
     this._window = options.window;
     this._managers = options.managers ?? null;
@@ -1023,7 +1026,7 @@ export class WorkspacePanel
           onContextMenu={e => {
             e.preventDefault();
             e.stopPropagation();
-            // a hidden card's ... button is disabled, so its header has no menu
+            // a hidden card's header opens no menu
             if (!section.hidden) {
               const rect = e.currentTarget.getBoundingClientRect();
               // the context-menu key reports the header's centre and no button
@@ -1039,6 +1042,8 @@ export class WorkspacePanel
           <div className="jp-WorkspaceManager-headerLine">
             {caret(open, () => this._toggle(key))}
             <span className="jp-WorkspaceManager-name">{name}</span>
+            {/* every open tab: the documents and the terminal tabs (ACC-ACCORD-276-NAME-COUNT) */}
+            <span className="jp-WorkspaceManager-count">({card.total})</span>
             {section.hidden ? (
               <span className="jp-WorkspaceManager-hiddenWord">
                 {this._translation.__('hidden')}
@@ -1046,7 +1051,7 @@ export class WorkspacePanel
             ) : (
               <span className="jp-WorkspaceManager-age">{when.label}</span>
             )}
-            {/* every button on every card; one that does not apply is disabled (DQ-12) */}
+            {/* the eye stays on every card; one that does not apply is disabled (DQ-12) */}
             <span className="jp-WorkspaceManager-cardActions">
               {iconButton(
                 section.hidden ? eyeIcon : eyeOffIcon,
@@ -1056,37 +1061,17 @@ export class WorkspacePanel
                 undefined,
                 section.hidden
               )}
-              {iconButton(
-                ellipsesIcon,
-                'Workspace menu',
-                e => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  this._openMenu(section, rect.left, rect.bottom);
-                },
-                section.hidden
-              )}
             </span>
           </div>
-          {/* the purpose and the counts show while the card is open, its selection (DQ-17) */}
-          {open && (
+          {/* the purpose and the filter's shown-of-total line show while the card is open, its selection (DQ-17); with neither the line is absent, not empty */}
+          {open && (section.purpose || filtering) && (
             <div className="jp-WorkspaceManager-headerLine">
               <span className="jp-WorkspaceManager-purpose">
                 {section.purpose}
               </span>
-              {filtering ? (
+              {filtering && (
                 <span className="jp-WorkspaceManager-counts">
                   ({card.shown} {this._translation.__('of')} {card.total})
-                </span>
-              ) : (
-                <span className="jp-WorkspaceManager-counts">
-                  {/* every open tab: the documents and the terminal tabs (DQ-24) */}
-                  {count(
-                    tabIcon,
-                    'Tabs',
-                    section.tabs.length + section.terminals.length
-                  )}
-                  {count(terminalGlyph, 'Terminals', section.terminals.length)}
-                  {count(kernelIcon, 'Kernels', section.kernels.length)}
                 </span>
               )}
             </div>
@@ -1205,7 +1190,7 @@ export class WorkspacePanel
     now: number
   ): React.ReactElement {
     const live = section.current ? this._live.get(tab.key) : undefined;
-    const icon = tab.path
+    const fileIconOf = tab.path
       ? (this._app.docRegistry.getFileTypesForPath(tab.path)[0]?.icon ??
         fileIcon)
       : live?.title.icon instanceof LabIcon
@@ -1217,6 +1202,15 @@ export class WorkspacePanel
       ? section.kernels.filter(k => k.path === tab.path)
       : [];
     const kernel = kernels[0];
+    // a document with a running kernel shows the kernel glyph beside its own icon (ACC-LISTS-277-KERNEL-GLYPH)
+    const icon = kernel ? (
+      <span className="jp-WorkspaceManager-rowIcon jp-WorkspaceManager-rowIcons">
+        <fileIconOf.react tag="span" />
+        <kernelIcon.react tag="span" />
+      </span>
+    ) : (
+      fileIconOf
+    );
     const when =
       kernel && kernel.lastActivity
         ? age(kernel.lastActivity, now, this._translation)
@@ -1271,25 +1265,31 @@ export class WorkspacePanel
     const trans = this._translation;
     const tab = terminalTabName(t);
     const holders = (inCard ? [section!.id, ...t.alsoIn] : t.alsoIn).join(', ');
-    // the value stays out of the format string: Gettext reduces a %% in it;
-    // a file name can hold a newline, and a tooltip field takes one line
-    const line = (label: string, value?: string | null) =>
-      value && `${label}: ${value.replace(/[\r\n]+/g, ' ')}`;
+    const numbered = /^\d+$/.test(t.name);
     return row({
       key,
       ...this._selection(listed ? 'terminals' : keyOf(section!), key),
       current: live === this._app.shell.currentWidget,
       icon: terminalGlyph,
-      label: terminalLabel(t.name),
+      // a TERMINALS row numbers a numbered terminal in a box badge; a named terminal keeps its
+      // name, and a card row drops the label of a numbered terminal (ACC-TERM-285-NUMBER-BADGE, ACC-TERM-275-CARD-LABEL)
+      label: listed
+        ? numbered
+          ? terminalBadge(t.name)
+          : terminalLabel(t.name)
+        : numbered
+          ? ''
+          : terminalLabel(t.name),
       code: listed,
       process: tab ?? t.process,
       path: t.cwd,
       title: lines(
         `terminal ${t.name}`,
-        line(trans.__('Tab'), tab),
-        line(trans.__('Process'), t.process),
-        line(trans.__('Command'), t.command),
-        line(trans.__('Path'), t.cwd),
+        field(trans.__('Tab'), tab),
+        field(trans.__('Process'), t.process),
+        field(trans.__('Command'), t.command),
+        field(trans.__('Path'), t.cwd),
+        field(trans.__('Memory'), formatMemory(t.memory)),
         t.lastActivity
           ? trans.__(
               'Last activity: %1 (%2)',
@@ -1297,7 +1297,7 @@ export class WorkspacePanel
               new Date(t.lastActivity).toLocaleString()
             )
           : trans.__('Last activity: %1', when.label),
-        line(trans.__('Workspaces'), holders)
+        field(trans.__('Workspaces'), holders)
       ),
       when,
       // this window's row or a TERMINALS row activates the tab of its terminal;
@@ -1353,6 +1353,8 @@ export class WorkspacePanel
       // the file name of its notebook or console, the id with no session
       label: k.detail || k.id,
       code: !k.detail,
+      // the memory stands in the line, selected or not (ACC-KERNEL-281-ROW-MEMORY)
+      memory: formatMemory(figures?.memory),
       state: { word: k.state ?? 'unknown', dot: k.dotClass },
       when: age(k.lastActivity, now, this._translation),
       // the path on a line of its own: the kernel type and the folder give way, the file name last (KERN-02)
@@ -1360,10 +1362,7 @@ export class WorkspacePanel
         [
           [k.label, listed ? TYPE : SHRINK],
           ...(listed
-            ? ([
-                [formatMemory(figures?.memory), ''],
-                [formatCpu(figures?.cpu), '']
-              ] as [string, string][])
+            ? ([[formatCpu(figures?.cpu), '']] as [string, string][])
             : [])
         ],
         [
@@ -1371,7 +1370,10 @@ export class WorkspacePanel
           [k.path && k.detail, CODE]
         ]
       ],
-      title: k.title,
+      title: lines(
+        k.title,
+        field(this._translation.__('Memory'), formatMemory(figures?.memory))
+      ),
       open: () => {
         const session = this._data?.sessions.find(s => s.kernel?.id === k.id);
         if (
@@ -1730,32 +1732,69 @@ export class WorkspacePanel
     }
   }
 
+  /** Clear a workspace: stop every terminal it lists and every kernel of its documents, and close its tabs, or empty another workspace's saved layout; a tab JupyterLab's unsaved-document prompt keeps open keeps its process (ACC-ACCORD-284-CLEAR-WORKSPACE). */
   private async _closeAll(section: ISection): Promise<void> {
     const id = section.id;
     await this._act(async () => {
       if (
         !section.current &&
-        (await this._refused(id, 'Close all tabs', true))
+        (await this._refused(id, 'Clear workspace', true))
       ) {
         return;
       }
-      const n = section.terminals.length;
-      if (
-        n > 0 &&
-        !(await confirm(
-          `Close all tabs of ${id}?`,
-          `The workspace holds ${n} ${n === 1 ? 'terminal' : 'terminals'}. ` +
-            'They keep running without a tab, and the culler may then shut them down after its idle time.',
-          'Close all tabs',
-          // closing tabs destroys nothing: the terminals keep running
-          false
-        ))
-      ) {
-        return;
+      const items = [
+        ...section.terminals.map(t => `terminal ${t.name}`),
+        ...section.kernels.map(k => `kernel ${k.label}`)
+      ];
+      if (items.length) {
+        const list =
+          items.length === 1
+            ? items[0]
+            : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+        if (
+          !(await confirm(
+            `Clear workspace ${id}?`,
+            `The workspace holds ${list}. Clearing it stops ${items.length === 1 ? 'it' : 'them'} and closes every tab.`,
+            'Clear workspace'
+          ))
+        ) {
+          return;
+        }
       }
+      const stop = (terminals: ITerminalRow[], kernels: IKernelRow[]) =>
+        Promise.all(
+          [
+            ...terminals.map(t =>
+              this._app.serviceManager.terminals.shutdown(t.name)
+            ),
+            ...kernels.map(k => this._app.serviceManager.kernels.shutdown(k.id))
+          ].map(shutdown => shutdown.catch(() => undefined))
+        );
       if (section.current) {
-        await this._app.commands.execute('application:close-all');
+        this._liveTabs();
+        // the manager owns the documents: every other tab closes as close-all closes it
+        for (const widget of this._live.values()) {
+          if (!this._docManager.contextForWidget(widget)) {
+            widget.close();
+          }
+        }
+        // the prompt answers before this returns: a Discarded document is disposed
+        // here, a Cancelled one stays live, so the filter below keeps its kernel
+        await this._docManager.closeAll();
+        this._liveTabs();
+        // a process a tab's own close ended answers 404, which the catch covers
+        await stop(
+          section.terminals.filter(t => !this._live.has(`terminal:${t.name}`)),
+          section.kernels.filter(
+            k =>
+              !this._live.has(`notebook:${k.path}`) &&
+              !this._live.has(`console:${k.path}`)
+          )
+        );
       } else {
+        // another workspace holds no tab here: its processes end before its layout empties
+        // (a tab closed after its kernel shutdown ends it again, and that 404 would show)
+        await stop(section.terminals, section.kernels);
         const store = workspaces(this._settings);
         const ws = await store.fetch(id);
         // jupyterlab_server answers a deleted workspace with an empty one; saving it would recreate it
@@ -2064,6 +2103,7 @@ export class WorkspacePanel
   }
 
   private _app: JupyterFrontEnd;
+  private _docManager: IDocumentManager;
   private _current: string;
   private _window: string;
   private _managers: IRunningSessionManagers | null;
@@ -2243,12 +2283,44 @@ function caret(open: boolean, toggle: () => void): React.ReactElement {
   );
 }
 
-function count(icon: LabIcon, label: string, n: number): React.ReactElement {
+/**
+ * A tooltip field of `label` and `value`; a file name can hold a newline, and a
+ * tooltip field takes one line. The value stays out of the format string:
+ * Gettext reduces a %% in it.
+ */
+function field(label: string, value?: string | null): string | undefined {
+  return value ? `${label}: ${value.replace(/[\r\n]+/g, ' ')}` : undefined;
+}
+
+/** A TERMINALS row's label for a numbered terminal: its number in a small box (ACC-TERM-285-NUMBER-BADGE). */
+function terminalBadge(name: string): React.ReactElement {
   return (
-    <span className="jp-WorkspaceManager-count" title={label} key={label}>
-      <icon.react tag="span" />
-      {n}
-    </span>
+    <svg
+      className="jp-WorkspaceManager-terminalBadge"
+      viewBox="0 0 20 15"
+      role="img"
+      aria-label={name}
+    >
+      <rect
+        x="1"
+        y="1"
+        width="18"
+        height="13"
+        rx="3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <text
+        x="10"
+        y="11"
+        textAnchor="middle"
+        fontSize="9.5"
+        fill="currentColor"
+      >
+        {name}
+      </text>
+    </svg>
   );
 }
 
@@ -2295,6 +2367,8 @@ function row(props: {
   process?: string | null;
   /** the working directory of the foreground process: it stands after the process, in the free width (DQ-30) */
   path?: string | null;
+  /** a kernel's memory: it stands in the line, selected or not (ACC-KERNEL-281-ROW-MEMORY) */
+  memory?: string;
   /** a kernel's state: its word stands in the line, the title and the dot's aria-label (DQ-13) */
   state?: { word: string; dot: string };
   /** the time since the last activity, and its recent or stale emphasis (DQ-09) */
@@ -2380,6 +2454,9 @@ function row(props: {
             <bdi>{props.path}</bdi>
           </span>
         </span>
+      )}
+      {props.memory && (
+        <span className="jp-WorkspaceManager-rowMemory">{props.memory}</span>
       )}
       {state && (
         <span className="jp-WorkspaceManager-state" title={state.word}>

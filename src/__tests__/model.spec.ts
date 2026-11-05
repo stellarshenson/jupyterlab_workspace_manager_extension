@@ -156,6 +156,7 @@ describe('model', () => {
         process: 'claude',
         cwd: '/srv',
         command: 'claude --resume',
+        memory: null,
         lastActivity: 't1',
         title: undefined,
         alsoIn: []

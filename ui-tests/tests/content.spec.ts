@@ -122,16 +122,19 @@ test.describe('terminals, kernels and sessions of the server', () => {
       // no group labels: one list of rows
       await expect(c.locator('.jp-WorkspaceManager-groupLabel')).toHaveCount(0);
       await expect(c.locator('.jp-WorkspaceManager-group')).toHaveCount(0);
-      await expect(c.locator('.jp-WorkspaceManager-rowLabel')).toHaveText([
-        'grouped.ipynb',
-        'a.md',
-        'b.txt',
-        ...terminals.map(rowLabel)
+      // a card's numbered terminal row carries no tN (ACC-TERM-275-CARD-LABEL): the row key names it
+      expect(
+        await c
+          .locator('.jp-WorkspaceManager-row')
+          .evaluateAll(nodes => nodes.map(n => n.getAttribute('data-row-key')))
+      ).toEqual([
+        `notebook:${notebook}`,
+        `editor:${tmpPath}/a.md`,
+        `editor:${tmpPath}/b.txt`,
+        ...terminals.map(t => `terminal:${t}`)
       ]);
-      // the counts stay in the card header: Tabs counts documents and terminals (DQ-24)
-      await expect(countOf(c, 'Tabs')).toHaveText('8');
-      await expect(countOf(c, 'Terminals')).toHaveText('5');
-      await expect(countOf(c, 'Kernels')).toHaveText('1');
+      // the header counts the card's rows: its documents and its terminals (ACC-ACCORD-276-NAME-COUNT)
+      await expect(countOf(c)).toHaveText('(8)');
       // the notebook's running kernel shows as its state dot and word; the word is also the
       // state span's title; a session made by REST with no client keeps the server's `starting` state
       const notebookRow = rowOf(c, 'grouped.ipynb');
@@ -351,7 +354,7 @@ test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both
     await enterWorkspace(page, current);
     for (const id of [a, b]) {
       await openCard(page, id);
-      await expect(countOf(card(page, id), 'Terminals')).toHaveText('1');
+      await expect(countOf(card(page, id))).toHaveText('(1)');
       const row = rowOf(card(page, id), rowLabel(terminal));
       await expect(row).toBeVisible();
       await expect(row).not.toContainText('also in');
@@ -738,10 +741,11 @@ test('ACC-LISTS-105-DOC-ICON: a card document row shows the file-type icon of th
     await openDocument(page, notebook);
     await openDocument(page, markdown);
     await cardHeader(page, current).click();
+    // a document with a running kernel carries the kernel glyph beside its own: read the first (ACC-LISTS-277-KERNEL-GLYPH)
     const icon = (label: string) =>
-      rowOf(card(page, current), label).locator(
-        '.jp-WorkspaceManager-rowIcon svg'
-      );
+      rowOf(card(page, current), label)
+        .locator('.jp-WorkspaceManager-rowIcon svg')
+        .first();
     await expect(icon('iconic.ipynb')).toHaveAttribute(
       'data-icon',
       'ui-components:notebook'
@@ -821,7 +825,7 @@ test('DEF-PANEL-69-TABS-SAMEFILE: an editor and its Markdown preview of one file
     const rows = c.locator('.jp-WorkspaceManager-row');
     await expect(rows).toHaveCount(2);
     await expect(c.locator('.jp-WorkspaceManager-groupLabel')).toHaveCount(0);
-    await expect(countOf(c, 'Tabs')).toHaveText('2');
+    await expect(countOf(c)).toHaveText('(2)');
 
     const ids = await openIds(page);
     expect(new Set(ids).size).toBe(2);
@@ -834,7 +838,7 @@ test('DEF-PANEL-69-TABS-SAMEFILE: an editor and its Markdown preview of one file
     await expect.poll(() => openIds(page), UNDER_LOAD).toEqual([ids[0]]);
     await expect(dialog(page)).toHaveCount(0);
     await expect(rows).toHaveCount(1);
-    await expect(countOf(c, 'Tabs')).toHaveText('1');
+    await expect(countOf(c)).toHaveText('(1)');
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -862,7 +866,7 @@ test('DEF-PANEL-10-SHARED-VIEW, DEF-PANEL-69-TABS-SAMEFILE: two New View tabs of
     const c = card(page, current);
     const rows = rowOf(c, 'shared.txt');
     await expect(rows).toHaveCount(2);
-    await expect(countOf(c, 'Tabs')).toHaveText('2');
+    await expect(countOf(c)).toHaveText('(2)');
 
     const ids = await openIds(page);
     expect(new Set(ids).size).toBe(2);
@@ -883,7 +887,7 @@ test('DEF-PANEL-10-SHARED-VIEW, DEF-PANEL-69-TABS-SAMEFILE: two New View tabs of
     await expect.poll(() => openIds(page), UNDER_LOAD).toEqual([ids[0]]);
     await expect(dialog(page)).toHaveCount(0);
     await expect(rows).toHaveCount(1);
-    await expect(countOf(c, 'Tabs')).toHaveText('1');
+    await expect(countOf(c)).toHaveText('(1)');
 
     // the last view asks
     await fromRowMenu(rows.first(), 'Close tab');

@@ -404,16 +404,16 @@ test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces 
       await commands.execute('fileeditor:markdown-preview');
     }, file);
     await cardHeader(page, current).click();
-    const count = countOf(card(page, current), 'Tabs');
+    const count = countOf(card(page, current));
 
     // the Launcher counts in the card alone
     await expect.poll(savedKeys, UNDER_LOAD).toEqual([editor, preview]);
-    await expect(count).toHaveText('3');
+    await expect(count).toHaveText('(3)');
     expect(await inCli()).toBe(2);
 
     // an editor and its preview: 2 in both
     await closeLauncher(page);
-    await expect(count).toHaveText('2');
+    await expect(count).toHaveText('(2)');
     expect(await inCli()).toBe(2);
     const listed = await cli(['tabs', 'list', current, '--json']);
     expect(
@@ -439,7 +439,7 @@ test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces 
         return [keys.length, new Set(keys).size];
       }, UNDER_LOAD)
       .toEqual([3, 2]);
-    await expect(count).toHaveText('3');
+    await expect(count).toHaveText('(3)');
     expect(await inCli()).toBe(2);
   } finally {
     await deleteWorkspaces(page, [current]);

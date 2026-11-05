@@ -111,9 +111,10 @@ export const headerButton = (page: Page, label: string): Locator =>
     `${PANEL} .jp-WorkspaceManager-header button[aria-label="${label}"]`
   );
 
-/** The ... button of a workspace card. */
-export const menuButton = (page: Page, id: string): Locator =>
-  card(page, id).locator('button[aria-label="Workspace menu"]');
+/** Open the workspace menu: a right-click on the card header, which carries no ... button (ACC-ACCORD-283-NO-DOTS). */
+export async function openCardMenu(page: Page, id: string): Promise<void> {
+  await cardHeader(page, id).click({ button: 'right' });
+}
 
 /** An item of the open workspace menu or of its Colour submenu. */
 export const menuItem = (page: Page, label: string): Locator =>
@@ -121,19 +122,19 @@ export const menuItem = (page: Page, label: string): Locator =>
     .locator('.jp-WorkspaceManager-menu .lm-Menu-item')
     .filter({ hasText: new RegExp(`^${label}$`) });
 
-/** Click a workspace menu item: the ... button first, then the item. */
+/** Click a workspace menu item: the header's menu first, then the item. */
 export async function fromMenu(
   page: Page,
   id: string,
   label: string
 ): Promise<void> {
-  await menuButton(page, id).click();
+  await openCardMenu(page, id);
   await menuItem(page, label).click();
 }
 
 /** This window shows workspace `id`: the Open workspace item of its ... menu is disabled. */
 export async function expectCurrent(page: Page, id: string): Promise<void> {
-  await menuButton(page, id).click();
+  await openCardMenu(page, id);
   await expect(menuItem(page, 'Open workspace')).toHaveClass(/lm-mod-disabled/);
   await page.keyboard.press('Escape');
   await expect(page.locator('.jp-WorkspaceManager-menu')).toHaveCount(0);
@@ -482,19 +483,23 @@ export async function openSection(page: Page, name: string): Promise<void> {
   }
 }
 
-/** The label of a terminal's row (ACC-TERM-257-SHORT-LABEL): t<n> for a name of digits, any other name as it is. */
+/** The label of a terminal's TERMINALS row (ACC-TERM-275-CARD-LABEL): t<n> for a name of digits, any other name as it is. */
 export const rowLabel = (name: string): string =>
   /^\d+$/.test(name) ? `t${name}` : name;
 
-/** The rows of a card whose label or detail reads `text` exactly, such as `t3`. */
+/** The rows of a card whose label reads `text` exactly, or a terminal row named by its key; a card's numbered terminal row carries no tN (ACC-TERM-275-CARD-LABEL). */
 export const rowOf = (c: Locator, text: string): Locator =>
-  c
-    .locator('.jp-WorkspaceManager-row')
-    .filter({ has: c.page().getByText(text, { exact: true }) });
+  /^t\d+$/.test(text)
+    ? c.locator(
+        `.jp-WorkspaceManager-row[data-row-key="terminal:${text.slice(1)}"]`
+      )
+    : c
+        .locator('.jp-WorkspaceManager-row')
+        .filter({ has: c.page().getByText(text, { exact: true }) });
 
-/** The count of a card header titled `title`: Tabs, Terminals or Kernels. */
-export const countOf = (c: Locator, title: string): Locator =>
-  c.locator(`.jp-WorkspaceManager-count[title="${title}"]`);
+/** The row count of a card header: the tabs plus the terminals (ACC-ACCORD-276-NAME-COUNT). */
+export const countOf = (c: Locator): Locator =>
+  c.locator('.jp-WorkspaceManager-count');
 
 export const dialog = (page: Page): Locator => page.locator('.jp-Dialog');
 

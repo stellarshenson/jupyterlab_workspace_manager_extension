@@ -301,7 +301,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
         }
       };
       await check();
-      // the first coloured card's rows sit on its 12% tint: a row name inverse layout colour 0, its detail inverse layout colour 1
+      // the first coloured card's rows sit on its 9.6% tint: a row name inverse layout colour 0, its detail inverse layout colour 1
       await openCard(page, ids.coloured[0]);
       const body = card(page, ids.coloured[0]);
       const tab = body.locator('.jp-WorkspaceManager-row').first();
@@ -398,7 +398,7 @@ test('ACC-PANEL-202-TEXT-COLOURS: in Galaxa Steel dark and JupyterLab Light the 
       expect(ink, `${theme} path`).toEqual(
         await rgba(page, 'var(--jp-inverse-layout-color1)')
       );
-      // the row at rest is transparent over the card, which paints the hue at 12 %
+      // the row at rest is transparent over the card, which paints the hue at 9.6 %
       const surface = await computed(card(page, lemon), 'backgroundColor');
       expect(surface[3], `${theme} surface`).toBe(255);
       expect(
@@ -443,7 +443,7 @@ test('ACC-PANEL-274-TIME-DIM: in JupyterLab Light, JupyterLab Dark and Galaxa Da
         '.jp-WorkspaceManager-headerLine > .jp-WorkspaceManager-age'
       );
       await expect(headerAge).toHaveCount(1);
-      // the 30 % header tint
+      // the 24 % header tint
       expect(await colourOf(headerAge), `${theme} header`).toEqual(inverse2);
       const headerSurface = await colourOf(header, 'backgroundColor');
       expect(headerSurface[3], `${theme} header surface`).toBe(255);
@@ -455,7 +455,7 @@ test('ACC-PANEL-274-TIME-DIM: in JupyterLab Light, JupyterLab Dark and Galaxa Da
         `${theme} header`
       ).toBeGreaterThanOrEqual(4.5);
 
-      // the 12 % body tint, at rest
+      // the 9.6 % body tint, at rest
       await page.mouse.move(0, 0);
       const body = cardEl
         .locator('.jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row')
@@ -471,7 +471,7 @@ test('ACC-PANEL-274-TIME-DIM: in JupyterLab Light, JupyterLab Dark and Galaxa Da
         `${theme} body`
       ).toBeGreaterThanOrEqual(4.5);
 
-      // the hovered surface: the hue at 12 % over layout colour 2
+      // the hovered surface: the hue at 9.6 % over layout colour 2
       await body.hover();
       expect(await colourOf(bodyAge), `${theme} hovered`).toEqual(inverse2);
       const hoverSurface = await colourOf(body, 'backgroundColor');
@@ -527,7 +527,7 @@ test('ACC-PANEL-274-TIME-DIM: in JupyterLab Light, JupyterLab Dark and Galaxa Da
       await openCard(page, ids.coloured[0]);
     }
 
-    // this window's card is coloured too: its current row at rest stands on the 30 % hue tint
+    // this window's card is coloured too: its current row at rest stands on the 24 % hue tint
     await openSection(page, 'workspaces');
     await openCard(page, ids.current);
     const currentRow = rowOf(card(page, ids.current), rowLabel(terminal));
@@ -824,7 +824,7 @@ test('ACC-PANEL-181-PURPOSE-WRAP: a purpose wraps onto as many lines as it needs
   }
 });
 
-test('ACC-PANEL-168-COUNT-BRACKETS: the WORKSPACES count reads (4); the counts beside the header icons stay bare', async ({
+test('ACC-PANEL-168-COUNT-BRACKETS, ACC-ACCORD-276-NAME-COUNT: the WORKSPACES count reads (4); a card name carries its row count in brackets and takes inverse layout colour 1', async ({
   page
 }) => {
   const current = fresh('brackets');
@@ -854,9 +854,10 @@ test('ACC-PANEL-168-COUNT-BRACKETS: the WORKSPACES count reads (4); the counts b
       new RegExp(`^${glyph}\\s*WORKSPACES\\s*\\(4\\)$`)
     );
     await openCard(page, others[0]);
+    // the terminal row and the document row
     await expect(
       cardHeader(page, others[0]).locator('.jp-WorkspaceManager-count')
-    ).toHaveText(['2', '1', '0']);
+    ).toHaveText('(2)');
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, ...others]);

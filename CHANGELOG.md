@@ -2,6 +2,25 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.36] - 2026-11-05
+
+### Added
+
+- `workspace-page:open` shows a locally served page in a main-area tab under a sandbox policy, with a title, an optional icon URL and the standard page icon by default
+- A Galata test proving a notification action opens the page with its title and icon
+
+### Changed
+
+- The workspace card header reads `name (N)` with no count glyphs, and a tab row shows the kernel glyph beside its file icon
+- The workspace washes are 24 % and 9.6 % of the workspace hue
+- Terminal and kernel tooltips carry a Memory line, and every KERNELS row shows its memory
+- The card menu opens on right-click; Clear workspace replaces Close all tabs and closes the document manager's tabs before stopping its terminals and kernels
+- The agent skill documents the workspace CLI and the local web app recipe
+
+### Fixed
+
+- Clear workspace stops a discarded document's kernel and keeps a cancelled one
+
 ## [0.8.35] - 2026-11-04
 
 ### Added

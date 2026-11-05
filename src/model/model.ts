@@ -25,6 +25,8 @@ export interface ITerminal {
   cwd?: string | null;
   /** the foreground process's command line; null or absent when it cannot be read */
   command?: string | null;
+  /** the foreground process's resident bytes; null or absent when it cannot be read */
+  memory?: number | null;
 }
 
 /**
@@ -49,6 +51,8 @@ export interface ITerminalRow {
   process: string | null;
   cwd: string | null;
   command: string | null;
+  /** the foreground process's resident bytes; null when it cannot be read */
+  memory: number | null;
   lastActivity?: string;
   /** the tab title, when this window shows the terminal */
   title?: string;
@@ -246,6 +250,7 @@ export function buildModel(input: IModelInput): IModel {
     process: t.process ?? null,
     cwd: t.cwd ?? null,
     command: t.command ?? null,
+    memory: t.memory ?? null,
     lastActivity: t.last_activity,
     title: titles.get(t.name),
     alsoIn: holders.filter(h => h !== id)
