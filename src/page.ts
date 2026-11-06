@@ -1,10 +1,12 @@
 import {
+  ILayoutRestorer,
   JupyterFrontEnd,
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
-import { MainAreaWidget } from '@jupyterlab/apputils';
+import { MainAreaWidget, WidgetTracker } from '@jupyterlab/apputils';
 import { ITranslator, nullTranslator } from '@jupyterlab/translation';
 import { LabIcon } from '@jupyterlab/ui-components';
+import type { ReadonlyPartialJSONObject } from '@lumino/coreutils';
 import { Widget } from '@lumino/widgets';
 
 import { pageIcon } from './icons';
@@ -43,6 +45,9 @@ const PROXY_SANDBOX =
 
 /** The page tabs this command opened that are still open, with the arguments each shows. */
 const pages = new Map<MainAreaWidget<Widget>, IPageArgs>();
+
+/** The class of a page tab; the panel keys it `workspace-page:<content id>`, as the layout restorer saves it. */
+export const PAGE_CLASS = 'jp-WorkspaceManager-page';
 
 /** The proxied port of a URL on the lab's own origin under /proxy/<port>/ or /proxy/absolute/<port>/. */
 function proxyPort(url: URL): string | undefined {
@@ -126,6 +131,7 @@ function createPage(id?: string): MainAreaWidget<Widget> {
     content.id = id;
   }
   const widget = new MainAreaWidget({ content });
+  widget.addClass(PAGE_CLASS);
   frame.addEventListener('load', () => {
     // readable only while the page keeps the lab origin
     const title = frame.contentDocument?.title;
@@ -154,11 +160,13 @@ function createPage(id?: string): MainAreaWidget<Widget> {
  * becomes current. A URL on the lab's origin is fetched past the browser cache
  * before the frame loads it, so the frame shows the document the server serves
  * now. Throws, naming the argument, before anything opens when an argument has
- * the wrong type.
+ * the wrong type. `tracker` saves the tab in the workspace, once per tab: a
+ * reuse saves its entry again with the new arguments.
  */
 export function openPage(
   app: JupyterFrontEnd,
-  args: IPageArgs
+  args: IPageArgs,
+  tracker: WidgetTracker<MainAreaWidget<Widget>>
 ): MainAreaWidget<Widget> | undefined {
   if (
     args.newBrowserTab !== undefined &&
@@ -215,8 +223,11 @@ export function openPage(
   } else {
     frame.src = args.url;
   }
-  if (!open) {
+  if (open) {
+    void tracker.save(widget);
+  } else {
     app.shell.add(widget, 'main');
+    void tracker.add(widget);
   }
   app.shell.activateById(widget.id);
   return widget;
@@ -228,11 +239,18 @@ export const pagePlugin: JupyterFrontEndPlugin<void> = {
   description:
     'Opens a locally served page in a main-area tab, sandboxed unless a policy says otherwise',
   autoStart: true,
-  optional: [ITranslator],
-  activate: (app: JupyterFrontEnd, translator: ITranslator | null) => {
+  optional: [ITranslator, ILayoutRestorer],
+  activate: (
+    app: JupyterFrontEnd,
+    translator: ITranslator | null,
+    restorer?: ILayoutRestorer | null
+  ) => {
     const trans = (translator ?? nullTranslator).load(
       '@stellarshenson/jupyterlab-workspace-manager-extension'
     );
+    const tracker = new WidgetTracker<MainAreaWidget<Widget>>({
+      namespace: 'workspace-page'
+    });
     app.commands.addCommand('workspace-page:open', {
       label: trans.__('Open page'),
       icon: pageIcon,
@@ -258,7 +276,22 @@ export const pagePlugin: JupyterFrontEndPlugin<void> = {
           required: ['url']
         }
       },
-      execute: args => openPage(app, args as unknown as IPageArgs)
+      execute: args => openPage(app, args as unknown as IPageArgs, tracker)
+    });
+    // a page tab reopens with the arguments it last showed, never in a new browser tab
+    void restorer?.restore(tracker, {
+      command: 'workspace-page:open',
+      args: widget => {
+        const { url, title, icon, policy } = pages.get(widget)!;
+        return {
+          url,
+          title,
+          id: widget.content.id,
+          icon,
+          policy
+        } as unknown as ReadonlyPartialJSONObject;
+      },
+      name: widget => widget.content.id
     });
   }
 };

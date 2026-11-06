@@ -519,12 +519,12 @@ test('ACC-LISTS-41-EMPTY: the open card of a workspace without tabs shows one em
     await expect(
       card(page, empty).locator('.jp-WorkspaceManager-empty')
     ).toHaveText(['No tabs, terminals or kernels']);
-    // this window's card holds the Launcher: no such line
+    // this window's card holds only the Launcher, which is no row: the same line (ACC-ACCORD-300-NO-LAUNCHER)
     await cardHeader(page, current).click();
-    await expect(card(page, current).locator(ROW)).not.toHaveCount(0);
+    await expect(card(page, current).locator(ROW)).toHaveCount(0);
     await expect(
       card(page, current).locator('.jp-WorkspaceManager-empty')
-    ).toHaveCount(0);
+    ).toHaveText(['No tabs, terminals or kernels']);
   } finally {
     await deleteWorkspaces(page, [current, empty]);
   }

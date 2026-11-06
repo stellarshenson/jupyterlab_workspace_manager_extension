@@ -2,6 +2,25 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.3] - 2026-11-06
+
+### Added
+
+- A tab opened with `workspace-page:open` saves in its workspace and reopens after a browser reload with its URL, title, icon and sandbox; a reused page tab keeps its one saved entry
+
+### Changed
+
+- Every workspace card other than this window's is dimmed: its header tint falls to 12 % and its body to 4.8 % of the workspace colour, its name and caret take a fainter ink and its count, purpose, hidden word and time a fainter one again; this window's card keeps its full tint, ink and outline
+- This window's card count and (N of M) take the design system's dimmed count ink
+- A Launcher tab is no card row and adds nothing to a card count or to the TABS column of `jupyterlab-workspace workspaces list`; `tabs list` still prints it
+- The card eye shows the workspace's state: the open eye while it is shown, the crossed eye while it is hidden; the button's name still names its action
+- A numbered terminal's card row starts its text 6 px after its icon, as every other row does, instead of 12 px
+
+### Fixed
+
+- Move to workspace moves a web page tab of `server-proxy:open`, the Help menu or `workspace-page:open`, and a Settings Editor or Log Console tab, instead of refusing it as not saved yet; a saved web tab moved into this window opens through its own command, and a tab JupyterLab never saves is refused with a message that says so
+- Another workspace's card names a saved web tab by its saved title instead of its key, so a Help tab no longer shows an empty row and a titled page no longer shows its generated id
+
 ## [1.0.2] - 2026-11-06
 
 ### Changed

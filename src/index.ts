@@ -66,6 +66,7 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
       current,
       window: id,
       managers,
+      restorer,
       trans
     });
     panel.id = 'jp-running-sessions';

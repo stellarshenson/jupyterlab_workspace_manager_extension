@@ -1,4 +1,4 @@
-import type { JupyterFrontEnd } from '@jupyterlab/application';
+import type { ILayoutRestorer, JupyterFrontEnd } from '@jupyterlab/application';
 import { showErrorMessage } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
 import type { IDocumentManager } from '@jupyterlab/docmanager';
@@ -73,6 +73,7 @@ import {
 import { newRecord } from '../model/new';
 import { givePositions, moved } from '../model/order';
 import { assignColours, type Colour, nextColour } from '../model/palette';
+import { PAGE_CLASS } from '../page';
 import {
   confirm,
   cleanUpDialog,
@@ -105,6 +106,13 @@ const EMPTY: ILoaded = {
 /** Where this browser keeps the panel sections the user closed. */
 const CLOSED_SECTIONS =
   '@stellarshenson/jupyterlab-workspace-manager-extension:closed-sections';
+
+/** The command that reopens a saved web page tab, by the namespace of its saved key; a move into this window runs it with the saved data. */
+const WEB_OPEN = new Map([
+  ['server-proxy', 'server-proxy:open'],
+  ['help-doc', 'help:open'],
+  ['workspace-page', 'workspace-page:open']
+]);
 
 /** The four section keys, in render order. */
 const SECTION_KEYS = ['workspaces', 'kernels', 'terminals', 'servers'] as const;
@@ -174,6 +182,8 @@ export namespace WorkspacePanel {
     /** the id of this browser window for presence */
     window: string;
     managers?: IRunningSessionManagers | null;
+    /** the layout restorer: a tab it tracks takes the name it saves the tab under */
+    restorer?: ILayoutRestorer | null;
     /** the translation bundle of this extension */
     trans: TranslationBundle;
   }
@@ -200,6 +210,7 @@ export class WorkspacePanel
     this._current = options.current;
     this._window = options.window;
     this._managers = options.managers ?? null;
+    this._restorer = options.restorer ?? null;
     this._translation = options.trans;
     this.addClass('jp-WorkspaceManager');
     this.content.addClass('jp-WorkspaceManager-content');
@@ -604,6 +615,11 @@ export class WorkspacePanel
   private _liveTabs(): ITab[] {
     this._live.clear();
     const tabs: ITab[] = [];
+    // shortcut: reads the layout restorer's private name map, as JupyterLab has no public lookup of the name a tab saves under; replace it when JupyterLab adds one
+    const names = new Map<Widget, string>();
+    for (const [name, tab] of (this._restorer as any)?._widgets ?? []) {
+      names.set(tab, name);
+    }
     for (const area of ['main', 'down']) {
       for (const widget of this._app.shell.widgets(area)) {
         const w = widget as any;
@@ -613,15 +629,26 @@ export class WorkspacePanel
           ? w.content.session?.name
           : undefined;
         const console = widget.hasClass('jp-ConsolePanel');
+        // a Launcher takes a launcher key, which the model leaves out (ACC-ACCORD-300-NO-LAUNCHER)
         const key = terminal
           ? `terminal:${terminal}`
-          : widget.hasClass('jp-NotebookPanel')
-            ? `notebook:${path}`
-            : console
-              ? `console:${path}`
-              : path
-                ? `document:${path}`
-                : `widget:${widget.id}`;
+          : w.content?.hasClass?.('jp-Launcher')
+            ? `launcher:${widget.id}`
+            : widget.hasClass('jp-NotebookPanel')
+              ? `notebook:${path}`
+              : console
+                ? `console:${path}`
+                : path
+                  ? `document:${path}`
+                  : // a web page tab takes the key its tracker saves it under (DEF-PANEL-90-MOVE-WEBTAB)
+                    widget.hasClass(PAGE_CLASS)
+                    ? `workspace-page:${w.content.id}`
+                    : widget.hasClass('jp-ServerProxy')
+                      ? `server-proxy:${w.content.id}`
+                      : widget.hasClass('jp-Help')
+                        ? `help-doc:${w.content.url}`
+                        : // another tab the restorer saves takes its saved name; widget:<id> is left for a kind JupyterLab does not save
+                          (names.get(widget) ?? `widget:${widget.id}`);
         // a terminal keeps its key: the model reads the terminal's name from it
         let own = key;
         for (let n = 2; !terminal && this._live.has(own); n++) {
@@ -1067,10 +1094,10 @@ export class WorkspacePanel
             ) : (
               <span className="jp-WorkspaceManager-age">{when.label}</span>
             )}
-            {/* the eye stays on every card; one that does not apply is disabled (DQ-12) */}
+            {/* the eye stays on every card; one that does not apply is disabled (DQ-12); its glyph shows the state, its name the action, aria-pressed the hidden state (ACC-HIDDEN-301-EYE-STATE) */}
             <span className="jp-WorkspaceManager-cardActions">
               {iconButton(
-                section.hidden ? eyeIcon : eyeOffIcon,
+                section.hidden ? eyeOffIcon : eyeIcon,
                 section.hidden ? 'Show workspace again' : 'Hide workspace',
                 () => void this._store(id, { hidden: !section.hidden }),
                 section.current,
@@ -1983,7 +2010,9 @@ export class WorkspacePanel
           : undefined);
       if (!saved) {
         throw new Error(
-          `${action} is refused: workspace ${source.id} has not saved this tab yet, or has saved more than one tab of its file. Try again in a moment, or close the other tab of the file.`
+          key.startsWith('widget:')
+            ? `${action} is refused: JupyterLab does not save this kind of tab in a workspace, so it cannot be moved. Open it again in the other workspace.`
+            : `${action} is refused: workspace ${source.id} has not saved this tab yet, or has saved more than one tab of its file. Try again in a moment, or close the other tab of the file.`
         );
       }
       const entry = from.data[saved.key];
@@ -1996,19 +2025,21 @@ export class WorkspacePanel
       } else if (saved.key.startsWith('terminal:')) {
         await this._openTerminal(saved.key.slice('terminal:'.length));
       } else {
-        // a console saves no factory: it opens as the layout restorer opens it, by console:create with its saved data
-        const opened =
-          saved.path &&
-          (saved.key.startsWith('console:')
-            ? await this._app.commands.execute(
-                'console:create',
-                (entry as any).data
-              )
-            : (entry as any).data?.factory &&
-              (await this._app.commands.execute('docmanager:open', {
-                path: saved.path,
-                factory: (entry as any).data.factory
-              })));
+        const web = WEB_OPEN.get(saved.key.split(':')[0]);
+        // a console saves no factory: it opens as the layout restorer opens it, by console:create with its saved data; a web page tab by its restore command
+        const opened = web
+          ? await this._app.commands.execute(web, (entry as any).data)
+          : saved.path &&
+            (saved.key.startsWith('console:')
+              ? await this._app.commands.execute(
+                  'console:create',
+                  (entry as any).data
+                )
+              : (entry as any).data?.factory &&
+                (await this._app.commands.execute('docmanager:open', {
+                  path: saved.path,
+                  factory: (entry as any).data.factory
+                })));
         if (!opened) {
           throw new Error(`This window cannot open ${saved.key}.`);
         }
@@ -2197,6 +2228,7 @@ export class WorkspacePanel
   private _current: string;
   private _window: string;
   private _managers: IRunningSessionManagers | null;
+  private _restorer: ILayoutRestorer | null;
   private _translation: TranslationBundle;
   private _root: Root;
   private _filterButton: Widget;
@@ -2533,11 +2565,14 @@ function row(props: {
       ) : (
         icon
       )}
-      <span
-        className={`jp-WorkspaceManager-rowLabel${props.code ? ` ${CODE}` : ''}`}
-      >
-        {props.label}
-      </span>
+      {/* an empty label renders no span, which would take a second column gap after the icon (ACC-TERM-302-ICON-GAP) */}
+      {props.label !== '' && (
+        <span
+          className={`jp-WorkspaceManager-rowLabel${props.code ? ` ${CODE}` : ''}`}
+        >
+          {props.label}
+        </span>
+      )}
       {props.process && (
         <span className="jp-WorkspaceManager-rowProcess">{props.process}</span>
       )}

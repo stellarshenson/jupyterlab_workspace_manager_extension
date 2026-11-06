@@ -322,6 +322,8 @@ async function mount(
     managers?: RunningSessionManagers;
     /** the unsaved-document prompt is Cancelled: every document stays open */
     cancelClose?: boolean;
+    /** the layout restorer, with the name it saves each tracked tab under */
+    restorer?: unknown;
   } = {}
 ) {
   const fake = fakeServer(server);
@@ -352,6 +354,7 @@ async function mount(
     current: 'default',
     window: 'w1',
     managers: options.managers ?? null,
+    restorer: options.restorer as any,
     trans
   });
   panels.push(panel);
@@ -1959,6 +1962,93 @@ describe('panel', () => {
     expect(counter()).toBe('(3)');
   });
 
+  it("ACC-ACCORD-300-NO-LAUNCHER: a Launcher tab of this window is no row of its card and no count, and a launcher key of another workspace's saved layout neither", async () => {
+    const server = standard();
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'launcher:launcher',
+      'terminal:1',
+      'editor:docs/README.md'
+    ]);
+    // the Launcher as JupyterLab opens it: a main-area tab whose content is the jp-Launcher widget
+    const launcher = new Widget();
+    launcher.id = 'launcher-0';
+    launcher.title.label = 'Launcher';
+    (launcher as any).content = new Widget();
+    (launcher as any).content.addClass('jp-Launcher');
+    const { tab } = liveTab('a.txt');
+    const { panel } = await mount(server, { live: [launcher, tab] });
+    const count = (key: string) =>
+      header(panel, key).querySelector('.jp-WorkspaceManager-count')!
+        .textContent;
+    expect(count('w:default')).toBe('(1)');
+    expect(count('w:auto-6')).toBe('(2)');
+    triangle(panel, 'w:default').click();
+    triangle(panel, 'w:auto-6').click();
+    expect(rowLabels(card(panel, 'w:default'))).toEqual(['a.txt']);
+    expect(rowLabels(card(panel, 'w:auto-6'))).not.toContain('launcher');
+    // a card's numbered terminal row renders no label span (ACC-TERM-302-ICON-GAP): count the rows
+    expect(
+      card(panel, 'w:auto-6').querySelectorAll('.jp-WorkspaceManager-row')
+    ).toHaveLength(2);
+    launcher.dispose();
+    tab.dispose();
+  });
+
+  it('ACC-HIDDEN-301-EYE-STATE: the card eye shows the open eye on a shown workspace and the crossed eye on a hidden one, names the action and carries aria-pressed for hidden; a click toggles; the disabled eye of this window shows the open eye', async () => {
+    const { panel } = await mount(standard());
+    const eye = (key: string) =>
+      header(panel, key).querySelector<HTMLButtonElement>(
+        '.jp-WorkspaceManager-cardActions button'
+      )!;
+    const glyph = (key: string) =>
+      eye(key).querySelector('svg')!.getAttribute('data-icon');
+    const OPEN = '@stellarshenson/jupyterlab-workspace-manager-extension:eye';
+    const CROSSED =
+      '@stellarshenson/jupyterlab-workspace-manager-extension:eye-off';
+    const state = (key: string) => [
+      glyph(key),
+      eye(key).getAttribute('aria-label'),
+      eye(key).title,
+      eye(key).getAttribute('aria-pressed'),
+      eye(key).disabled
+    ];
+    expect(state('w:default')).toEqual([
+      OPEN,
+      'Hide workspace',
+      'Hide workspace',
+      'false',
+      true
+    ]);
+    expect(state('w:auto-6')).toEqual([
+      OPEN,
+      'Hide workspace',
+      'Hide workspace',
+      'false',
+      false
+    ]);
+    // a click hides it; shown among the others, the hidden card's eye is crossed
+    eye('w:auto-6').click();
+    await settle();
+    $(panel, 'button[aria-label="Show hidden workspaces"]')!.click();
+    expect(state('w:auto-6')).toEqual([
+      CROSSED,
+      'Show workspace again',
+      'Show workspace again',
+      'true',
+      false
+    ]);
+    // a click shows it again
+    eye('w:auto-6').click();
+    await settle();
+    expect(state('w:auto-6')).toEqual([
+      OPEN,
+      'Hide workspace',
+      'Hide workspace',
+      'false',
+      false
+    ]);
+  });
+
   it('ACC-PANEL-168-COUNT-BRACKETS, ACC-ACCORD-22-COUNTS, ACC-ACCORD-70-COUNT-TABS: a section count reads (N), a card name its row count (N), a filtered card (N of M)', async () => {
     const { panel } = await mount(standard());
     expect(sectionCount(panel, 'workspaces')).toBe('(2)');
@@ -2179,8 +2269,9 @@ describe('panel', () => {
       )
     );
     const label = (r: HTMLElement) =>
-      r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent;
-    expect(rows.map(label)).toEqual(['', 'build']);
+      r.querySelector('.jp-WorkspaceManager-rowLabel')?.textContent;
+    // the card row of terminal 7 renders no label span (ACC-TERM-302-ICON-GAP)
+    expect(rows.map(label)).toEqual([undefined, 'build']);
     // the tooltip's first line keeps the number
     expect(rows.map(r => r.title.split('\n')[0])).toEqual([
       'terminal 7',
@@ -2210,6 +2301,41 @@ describe('panel', () => {
     ).toEqual(['terminal:7']);
   });
 
+  it('ACC-TERM-302-ICON-GAP: a card row of terminal 7 renders no label span, so its process span follows the icon; a row with a label keeps its span', async () => {
+    const server = standard();
+    server.terminals = [
+      { name: '7', last_activity: iso(0), process: 'claude' },
+      { name: 'build', last_activity: iso(0), process: 'make' }
+    ];
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:7',
+      'terminal:build'
+    ]);
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const row = (key: string) =>
+      card(panel, 'w:auto-6').querySelector<HTMLElement>(
+        `.jp-WorkspaceManager-row[data-row-key="${key}"]`
+      )!;
+    // the element after the icon: the process for terminal 7, the label for build
+    const afterIcon = (r: HTMLElement) =>
+      r.querySelector('.jp-WorkspaceManager-rowIcon')!.nextElementSibling!;
+    expect(
+      row('terminal:7').querySelector('.jp-WorkspaceManager-rowLabel')
+    ).toBeNull();
+    expect(afterIcon(row('terminal:7')).className).toBe(
+      'jp-WorkspaceManager-rowProcess'
+    );
+    expect(afterIcon(row('terminal:7')).textContent).toBe('claude');
+    expect(afterIcon(row('terminal:build')).className).toBe(
+      'jp-WorkspaceManager-rowLabel'
+    );
+    expect(afterIcon(row('terminal:build')).textContent).toBe('build');
+    expect(afterIcon(row('terminal:build')).nextElementSibling!.className).toBe(
+      'jp-WorkspaceManager-rowProcess'
+    );
+  });
+
   it('ACC-TERM-285-NUMBER-BADGE: a TERMINALS row of terminal 7 draws its number in a box badge that assistive technology reads as 7, a card row draws no label', async () => {
     const server = standard();
     server.terminals = [
@@ -2227,12 +2353,12 @@ describe('panel', () => {
         '.jp-WorkspaceManager-row'
       )
     );
-    // a card row keeps no label, so no badge either
+    // a card row keeps no label span, so no badge either (ACC-TERM-302-ICON-GAP)
     expect(
       cardRows.map(
-        r => r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
+        r => r.querySelector('.jp-WorkspaceManager-rowLabel')?.textContent
       )
-    ).toEqual(['', 'build']);
+    ).toEqual([undefined, 'build']);
     expect(
       cardRows[0].querySelector('.jp-WorkspaceManager-terminalBadge')
     ).toBeNull();
@@ -4203,6 +4329,154 @@ describe('panel', () => {
         'cloned-outputs:x.ipynb:3'
       );
       expect(closes.map(close => close.mock.calls.length)).toEqual([0, 0, 1]);
+    });
+
+    /** A web page tab of this window: the class its opener gives it and the content its tracker names it by. */
+    const webTab = (
+      cls: string,
+      content: { id?: string; url?: string },
+      label: string
+    ) => {
+      const tab = new Widget();
+      tab.addClass(cls);
+      (tab as any).content = content;
+      tab.title.label = label;
+      return tab;
+    };
+    /** The saved entries of a server-proxy:open, a help:open and a workspace-page:open tab, as their trackers save them. */
+    const WEB: Record<string, { data: Record<string, unknown> }> = {
+      'server-proxy:sp-1': {
+        data: {
+          url: '/proxy/9000/',
+          title: 'Proxy page',
+          newBrowserTab: false,
+          id: 'sp-1'
+        }
+      },
+      'help-doc:https://jupyter.org/documentation': {
+        data: {
+          url: 'https://jupyter.org/documentation',
+          text: 'Jupyter Reference'
+        }
+      },
+      'workspace-page:page-1': {
+        data: { url: '/proxy/9001/a.html', title: 'Lab page', id: 'page-1' }
+      }
+    };
+    /** Open the row menu of the row keyed `key` on the card of `id`. */
+    const rowMenu = (panel: Widget, id: string, key: string) => {
+      if (!card(panel, `w:${id}`).classList.contains('jp-mod-open')) {
+        triangle(panel, `w:${id}`).click();
+      }
+      card(panel, `w:${id}`)
+        .querySelector(`.jp-WorkspaceManager-row[data-row-key="${key}"]`)!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    };
+
+    it('DEF-PANEL-90-MOVE-WEBTAB: a server-proxy, a help and a workspace-page tab of this window take the keys their trackers save them under, server-proxy:<content id>, help-doc:<content url> and workspace-page:<content id>, and each moves to another workspace with its saved entry and closes here', async () => {
+      const tabs = [
+        webTab('jp-ServerProxy', { id: 'sp-1' }, 'Proxy page'),
+        webTab(
+          'jp-Help',
+          { url: 'https://jupyter.org/documentation' },
+          'Jupyter Reference'
+        ),
+        webTab('jp-WorkspaceManager-page', { id: 'page-1' }, 'Lab page')
+      ];
+      const closes = tabs.map(t => jest.spyOn(t, 'close'));
+      const keys = Object.keys(WEB);
+      const server = three(keys);
+      Object.assign(server.workspaces[0].data, WEB);
+      const { panel } = await mount(server, { live: tabs });
+      triangle(panel, 'w:default').click();
+      expect(
+        Array.from(
+          card(panel, 'w:default').querySelectorAll<HTMLElement>(
+            '.jp-WorkspaceManager-row'
+          )
+        ).map(r => r.dataset.rowKey)
+      ).toEqual(keys);
+
+      for (const [i, key] of keys.entries()) {
+        rowMenu(panel, 'default', key);
+        moveTo(1, 'auto-7');
+        await settle();
+        expect(server.saved!['auto-7'].data[key]).toEqual(WEB[key]);
+        expect(closes[i]).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it('DEF-PANEL-90-MOVE-WEBTAB: a saved server-proxy, help or workspace-page tab of another workspace moves to this window by server-proxy:open, help:open or workspace-page:open with its saved data, then the source is saved without it', async () => {
+      const keys = Object.keys(WEB);
+      const server = three();
+      server.workspaces[1] = workspace('auto-6', 60, keys);
+      Object.assign(server.workspaces[1].data, WEB);
+      const { panel, app, log } = await mount(server);
+      const commands = [
+        'server-proxy:open',
+        'help:open',
+        'workspace-page:open'
+      ];
+      const opened = commands.map(command => {
+        const execute = jest.fn(async () => new Widget());
+        app.commands.addCommand(command, {
+          execute,
+          describedBy: { args: null }
+        });
+        return execute;
+      });
+
+      for (const [i, key] of keys.entries()) {
+        log.length = 0;
+        rowMenu(panel, 'auto-6', key);
+        moveTo(1, 'default');
+        await settle();
+        expect(opened[i]).toHaveBeenCalledWith(WEB[key].data);
+        expect(saves(log)).toEqual(['PUT /lab/api/workspaces/auto-6']);
+        expect(keysOf(server, 'auto-6')).not.toContain(key);
+      }
+    });
+
+    it('DEF-PANEL-90-MOVE-WEBTAB: a path-less tab of another kind JupyterLab saves, the Settings Editor, takes the name the layout restorer saves it under, setting-editor:setting-editor, and moves to another workspace with its saved entry and closes here', async () => {
+      const tab = webTab('jp-SettingEditor', {}, 'Settings');
+      const close = jest.spyOn(tab, 'close');
+      const key = 'setting-editor:setting-editor';
+      const server = three([key]);
+      server.workspaces[0].data[key] = { data: {} };
+      // the restorer's own map of the names it saves, as LayoutRestorer.add fills it
+      const restorer = { _widgets: new Map([[key, tab]]) };
+      const { panel } = await mount(server, { live: [tab], restorer });
+      rowMenu(panel, 'default', key);
+      moveTo(1, 'auto-7');
+      await settle();
+      expect(document.querySelector('.jp-Dialog')).toBeNull();
+      expect(server.saved!['auto-7'].data[key]).toEqual({ data: {} });
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('DEF-PANEL-90-MOVE-WEBTAB: a tab of a kind JupyterLab never saves, an iframe tab no tracker holds, is refused in plain words; nothing is saved or closed', async () => {
+      const tab = webTab('jp-UntrackedFrame', {}, 'Untracked page');
+      const close = jest.spyOn(tab, 'close');
+      const { panel, log } = await mount(three(), { live: [tab] });
+      log.length = 0;
+      triangle(panel, 'w:default').click();
+      Array.from(
+        card(panel, 'w:default').querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-row'
+        )
+      )
+        .find(r => r.textContent!.includes('Untracked page'))!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      moveTo(1, 'auto-7');
+      await waitForDialog();
+      expect(dialogText()).toContain(
+        'Move to workspace is refused: JupyterLab does not save this kind of tab in a workspace, so it cannot be moved. Open it again in the other workspace.'
+      );
+      expect(dialogText()).not.toContain('has not saved this tab yet');
+      await dismissDialog();
+      await settle();
+      expect(saves(log)).toEqual([]);
+      expect(close).not.toHaveBeenCalled();
     });
 
     it('ACC-LISTS-269-MOVE-REFUSED: a document with unsaved changes is refused and stays open', async () => {

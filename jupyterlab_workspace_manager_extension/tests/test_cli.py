@@ -486,6 +486,24 @@ def test_list_and_tabs_list_follow_the_rule_of_the_card(lab, capsys, case, keys,
     assert len(rows) == tabs
 
 
+def test_list_counts_no_launcher_and_tabs_list_prints_it(lab, capsys):
+    """ACC-ACCORD-300-NO-LAUNCHER: TABS counts a saved notebook and a running terminal tab, never a saved Launcher; tabs list still prints the Launcher."""
+    launched = workspace('launched', keys=['launcher:launcher', 'notebook:a.ipynb', 'terminal:1'])
+    launched['data']['launcher:launcher'] = {'data': {}}
+    lab.workspaces = [launched]
+    lab.terminals = [{'name': '1'}]
+
+    assert run('workspaces', 'list', '--json') == 0
+    row = json.loads(out(capsys)[0])[0]
+    assert (row['tabs'], row['terminals']) == (2, 1)
+
+    assert run('workspaces', 'list') == 0
+    assert out(capsys)[0].splitlines()[1].split('\t')[4] == '2'
+
+    assert run('tabs', 'list', 'launched', '--json') == 0
+    assert [item['key'] for item in json.loads(out(capsys)[0])] == ['launcher:launcher', 'notebook:a.ipynb', 'terminal:1']
+
+
 def test_clean_empty_keeps_a_workspace_holding_only_a_saved_key_of_an_ended_terminal(lab, capsys):
     """ACC-CLI-171 / ACC-CLI-176: the list counts an ended terminal in neither column; clean --empty still deletes nothing that holds a saved key."""
     lab.workspaces = [workspace('ended-only', keys=['terminal:9'])]
@@ -915,26 +933,30 @@ def test_tabs_list_prints_a_running_terminal_tab_with_an_empty_path_and_no_ended
 
 
 def test_list_and_tabs_list_help_and_the_skill_state_the_rule_of_the_card(monkeypatch, capsys):
-    """ACC-CLI-171, ACC-CLI-218: the help and the shipped skill say what TABS counts and how a terminal tab prints."""
+    """ACC-CLI-171, ACC-CLI-218, ACC-ACCORD-300-NO-LAUNCHER: the help and the shipped skill say what TABS counts and how a terminal tab prints."""
     monkeypatch.setenv('PYTHON_COLORS', '0')
     with pytest.raises(SystemExit):
         run('workspaces', 'list', '--help')
     list_help = ' '.join(capsys.readouterr().out.split())
     assert 'no longer runs counts in neither' in list_help
+    assert 'the terminal tabs and never a Launcher' in list_help
     saved_rule = (
-        'The CLI reads only the saved layout, so a tab JupyterLab does not restore, such as the Launcher or a second '
+        'The CLI reads only the saved layout, so a tab JupyterLab does not restore, such as a second '
         'New View of a document, counts only in the card of the window that holds it.'
     )
     assert saved_rule in list_help
     assert 'different kinds' not in list_help
     with pytest.raises(SystemExit):
         run('tabs', 'list', '--help')
-    assert 'its key terminal:N with an empty path' in ' '.join(capsys.readouterr().out.split())
+    tabs_help = ' '.join(capsys.readouterr().out.split())
+    assert 'its key terminal:N with an empty path' in tabs_help
+    assert 'plus one line per saved Launcher, which TABS does not count' in tabs_help
     with pytest.raises(SystemExit):
         run('workspaces', 'clean', '--help')
     assert 'whose saved layout holds no tab' in ' '.join(capsys.readouterr().out.split())
     skill = SKILL.read_text(encoding='utf-8')
-    assert 'documents and terminal tabs' in skill
+    assert 'documents and terminal tabs, never a Launcher' in skill
+    assert 'prints a saved Launcher too' in skill
     assert saved_rule.rstrip('.') in skill
     assert 'different kinds' not in skill
     assert '`terminal:N`' in skill

@@ -304,7 +304,8 @@ test('ACC-ACCORD-223-CLEAN-ACTION: the WORKSPACES clear-console button deletes e
     await expect(own.locator('.jp-WorkspaceManager-cleanupOutcome')).toHaveText(
       'emptied'
     );
-    await expect(own).toContainText(`Tabs: Launcher, ${notebook}`);
+    // the Launcher is no item and is not listed (ACC-ACCORD-300-NO-LAUNCHER)
+    await expect(own).toContainText(`Tabs: ${notebook}`);
     await expect(own).toContainText(`Terminals: terminal ${mine}`);
     await expect(
       own.locator('.jp-WorkspaceManager-cleanupHolds', {

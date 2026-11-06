@@ -947,7 +947,7 @@ test("ACC-ACCORD-70-COUNT-TABS: this window's card counts its live tabs, documen
   try {
     await setUpExisting(page, current);
     await openCard(page, current);
-    // the tabs the window opened with, such as the Launcher
+    // the rows the window opened with; its Launcher is none (ACC-ACCORD-300-NO-LAUNCHER)
     const base = await shown();
 
     names.push(await newTerminalTab(page), await newTerminalTab(page));
@@ -1448,7 +1448,7 @@ test('ACC-SERVER-64-PRESENCE: a window that moves to another workspace no longer
   }
 });
 
-test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, the header on the hue's 24% tint and the body on its 9.6% tint with no rule between them", async ({
+test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, this window's included, open or closed, is an edge tab 2 px from the panel edge, square at the left with a 2 px right radius, its 4 px hue strip the left border, with no rule between header and body; this window's header on the hue's 24% tint and body on its 9.6% tint, every other card dimmed to 12% and 4.8% (ACC-PANEL-298-DIM-OTHERS)", async ({
   page
 }) => {
   const current = fresh('card');
@@ -1512,16 +1512,17 @@ test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, 
         expect(await rgb(page, s.strip), what).toEqual(
           await rgb(page, `var(--wm-${hues[id]})`)
         );
-        // the header takes the hue at 24 %, the body's surface at 9.6 %
+        // this window's header takes the hue at 24 %, its body's surface at 9.6 %; another card is dimmed to 12 % and 4.8 % (ACC-PANEL-298-DIM-OTHERS)
+        const mine = id === current;
         expect(await rgb(page, s.header), what).toEqual(
-          await rgb(page, tint(hues[id], 24))
+          await rgb(page, tint(hues[id], mine ? 24 : 12))
         );
         expect(await rgb(page, s.card), what).toEqual(
-          await rgb(page, tint(hues[id], 9.6))
+          await rgb(page, tint(hues[id], mine ? 9.6 : 4.8))
         );
         // ACC-PANEL-270-NO-DIVIDER: no rule joins the header to the body
         expect([s.rule[1], s.rule[0]], what).toEqual(['none', '0px']);
-        // an open card's body paints nothing over the 9.6 % surface; a closed card has no body
+        // an open card's body paints nothing over the card's surface; a closed card has no body
         expect(s.body, what).toBe(id === b ? null : 'rgba(0, 0, 0, 0)');
       }
       // close both again: every theme starts from no open card
@@ -1534,7 +1535,7 @@ test("ACC-ACCORD-69-CARD, ACC-PANEL-242-EDGE-TAB: in Light and Dark every card, 
   }
 });
 
-test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the hue on its 4 px strip, the hue's 24% tint on its header and 9.6% tint on its body, the same for this window's card and the others, and a card with no colour keeps the plain header and a transparent strip", async ({
+test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a coloured card takes the hue on its 4 px strip; this window's card the hue's 24% tint on its header and 9.6% tint on its body, another card the dimmed 12% and 4.8% (ACC-PANEL-298-DIM-OTHERS); a card with no colour keeps the plain header and a transparent strip", async ({
   page
 }) => {
   const current = fresh('shade');
@@ -1591,19 +1592,19 @@ test("ACC-PANEL-239-HEADER-SHADE: in JupyterLab Light and JupyterLab Dark a colo
         other: await surfaces(other),
         current: await surfaces(current)
       };
-      for (const [id, s, colour] of [
-        [other, drawn.other, 'mint'],
-        [current, drawn.current, 'sky']
+      for (const [id, s, colour, header, body] of [
+        [other, drawn.other, 'mint', 12, 4.8],
+        [current, drawn.current, 'sky', 24, 9.6]
       ] as const) {
         const what = `${theme} ${id}`;
         expect(await rgb(page, s.header), what).toEqual(
-          await rgb(page, tint(colour, 24))
+          await rgb(page, tint(colour, header))
         );
         expect(await rgb(page, s.strip), what).toEqual(
           await rgb(page, `var(--wm-${colour})`)
         );
         expect(await rgb(page, s.card), what).toEqual(
-          await rgb(page, tint(colour, 9.6))
+          await rgb(page, tint(colour, body))
         );
         // no wash: the header carries the tint as its flat colour
         expect(s.image, what).toBe('none');
@@ -2185,12 +2186,18 @@ test.describe('at 4x device scale', () => {
       for (const theme of ['JupyterLab Light', 'JupyterLab Dark']) {
         await page.theme.setTheme(theme);
         await page.mouse.move(0, 0);
-        // both cards carry the same hue; the header its 24 % tint (ACC-PANEL-239-HEADER-SHADE)
+        // both cards carry the same hue; this window's header its 24 % tint, the other's the dimmed 12 % (ACC-PANEL-239-HEADER-SHADE, ACC-PANEL-298-DIM-OTHERS)
         const strip = await rgb(page, await shade(page, 'mint'));
-        const header = await rgb(
-          page,
-          'color-mix(in srgb, var(--wm-mint) 24%, var(--jp-layout-color1))'
-        );
+        const headers = {
+          [current]: await rgb(
+            page,
+            'color-mix(in srgb, var(--wm-mint) 24%, var(--jp-layout-color1))'
+          ),
+          [other]: await rgb(
+            page,
+            'color-mix(in srgb, var(--wm-mint) 12%, var(--jp-layout-color1))'
+          )
+        };
         const panel = await rgb(page, 'var(--jp-layout-color1)');
         const outline = await rgb(page, 'var(--jp-brand-color2)');
 
@@ -2284,7 +2291,7 @@ test.describe('at 4x device scale', () => {
             `${id} strip end`
           ).toBe(true);
           expect(
-            is(at(px, x0 + 4 * S, row), header),
+            is(at(px, x0 + 4 * S, row), headers[id]),
             `${id} header start`
           ).toBe(true);
           if (outlined) {
@@ -2448,14 +2455,16 @@ test.describe('at 4x device scale', () => {
               )
             };
           }, png.toString('base64'));
+          // this window's card at 24 % and 9.6 %, the other dimmed to 12 % and 4.8 % (ACC-PANEL-298-DIM-OTHERS)
+          const [top, bottom] = id === current ? [24, 9.6] : [12, 4.8];
           const [above, below] = [
             await rgb(
               page,
-              `color-mix(in srgb, var(--wm-${colour}) 24%, var(--jp-layout-color1))`
+              `color-mix(in srgb, var(--wm-${colour}) ${top}%, var(--jp-layout-color1))`
             ),
             await rgb(
               page,
-              `color-mix(in srgb, var(--wm-${colour}) 9.6%, var(--jp-layout-color1))`
+              `color-mix(in srgb, var(--wm-${colour}) ${bottom}%, var(--jp-layout-color1))`
             )
           ];
           const near = (c: number[], tint: number[]) =>

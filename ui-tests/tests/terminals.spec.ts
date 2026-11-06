@@ -150,11 +150,14 @@ const css = (l: Locator, property: string): Promise<string> =>
 const holderInk = (colour: string): string =>
   `color-mix(in srgb, var(--wm-${colour}) 45%, var(--jp-inverse-layout-color1))`;
 
-/** The name, the process and the time stand side by side on one line, in that order. */
+/** The name, the process and the time stand side by side on one line, in that order; a card's numbered terminal row has no name (ACC-TERM-302-ICON-GAP). */
 const oneLine = (row: Locator): Promise<boolean> =>
   row.evaluate(
     (r, parts) => {
-      const boxes = parts.map(s => r.querySelector(s)!.getBoundingClientRect());
+      const boxes = parts
+        .map(s => r.querySelector(s))
+        .filter((e): e is Element => e !== null)
+        .map(e => e.getBoundingClientRect());
       const middle = (b: DOMRect) => b.top + b.height / 2;
       return boxes.every(
         (b, i) =>
@@ -214,9 +217,8 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
     expect(await rgba(page, await css(process, 'color'))).toEqual(
       await rgba(page, 'var(--jp-inverse-layout-color1)')
     );
-    expect(await css(process, 'fontSize')).toBe(
-      await css(row.locator(LABEL), 'fontSize')
-    );
+    // the row text size, which a label inherits; the card row of a numbered terminal has no label (ACC-TERM-302-ICON-GAP)
+    expect(await css(process, 'fontSize')).toBe(await css(row, 'fontSize'));
 
     // selected: the process once, in the line, and no detail line
     await row.focus();
@@ -272,8 +274,8 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
     const inCard = rowOf(card(page, current), rowLabel(numbered));
     await expect(inCard).toBeVisible();
     expect((await tooltip(inCard))[0]).toBe(`terminal ${numbered}`);
-    // a card row drops the tN of a numbered terminal (ACC-TERM-275-CARD-LABEL)
-    await expect(inCard.locator(LABEL)).toHaveText('');
+    // a card row drops the tN of a numbered terminal (ACC-TERM-275-CARD-LABEL) and renders no label (ACC-TERM-302-ICON-GAP)
+    await expect(inCard.locator(LABEL)).toHaveCount(0);
     // the colour of the workspace holding the numbered terminal, from its card
     const colour = await card(page, current).evaluate(
       (n, colours) => colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
@@ -1010,7 +1012,8 @@ test('ACC-TERM-257-SHORT-LABEL, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-BAD
   try {
     const { name, row } = await terminalHere(page, current);
     expect(name).toMatch(/^\d+$/);
-    await expect(row.locator(LABEL)).toHaveText('');
+    // no label in a card (ACC-TERM-302-ICON-GAP)
+    await expect(row.locator(LABEL)).toHaveCount(0);
     expect((await tooltip(row))[0]).toBe(`terminal ${name}`);
 
     await putWorkspace(page, other, layout([`terminal:${name}`]));
@@ -1036,6 +1039,64 @@ test('ACC-TERM-257-SHORT-LABEL, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-BAD
   } finally {
     await page.request.delete(`/api/terminals/${named}`);
     await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+/** The distance from the right edge of a row's icon to the left edge of its first text. */
+const iconGap = (row: Locator): Promise<number> =>
+  row.evaluate(r => {
+    const icon = r.querySelector('.jp-WorkspaceManager-rowIcon')!;
+    const walker = document.createTreeWalker(r, NodeFilter.SHOW_TEXT);
+    let text = walker.nextNode();
+    while (text && (icon.contains(text) || !text.textContent!.trim())) {
+      text = walker.nextNode();
+    }
+    const range = document.createRange();
+    range.selectNodeContents(text!);
+    return (
+      range.getBoundingClientRect().left - icon.getBoundingClientRect().right
+    );
+  });
+
+test("ACC-TERM-302-ICON-GAP: in a card a numbered terminal row's first text starts 6 px after its icon, within 1 px, the same offset as a document row's", async ({
+  page
+}) => {
+  const current = fresh('icongap');
+  const held = `${current}-held`;
+  try {
+    await enterWorkspace(page, current);
+    const numbered = await newTerminalTab(page);
+    expect(numbered).toMatch(/^\d+$/);
+    await putWorkspace(
+      page,
+      held,
+      layout([`terminal:${numbered}`, 'editor:docs/notes.md'])
+    );
+    await refresh(page);
+    await triangle(page, held).click();
+    const term = rowOf(card(page, held), rowLabel(numbered));
+    const doc = rowOf(card(page, held), 'notes.md');
+    await expect(term.locator(PROCESS)).toHaveCount(1, UNDER_LOAD);
+    await expect(doc).toBeVisible();
+    const [termGap, docGap] = [await iconGap(term), await iconGap(doc)];
+    // HEAD rendered an empty label between them: 12 px, two column gaps
+    expect(
+      Math.abs(termGap - 6),
+      `terminal gap ${termGap}`
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(docGap - 6), `document gap ${docGap}`).toBeLessThanOrEqual(
+      1
+    );
+    expect(Math.abs(termGap - docGap)).toBeLessThanOrEqual(1);
+    const shots = process.env.WM_SHOTS_DIR;
+    if (shots) {
+      await page.mouse.move(0, 0);
+      await card(page, held)
+        .locator('.jp-WorkspaceManager-cardBody')
+        .screenshot({ path: path.join(shots, 'row-gap-card-body.png') });
+    }
+  } finally {
+    await deleteWorkspaces(page, [current, held]);
   }
 });
 

@@ -69,7 +69,8 @@ test('ACC-PANEL-165-TRIANGLE-KEYS: Tab reaches the triangle of a card, Enter ope
 });
 
 test('DEF-PANEL-7-MENU-FOCUS: closing a card or row menu, by Escape or by an action, returns the focus to what opened it', async ({
-  page
+  page,
+  tmpPath
 }) => {
   await page.goto();
   await openPanel(page);
@@ -98,7 +99,15 @@ test('DEF-PANEL-7-MENU-FOCUS: closing a card or row menu, by Escape or by an act
   await expect(page.locator('.jp-Dialog')).toHaveCount(0);
   await expect(header).toBeFocused();
 
-  // a row: the context-menu key opens its menu, Escape closes it
+  // a row: the context-menu key opens its menu, Escape closes it; the row is a
+  // document's, as the Launcher is no row (ACC-ACCORD-300-NO-LAUNCHER)
+  const file = `${tmpPath}/row.txt`;
+  await page.contents.uploadContent('row', 'text', file);
+  await page.evaluate(
+    path =>
+      (window as any).jupyterapp.commands.execute('docmanager:open', { path }),
+    file
+  );
   await card(page, 'default')
     .locator('.jp-WorkspaceManager-cardHeader')
     .click();
@@ -132,7 +141,7 @@ test('ACC-PANEL-92-ROW-KEYS: ArrowDown moves to the next row, Enter activates it
     .locator('.jp-WorkspaceManager-cardHeader')
     .click();
   const rows = card(page, 'default').locator('.jp-WorkspaceManager-row');
-  await expect(rows).toHaveCount(3); // the Launcher and the two files
+  await expect(rows).toHaveCount(2); // the two files; the Launcher is no row (ACC-ACCORD-300-NO-LAUNCHER)
 
   const labels = await rows
     .locator('.jp-WorkspaceManager-rowLabel')

@@ -666,6 +666,43 @@ the sidebar panel, its header and its loads
   - log: 2026-11-05T22:43:25Z @kj added
   - log: 2026-11-05T22:58:23Z @kj closed: fixed: one holder list in model order feeds the badge colour and the Workspaces tooltip
   - log: 2026-11-05T22:58:37Z @kj edited evidence "Jest panel.spec.ts ACC-TERM-290 and ACC-TERM-259 passed; Galata terminals.spec.ts ACC-TERM-290 passed on the rebuilt 0.8.36 labextension; make test 179 Jest and 165 pytest green" -> "Jest panel.spec.ts ACC-TERM-290-BADGE-TINT and ACC-TERM-259-TOOLTIP-DETAILS passed; Galata terminals.spec.ts ACC-TERM-290-BADGE-TINT passed on the rebuilt 0.8.36 labextension; make test 179 Jest and 165 pytest green"
+- [x] `DEF-PANEL-90-MOVE-WEBTAB` **Move to workspace refuses a web page tab** - MEDIUM; Move to workspace on the card row of a web page tab of this window is always refused: "Move to workspace is refused: workspace default has not saved this tab yet, or has saved more than one tab of its file. Try again in a moment, or close the other tab of the file."; the tab stays open; `src/page.ts`, `src/panel/panel.tsx`
+  - evidence: Jest page.spec.ts and panel.spec.ts tests titled DEF-PANEL-90-MOVE-WEBTAB (7) and Galata webtab.spec.ts (7) pass; make test: Jest 207/207, pytest 166 passed (tmp/workflows/wm-web-tab-move/logs/prove-3-make-test.log); full Galata 260 passed, 0 failed, 0 skipped (prove-3-galata.log); the 7 Jest tests fail on a HEAD control
+  - repro: open a page with workspace-page:open in workspace default, then Move to workspace from its card row: the refusal quoted in the body, nothing saved or closed; a server-proxy:open tab the same
+  - test-tags: UNIT
+  - root-cause: 2026-11-06T13:35:08Z @kj _liveTabs keys a web page tab widget:<MainAreaWidget id> with no path, so _moveTab finds no saved entry: a workspace-page:open tab is never saved (no tracker, no restorer name), and a server-proxy:open or help:open tab saves as server-proxy:<iframe id> or help-doc:<url>, which the live key never equals
+  - log: 2026-11-06T13:35:08Z @kj added; reason: filed on the owner's report with a screenshot, 2026-11-06: "defect, moving tab to workspace (web tab)"; the refusal is quoted in full
+  - log: 2026-11-06T15:56:30Z @kj root cause confirmed in src/panel/panel.tsx and the installed bundles: live key widget:<id> never equals server-proxy:<content.id> or help-doc:<content.url>; workspace-page:open has no tracker; the move into this window opens only terminals, consoles and document factories
+  - log: 2026-11-06T17:29:21Z @kj fix extended: every other path-less tab the layout restorer saves (Settings Editor, Log Console, Contextual Help, Licenses, Plugin Manager, cloned outputs, code viewer) takes its saved name as its row key, so the plain refusal applies only to kinds JupyterLab does not save
+  - log: 2026-11-06T18:00:21Z @kj closed
+- [x] `DEF-PANEL-91-WEBTAB-LABEL` **A saved web tab on another workspace's card is named by its key, not its title** - MEDIUM; a saved page, server-proxy or Help tab on a card that is not this window's reads id-<uuid>, the proxy iframe id or nothing as its row name; `src/model/model.ts`
+  - evidence: Jest model.spec.ts DEF-PANEL-91-WEBTAB-LABEL passes, and fails without the fix (labels "" and id-x; tmp/workflows/wm-goal-review/logs/fix-r1-red.log); make test: Jest 208/208, pytest 166 passed (fix-r1-make-test.log); Galata webtab.spec.ts 7 passed, row found by title Moved in page (fix-r1-galata.log)
+  - repro: open a page with workspace-page:open and no id, or a Help menu page, then switch the window to another workspace: the first card's row reads id-<uuid> or nothing
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-11-06T18:32:17Z @kj tabsOf copies only path and name from the saved entry, so buildModel falls back to the last key segment; web tab entries save title or text
+  - log: 2026-11-06T18:32:17Z @kj added
+  - log: 2026-11-06T18:36:57Z @kj closed: fixed: tabsOf returns title from the saved title, else the saved text
+  - log: 2026-11-06T19:41:31Z @kj fix covers titled pages, Help tabs and server-proxy tabs; a page opened without a title still shows its content id on other cards, filed separately as DEF-PANEL-94-UNTITLED-PAGE and accepted by the owner
+- [-] `DEF-PANEL-92-PORT-MOVE` **Moving a page tab replaces the target's same-port page** - MEDIUM; moving a page tab into a workspace that already shows a page from the same proxy port or origin replaces that workspace's page without notice: in this window at once, in another workspace at its next load; the moved tab is never lost; `src/page.ts`, `src/panel/panel.tsx`
+  - test-tags: UNIT
+  - repro: workspace B shows a page on proxy port P; Move to workspace a page tab on port P into B: B keeps one page tab on port P, showing the moved URL; B's own page is gone
+  - root-cause: 2026-11-06T19:30:58Z @kj in src/page.ts the id lookup runs first; when no open tab has the id, the same-port lookup still runs, even for an open that carries an id; move-in (panel.tsx WEB_OPEN) and restore (page.ts restorer args) both pass an id
+  - log: 2026-11-06T19:30:58Z @kj added
+  - log: 2026-11-06T19:31:05Z @kj rejected: owner decision 2026-11-06, Keep one tab per port: the replacement is the one-tab-per-port rule of ACC-OPEN-295-PORT-RELOAD; the moved tab is never lost and the replaced page reopens from its address
+  - log: 2026-11-06T19:31:12Z @kj edited test-tags added "UNIT"
+- [-] `DEF-PANEL-93-CARD-OUTLINE` **This window's card outline under 3:1 in JupyterLab Light** - MINOR; in JupyterLab Light this window's card outline measures 1.85-2.21:1, about 2.2:1 against the panel, under the 3:1 floor for non-text marks; unchanged since HEAD (design note DQ-19); `style/base.css`
+  - test-tags: FUNCTIONAL
+  - repro: JupyterLab Light, open the panel: this window's card outline, --jp-brand-color2 #64b5f6, on the white --jp-layout-color1 measures 2.21:1
+  - root-cause: 2026-11-06T19:31:02Z @kj the outline takes --jp-brand-color2 (style/base.css:395), #64b5f6 in Light; no single theme token reaches 3:1 in all three themes: --jp-brand-color1 gives 4.60 Light, 5.15 Dark, 2.32 Steel against the card's own 24 % header
+  - log: 2026-11-06T19:31:02Z @kj added
+  - log: 2026-11-06T19:31:05Z @kj rejected: owner decision 2026-11-06, Accept as is: the outline colour stays; with the card dimming the current card also stands out by its stronger tint and ink
+  - log: 2026-11-06T19:31:12Z @kj edited test-tags added "FUNCTIONAL"
+- [-] `DEF-PANEL-94-UNTITLED-PAGE` **A page opened without a title reads id-<uuid> on other workspaces' cards** - MINOR; a page opened by workspace-page:open with no title reads id-<uuid> as its row name on every card except its own window's, where the tab shows the page's document title; `src/page.ts`, `src/model/model.ts`
+  - repro: workspace-page:open {"url": "<lab>/proxy/5123/index.html"} with no title and no id, the page's <title> is "My app"; switch the window to another workspace: the old card's row reads id-<uuid>
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-11-06T19:41:27Z @kj createPage's load listener (src/page.ts) sets the tab label from the page's document title but never writes it into the saved restore arguments, so tabsOf (src/model/model.ts) finds no title or text and the row falls back to the key id-<uuid>
+  - log: 2026-11-06T19:41:27Z @kj added
+  - log: 2026-11-06T19:41:31Z @kj rejected: owner decision 2026-11-06, Accept and record: before this work every saved page row read id-<uuid>; the round 1 fix names every titled page, and the skill's example passes a title
 
 ## Functional tests `GALATA`
 

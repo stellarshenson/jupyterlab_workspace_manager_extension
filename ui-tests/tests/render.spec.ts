@@ -456,12 +456,12 @@ test.describe('the seeded scenario', () => {
         .locator('.jp-WorkspaceManager-rowLabel')
         .allTextContents();
       expect(labels.filter(l => l === 'analysis.ipynb')).toHaveLength(1);
-      // a card's numbered terminal row drops the tN (ACC-TERM-275-CARD-LABEL)
+      // a card's numbered terminal row drops the tN (ACC-TERM-275-CARD-LABEL) and renders no label (ACC-TERM-302-ICON-GAP)
       await expect(
         rowOf(mineCard, rowLabel(s.tab)).locator(
           '.jp-WorkspaceManager-rowLabel'
         )
-      ).toHaveText('');
+      ).toHaveCount(0);
 
       // ROW-01 in this window's card and in the TERMINALS section, at 300 px
       const [colour1, colour2, inverse0, inverse1, inverse2, inverse3] = [
@@ -498,7 +498,8 @@ test.describe('the seeded scenario', () => {
                   '.jp-WorkspaceManager-card.jp-mod-coloured'
                 ),
                 current: r.classList.contains('jp-mod-current'),
-                label: label ? getComputedStyle(label).color : '',
+                // a card's numbered terminal row has no label (ACC-TERM-302-ICON-GAP)
+                label: label ? getComputedStyle(label).color : null,
                 time: time ? getComputedStyle(time).color : null,
                 detail: detail ? getComputedStyle(detail).color : null,
                 ageInside: !age || age.right <= box.right + 0.5
@@ -521,9 +522,11 @@ test.describe('the seeded scenario', () => {
           checked.push(r.text);
           expect.soft(r.tall, `${r.text} height`).toBe(true);
           expect.soft(r.icon, `${r.text} icon`).toEqual([16, 16]);
-          expect
-            .soft(await rgba(page, r.label), `${r.text} label colour`)
-            .toEqual(r.coloured ? inverse0 : colour1);
+          if (r.label !== null) {
+            expect
+              .soft(await rgba(page, r.label), `${r.text} label colour`)
+              .toEqual(r.coloured ? inverse0 : colour1);
+          }
           if (r.time !== null) {
             expect
               .soft(await rgba(page, r.time), `${r.text} time colour`)
@@ -1416,7 +1419,7 @@ async function aged(page: Page, ages: Record<string, number>): Promise<void> {
 
 const HOUR = 3600 * 1000;
 
-test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-18-PURPOSE, ACC-ACCORD-101-PURPOSE-TEXT, ACC-PANEL-181-PURPOSE-WRAP: the name of a card 3 h old is inverse layout colour 0 and ends in an ellipsis; a closed card shows no purpose; open, the purpose is regular, size 1, inverse layout colour 1, upright, never cut, markup shown as text; a card without a purpose shows no purpose text', async ({
+test("WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-18-PURPOSE, ACC-ACCORD-101-PURPOSE-TEXT, ACC-PANEL-181-PURPOSE-WRAP: the name of another window's card 3 h old is the dimmed inverse layout colour 2 (ACC-PANEL-298-DIM-OTHERS) and ends in an ellipsis; a closed card shows no purpose; open, the purpose is regular, size 1, the dimmed inverse layout colour 3, upright, never cut, markup shown as text; a card without a purpose shows no purpose text", async ({
   page
 }) => {
   const alerts: string[] = [];
@@ -1442,9 +1445,10 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
     await openCard(page, ids[1]);
     await expect(purpose).toHaveText(markup);
     await expect(card(page, ids[1]).locator('img')).toHaveCount(0);
-    const [inverse0, inverse1, size1] = [
-      await rgba(page, 'var(--jp-inverse-layout-color0)'),
-      await rgba(page, 'var(--jp-inverse-layout-color1)'),
+    // another window's card is dimmed: its name inverse layout colour 2, its purpose 3 (ACC-PANEL-298-DIM-OTHERS)
+    const [inverse2, inverse3, size1] = [
+      await rgba(page, 'var(--jp-inverse-layout-color2)'),
+      await rgba(page, 'var(--jp-inverse-layout-color3)'),
       await page.locator(PANEL).evaluate(panel => {
         const probe = document.createElement('span');
         probe.style.fontSize = 'var(--jp-ui-font-size1)';
@@ -1465,13 +1469,13 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
       size: size1,
       italic: 'normal',
       overflow: 'clip',
-      colour: inverse1
+      colour: inverse3
     });
     const name = card(page, ids[1]).locator('.jp-WorkspaceManager-name');
     await expect(
       cardHeader(page, ids[1]).locator('.jp-WorkspaceManager-age')
     ).toHaveText('3h ago');
-    expect(await rgba(page, await style(name, 'color'))).toEqual(inverse0);
+    expect(await rgba(page, await style(name, 'color'))).toEqual(inverse2);
     expect(await style(name, 'textOverflow')).toBe('ellipsis');
     await openCard(page, ids[2]);
     await expect(
@@ -1483,7 +1487,7 @@ test('WS-15 ACC-ACCORD-132-NAME-SIZE, ACC-ACCORD-97-ELLIPSIS, WS-16 ACC-ACCORD-1
   }
 });
 
-test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads now and the header carries jp-mod-recentlyActive with no dot and no colour change; at 3 h the age reads 3h ago in inverse layout colour 2; over 7 days the row label alone is at opacity 0.65 with jp-mod-stale while the card name stays at full opacity', async ({
+test("WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads now and the header carries jp-mod-recentlyActive with no dot and no colour change; at 3 h the age reads 3h ago in the dimmed inverse layout colour 3 of another window's card, its name in inverse layout colour 2 (ACC-PANEL-298-DIM-OTHERS); over 7 days the row label alone is at opacity 0.65 with jp-mod-stale while the card name stays at full opacity", async ({
   page
 }) => {
   const current = fresh('recency');
@@ -1505,9 +1509,10 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
       );
     const name = (id: string) =>
       cardHeader(page, id).locator('.jp-WorkspaceManager-name');
-    const [inverse0, inverse2] = [
-      await rgba(page, 'var(--jp-inverse-layout-color0)'),
-      await rgba(page, 'var(--jp-inverse-layout-color2)')
+    // the three cards are other windows' cards, dimmed: the name inverse layout colour 2, the time 3 (ACC-PANEL-298-DIM-OTHERS)
+    const [inverse2, inverse3] = [
+      await rgba(page, 'var(--jp-inverse-layout-color2)'),
+      await rgba(page, 'var(--jp-inverse-layout-color3)')
     ];
     const look = async (id: string) => ({
       age: await age(id).textContent(),
@@ -1526,8 +1531,8 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
     expect(await look(recent)).toEqual({
       age: 'now',
       header: ['jp-mod-recentlyActive'],
-      name: inverse0,
-      time: inverse2,
+      name: inverse2,
+      time: inverse3,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1535,8 +1540,8 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
     expect(await look(hours)).toEqual({
       age: '3h ago',
       header: [],
-      name: inverse0,
-      time: inverse2,
+      name: inverse2,
+      time: inverse3,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1544,8 +1549,8 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
     expect(await look(old)).toEqual({
       age: '9d ago',
       header: ['jp-mod-stale'],
-      name: inverse0,
-      time: inverse2,
+      name: inverse2,
+      time: inverse3,
       nameOpacity: '1',
       timeOpacity: '1',
       dots: 0
@@ -1555,7 +1560,7 @@ test('WS-17 ACC-ACCORD-130-NOW-DOT, ACC-ACCORD-20-AGE: under 60 s the time reads
   }
 });
 
-test('WS-18 ACC-ACCORD-276-NAME-COUNT: the card name line carries a bare row count in brackets, folded or open, in inverse layout colour 1 and with no glyph', async ({
+test("WS-18 ACC-ACCORD-276-NAME-COUNT, ACC-ACCORD-299-COUNT-INK: the card name line carries a bare row count in brackets, folded or open, in the dimmed count ink inverse layout colour 2 on this window's coloured card and with no glyph", async ({
   page
 }) => {
   const current = fresh('glyphs');
@@ -1568,7 +1573,7 @@ test('WS-18 ACC-ACCORD-276-NAME-COUNT: the card name line carries a bare row cou
     expect(
       await rgba(page, await style(count, 'color')),
       'count number'
-    ).toEqual(await rgba(page, 'var(--jp-inverse-layout-color1)'));
+    ).toEqual(await rgba(page, 'var(--jp-inverse-layout-color2)'));
     const folded = await count.textContent();
     await openCard(page, current);
     await expect(count).toHaveText(folded!);

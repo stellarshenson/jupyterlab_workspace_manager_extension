@@ -5,8 +5,12 @@ import { CommandRegistry } from '@lumino/commands';
 import { pageIcon } from '../icons';
 import { pagePlugin } from '../page';
 
-/** A front end with the command registry and the two shell calls the command makes. */
-function fakeApp() {
+/**
+ * A front end with the command registry and the two shell calls the command
+ * makes. With `saved`, the plugin gets a layout restorer whose state is
+ * `saved`, keyed as the workspace saves it; `restored` holds its restore calls.
+ */
+function fakeApp(saved?: Map<string, any>) {
   const shell = {
     added: [] as { widget: any; area: string }[],
     activated: [] as string[],
@@ -21,8 +25,30 @@ function fakeApp() {
     commands: new CommandRegistry(),
     shell
   } as unknown as JupyterFrontEnd;
-  pagePlugin.activate(app, null);
-  return { app, shell };
+  const connector = saved && {
+    fetch: async (id: string) => saved.get(id),
+    save: async (id: string, value: any) => void saved.set(id, value),
+    remove: async (id: string) => void saved.delete(id),
+    list: async (namespace: string) => {
+      const ids = [...saved.keys()].filter(id =>
+        id.startsWith(`${namespace}:`)
+      );
+      return { ids, values: ids.map(id => saved.get(id)) };
+    }
+  };
+  const restored: { tracker: any; options: any }[] = [];
+  const restorer = saved && {
+    restore: (tracker: any, options: any) => {
+      restored.push({ tracker, options });
+      return tracker.restore({
+        ...options,
+        connector,
+        registry: app.commands
+      });
+    }
+  };
+  pagePlugin.activate(app, null, restorer);
+  return { app, shell, restored };
 }
 
 const URL = '/proxy/47987/workbench-card-mockup.html';
@@ -429,6 +455,111 @@ describe('workspace-page:open', () => {
     expect(frameOf(second).getAttribute('src')).toBe(OFF_ORIGIN);
     expect(frameOf(second).getAttribute('sandbox')).toBe('allow-scripts');
     second.dispose();
+  });
+
+  it('ACC-OPEN-303-PAGE-RESTORE, DEF-PANEL-90-MOVE-WEBTAB: the page tracker is restored by workspace-page:open with the url, title, id, icon and policy a tab last showed, never newBrowserTab, and named by its content id', async () => {
+    const { app, restored } = fakeApp(new Map());
+    expect(restored).toHaveLength(1);
+    const [{ tracker, options }] = restored;
+    expect(tracker.namespace).toBe('workspace-page');
+    expect(options.command).toBe('workspace-page:open');
+
+    const ICON = '/proxy/47987/icon.svg';
+    const policy = { sandbox: 'allow-scripts allow-forms' };
+    const widget = await app.commands.execute('workspace-page:open', {
+      url: URL,
+      title: 'Workbench page',
+      icon: ICON,
+      policy,
+      newBrowserTab: false
+    });
+
+    // a tab opened without an id gets one, which names its saved entry
+    expect(widget.content.id).not.toBe('');
+    expect(options.name(widget)).toBe(widget.content.id);
+    const args = options.args(widget);
+    expect(args).toEqual({
+      url: URL,
+      title: 'Workbench page',
+      id: widget.content.id,
+      icon: ICON,
+      policy
+    });
+    expect(args).not.toHaveProperty('newBrowserTab');
+    widget.dispose();
+  });
+
+  it('ACC-OPEN-303-PAGE-RESTORE, DEF-PANEL-90-MOVE-WEBTAB: a page tab is one saved entry: a same-port reuse and a same-id reuse save it again with the new arguments, and closing the tab removes it', async () => {
+    const saved = new Map<string, any>();
+    const { app } = fakeApp(saved);
+    const open = (args: Record<string, string>) =>
+      app.commands.execute('workspace-page:open', args) as Promise<any>;
+
+    const widget = await open({ url: URL, title: 'One' });
+    await settle();
+    const key = `workspace-page:${widget.content.id}`;
+    expect([...saved.keys()]).toEqual([key]);
+    expect(saved.get(key).data).toMatchObject({
+      url: URL,
+      title: 'One',
+      id: widget.content.id
+    });
+
+    const other = '/proxy/47987/other.html';
+    expect(await open({ url: other, title: 'Two' })).toBe(widget);
+    await settle();
+    expect([...saved.keys()]).toEqual([key]);
+    expect(saved.get(key).data).toMatchObject({ url: other, title: 'Two' });
+
+    const port = '/proxy/47988/third.html';
+    expect(
+      await open({ url: port, title: 'Three', id: widget.content.id })
+    ).toBe(widget);
+    await settle();
+    expect([...saved.keys()]).toEqual([key]);
+    expect(saved.get(key).data).toMatchObject({
+      url: port,
+      title: 'Three',
+      id: widget.content.id
+    });
+
+    widget.dispose();
+    await settle();
+    expect([...saved.keys()]).toEqual([]);
+  });
+
+  it('ACC-OPEN-303-PAGE-RESTORE, DEF-PANEL-90-MOVE-WEBTAB: a saved page entry reopens by the command with its url, title, icon and sandbox', async () => {
+    const ICON = '/proxy/47987/icon.svg';
+    const saved = new Map<string, any>([
+      [
+        'workspace-page:saved-page',
+        {
+          data: {
+            url: URL,
+            title: 'Saved page',
+            id: 'saved-page',
+            icon: ICON,
+            policy: { sandbox: 'allow-scripts allow-forms' }
+          }
+        }
+      ]
+    ]);
+    const { shell } = fakeApp(saved);
+    await settle();
+    await settle();
+
+    expect(shell.added).toHaveLength(1);
+    const widget = shell.added[0].widget;
+    const frame = frameOf(widget);
+    expect(widget.content.id).toBe('saved-page');
+    expect(widget.title.label).toBe('Saved page');
+    expect((widget.title.icon as LabIcon).svgstr).toContain(
+      `<image href="${ICON}"`
+    );
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
+    expect(frame.getAttribute('src')).toBe(URL);
+    expect([...saved.keys()]).toEqual(['workspace-page:saved-page']);
+    widget.dispose();
   });
 
   it('ACC-OPEN-295-PORT-RELOAD: a disposed tab is not reused, and another port opens its own tab', async () => {

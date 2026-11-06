@@ -16,13 +16,17 @@ import {
   expectRefused,
   fresh,
   layout,
+  newTerminalTab,
+  openCard,
   openDocument,
   openPanel,
+  putNotebook,
   putWorkspace,
   refresh,
   rowOf,
   saved,
   secondWindow,
+  startTerminal,
   UNDER_LOAD
 } from './helpers';
 
@@ -370,7 +374,7 @@ test('ACC-CLI-219-SWITCH-WORKSPACE: of two eligible windows a broadcast switch m
   }
 });
 
-test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces list agree on an editor and its Markdown preview; the Launcher and a second New View count only in the card', async ({
+test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces list agree on an editor and its Markdown preview; the Launcher counts in neither (ACC-ACCORD-300-NO-LAUNCHER) and a second New View counts only in the card', async ({
   page,
   tmpPath
 }) => {
@@ -406,9 +410,9 @@ test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces 
     await cardHeader(page, current).click();
     const count = countOf(card(page, current));
 
-    // the Launcher counts in the card alone
+    // the Launcher counts in neither (ACC-ACCORD-300-NO-LAUNCHER)
     await expect.poll(savedKeys, UNDER_LOAD).toEqual([editor, preview]);
-    await expect(count).toHaveText('(3)');
+    await expect(count).toHaveText('(2)');
     expect(await inCli()).toBe(2);
 
     // an editor and its preview: 2 in both
@@ -443,5 +447,75 @@ test('ACC-CLI-171-LIST-OUT, DEF-PANEL-69-TABS-SAMEFILE: the card and workspaces 
     expect(await inCli()).toBe(2);
   } finally {
     await deleteWorkspaces(page, [current]);
+  }
+});
+
+test("ACC-ACCORD-300-NO-LAUNCHER: this window's card with a Launcher, a notebook and a terminal lists two rows and reads (2); a saved layout with a launcher key, a notebook and a terminal lists two rows, reads (2) on its card and 2 in the TABS column of workspaces list", async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('nolaunch');
+  const other = `${current}-saved`;
+  const notebook = `${tmpPath}/launched.ipynb`;
+  const terminal = await startTerminal(page);
+  const tabsInCli = async (id: string): Promise<number | undefined> => {
+    const run = await cli(['workspaces', 'list', '--json']);
+    expect(run.code).toBe(0);
+    return (JSON.parse(run.stdout) as { name: string; tabs: number }[]).find(
+      row => row.name === id
+    )?.tabs;
+  };
+  await putNotebook(page, notebook);
+  await putWorkspace(
+    page,
+    other,
+    layout([
+      'launcher:launcher',
+      `notebook:${notebook}`,
+      `terminal:${terminal}`
+    ])
+  );
+  let mine: string | undefined;
+  try {
+    // a new workspace opens with the Launcher
+    await enterWorkspace(page, current);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Array.from((window as any).jupyterapp.shell.widgets('main')).some(
+              (w: any) => !!w.node.querySelector('.jp-Launcher')
+            )
+          ),
+        UNDER_LOAD
+      )
+      .toBe(true);
+    await openDocument(page, notebook);
+    mine = await newTerminalTab(page);
+    await cardHeader(page, current).click();
+    const own = card(page, current);
+    await expect(own.locator('.jp-WorkspaceManager-row')).toHaveCount(
+      2,
+      UNDER_LOAD
+    );
+    await expect(countOf(own)).toHaveText('(2)');
+    await expect(rowOf(own, 'Launcher')).toHaveCount(0);
+
+    // another workspace whose saved layout holds a launcher key
+    await refresh(page);
+    await openCard(page, other);
+    const stored = card(page, other);
+    await expect(stored.locator('.jp-WorkspaceManager-row')).toHaveCount(2);
+    await expect(
+      stored.locator('.jp-WorkspaceManager-row[data-row-key^="launcher:"]')
+    ).toHaveCount(0);
+    await expect(countOf(stored)).toHaveText('(2)');
+    expect(await tabsInCli(other)).toBe(2);
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    if (mine) {
+      await page.request.delete(`/api/terminals/${mine}`);
+    }
+    await deleteWorkspaces(page, [current, other]);
   }
 });

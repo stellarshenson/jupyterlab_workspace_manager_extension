@@ -396,6 +396,11 @@
   outline-offset: -2px;
 }
 
+/* Every card but this window's is dimmed: a coloured one paints its body at the hue's 4.8 % over layout colour 1, half of this window's 9.6 %; --wm-shade and --wm-rows keep the full tints for the terminal badge and the swatches (ACC-PANEL-298-DIM-OTHERS) */
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current) {
+  background: color-mix(in srgb, var(--wm-hue) 4.8%, var(--jp-layout-color1));
+}
+
 /* While a card is dragged: the line above or below the card where it lands */
 .jp-WorkspaceManager-card.jp-mod-dropBefore {
   box-shadow: 0 -3px 0 var(--jp-brand-color1);
@@ -410,6 +415,12 @@
   padding: 6px 10px 6px 6px;
   background: var(--wm-shade);
   cursor: pointer;
+}
+
+/* A dimmed coloured card's header takes the hue at 12 % over layout colour 1, half of this window's 24 % (ACC-PANEL-298-DIM-OTHERS) */
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  > .jp-WorkspaceManager-cardHeader {
+  background: color-mix(in srgb, var(--wm-hue) 12%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-headerLine {
@@ -429,6 +440,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Every card but this window's is dimmed: a plain card's name takes the meta ink of its caret, count and time; a coloured card's rule below outranks this one (ACC-PANEL-298-DIM-OTHERS) */
+.jp-WorkspaceManager-card:not(.jp-mod-current) .jp-WorkspaceManager-name {
+  color: var(--jp-ui-font-color2);
 }
 
 /* As many lines as the purpose needs: the card grows with it; the purpose is meta text (DQ-21) */
@@ -770,19 +786,13 @@
   }
 }
 
-/* On a coloured card the header ink takes the theme's inverse layout colours: colour 1 measures 4.82:1 on the Steel base and 2.94:1 on a 24 % lemon tint, under the 4.5:1 floor, while inverse colours 0 and 1 measure at least 7.24:1 in Galaxa Steel, 9.38:1 in JupyterLab Dark and 13.41:1 in JupyterLab Light on the same tints; the name and action glyphs and the caret take inverse colour 0, the counts, the purpose and the hidden word colour 1, and the time the dimmer inverse colour 2 of DQ-37, at least 6.24:1 on the tint; plain cards, tally sections, menus and dialogs keep font colours 1 and 2 (DQ-07, DQ-28, ACC-PANEL-202) */
+/* On a coloured card the header ink takes the theme's inverse layout colours: colour 1 measures 4.82:1 on the Steel base and 2.94:1 on a 24 % lemon tint, under the 4.5:1 floor, while inverse colours 0 and 1 measure at least 7.24:1 in Galaxa Steel, 9.38:1 in JupyterLab Dark and 13.41:1 in JupyterLab Light on the same tints; the name and action glyphs and the caret take inverse colour 0, the purpose and the hidden word colour 1, and the counts and the time the dimmer inverse colour 2 of DQ-37, at least 6.24:1 on the tint; plain cards, tally sections, menus and dialogs keep font colours 1 and 2 (DQ-07, DQ-28, ACC-PANEL-202, ACC-ACCORD-299-COUNT-INK) */
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-name {
   color: var(--jp-inverse-layout-color0);
 }
 
-.jp-WorkspaceManager-card.jp-mod-coloured
-  .jp-WorkspaceManager-cardHeader
-  .jp-WorkspaceManager-counts,
-.jp-WorkspaceManager-card.jp-mod-coloured
-  .jp-WorkspaceManager-cardHeader
-  .jp-WorkspaceManager-count,
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-purpose,
@@ -792,10 +802,23 @@
   color: var(--jp-inverse-layout-color1);
 }
 
-/* The header's time takes the dimmest ink that holds the floor on the 24 % tint: inverse layout colour 2 measures at least 6.24:1, where inverse layout colour 3 falls to 4.99:1 in JupyterLab Dark and 3.85:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM) */
+/* The header's time takes the dimmest ink that holds the floor on the 24 % tint: inverse layout colour 2 measures at least 6.24:1, where inverse layout colour 3 falls to 4.99:1 in JupyterLab Dark and 3.85:1 in Steel (DQ-37, ACC-PANEL-274-TIME-DIM); the count (N) and the filter's (N of M) are meta text in the design system's dimmed count ink and take the same ink (ACC-ACCORD-299-COUNT-INK) */
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-counts,
+.jp-WorkspaceManager-card.jp-mod-coloured
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-count,
 .jp-WorkspaceManager-card.jp-mod-coloured
   .jp-WorkspaceManager-cardHeader
   .jp-WorkspaceManager-age {
+  color: var(--jp-inverse-layout-color2);
+}
+
+/* A dimmed coloured card's header ink steps down with its 12 % tint: the name inverse layout colour 2, at least 8.04:1, and the count, the filter's count, the purpose, the hidden word and the time inverse layout colour 3, at least 4.96:1 (lemon in Steel), in Light, Dark and Steel; the eye and the focus ring keep inverse layout colour 0 (ACC-PANEL-298-DIM-OTHERS) */
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-name {
   color: var(--jp-inverse-layout-color2);
 }
 
@@ -942,6 +965,25 @@
   color: var(--jp-inverse-layout-color2);
 }
 
+/* the dimmed coloured card's meta ink, the rest of its header ink rule above; it follows the body's time rules for no-descending-specificity (ACC-PANEL-298-DIM-OTHERS) */
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-counts,
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-count,
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-purpose,
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-hiddenWord,
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-age {
+  color: var(--jp-inverse-layout-color3);
+}
+
 /* a failed reload is a banner (DQ-15): a 15 percent error wash inside a 35 percent error border */
 .jp-WorkspaceManager-error {
   padding: 4px 16px;
@@ -980,6 +1022,14 @@
   .jp-WorkspaceManager-caret
   .jp-icon3[fill] {
   fill: var(--jp-inverse-layout-color0);
+}
+
+/* A dimmed coloured card's caret takes its name's inverse layout colour 2 (ACC-PANEL-298-DIM-OTHERS) */
+.jp-WorkspaceManager-card.jp-mod-coloured:not(.jp-mod-current)
+  .jp-WorkspaceManager-cardHeader
+  .jp-WorkspaceManager-caret
+  .jp-icon3[fill] {
+  fill: var(--jp-inverse-layout-color2);
 }
 
 /* The present colour keeps its swatch and takes a check after its name */

@@ -37,8 +37,9 @@ c.LabApp.user_settings_dir = mkdtemp(prefix="galata-settings-")
 c.ServerApp.port = int(os.environ.get("JUPYTER_TEST_PORT") or "8888")
 
 # The test lab loads Galata and the lab extensions below only, as on CI: this extension, the
-# theme legibility.spec.ts reads the panel in, and jupyterlab-notify's frontend, whose toast
-# spec clicks an action. Every other lab extension installed on the
+# theme legibility.spec.ts reads the panel in, jupyterlab-notify's frontend, whose toast
+# spec clicks an action, and jupyter-server-proxy's, whose server-proxy:open tab webtab.spec.ts
+# moves where it is installed. Every other lab extension installed on the
 # machine adds work to each page load on the single-threaded server (its settings schemas, the
 # theme file search, the requests its plugins send at start). With the 71 of the workstation
 # image, 12 windows loading at once took 12 s of the 15 s that Galata's page.goto() waits for
@@ -50,6 +51,7 @@ for name in [
     "@stellarshenson/jupyterlab-workspace-manager-extension",
     "galaxalabs_jupyterlab_steel_dark_theme",
     "@stellarshenson/jupyterlab-notifications-extension",
+    "@jupyterhub/jupyter-server-proxy",
 ]:
     for path in jupyter_path("labextensions"):
         if os.path.isdir(os.path.join(path, name)):

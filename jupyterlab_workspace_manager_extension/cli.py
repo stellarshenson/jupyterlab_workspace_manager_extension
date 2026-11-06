@@ -264,7 +264,7 @@ def _layout_keys(workspace):
 def _counts(workspace, sessions, running):
     """Tabs, terminals and kernels the workspace holds, as the panel counts them.
 
-    A tab is a document or a terminal tab; a terminal counts only while it runs.
+    A tab is a document or a terminal tab, never a Launcher; a terminal counts only while it runs.
     """
     keys = _layout_keys(workspace)
     terminals = {key.split(':', 1)[1] for key in keys if key.startswith('terminal:')} & running
@@ -276,7 +276,8 @@ def _counts(workspace, sessions, running):
         and session.get('type') in ('notebook', 'console')
         and (session.get('kernel') or {}).get('id')
     }
-    documents = {key for key in keys if not key.startswith('terminal:')}
+    # a Launcher is no item, as on the card (ACC-ACCORD-300-NO-LAUNCHER)
+    documents = {key for key in keys if not key.startswith(('terminal:', 'launcher:'))}
     return len(documents) + len(terminals), len(terminals), len(kernels)
 
 
@@ -668,10 +669,10 @@ def _parser():
         help='print every workspace with its record and counts',
         description='Print one line per workspace: name, purpose, colour, hidden state and the '
         'number of tabs, terminals and kernels, as the card of the panel counts them: TABS counts the '
-        'documents and the terminal tabs, and a saved terminal key whose terminal no longer runs counts '
-        'in neither TABS nor TERMINALS. The CLI reads only the saved layout, so a tab JupyterLab does not '
-        'restore, such as the Launcher or a second New View of a document, counts only in the card of the '
-        'window that holds it. --json prints the same facts as data.',
+        'documents and the terminal tabs and never a Launcher, and a saved terminal key whose terminal no '
+        'longer runs counts in neither TABS nor TERMINALS. The CLI reads only the saved layout, so a tab '
+        'JupyterLab does not restore, such as a second New View of a document, counts only in the card of '
+        'the window that holds it. --json prints the same facts as data.',
         epilog=_examples(
             '  jupyterlab-workspace workspaces list\n  jupyterlab-workspace workspaces list --json'
         ),
@@ -860,8 +861,8 @@ def _parser():
         description='Print one line per tab of the named workspace, in the order the workspace file '
         'saves them: the layout key and the document path the tab shows. A terminal tab prints its key '
         'terminal:N with an empty path, null in --json; a saved terminal key whose terminal no longer '
-        'runs prints no line, so the line count equals the TABS column of workspaces list. --json prints '
-        'the same rows.',
+        'runs prints no line, so the line count equals the TABS column of workspaces list plus one line '
+        'per saved Launcher, which TABS does not count. --json prints the same rows.',
         epilog=_examples(
             '  jupyterlab-workspace tabs list fb-review\n  jupyterlab-workspace tabs list fb-review --json'
         ),

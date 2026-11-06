@@ -174,7 +174,12 @@ export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
   );
   return Array.from(new Set(keys)).map(key => {
     const saved = (data[key] as any)?.data ?? {};
-    return { key, path: saved.path, name: saved.name };
+    return {
+      key,
+      path: saved.path,
+      name: saved.name,
+      title: saved.title ?? saved.text
+    };
   });
 }
 
@@ -219,6 +224,10 @@ export function buildModel(input: IModelInput): IModel {
     const docs: ITabRow[] = [];
     for (const tab of tabs) {
       const kind = prefix(tab.key);
+      // a Launcher, live or saved, is no item: no row and no count (ACC-ACCORD-300-NO-LAUNCHER)
+      if (kind === 'launcher') {
+        continue;
+      }
       if (kind === 'terminal') {
         terminals.add(suffix(tab.key));
         continue;

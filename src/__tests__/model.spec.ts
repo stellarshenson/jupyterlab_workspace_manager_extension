@@ -396,6 +396,44 @@ describe('model', () => {
     expect(a.kernels.map(k => k.id)).toEqual(['k1']);
   });
 
+  it('ACC-ACCORD-300-NO-LAUNCHER: a Launcher of this window and a launcher key of a saved layout make no row and no count', () => {
+    const sections = buildSections(
+      input({
+        workspaces: [
+          ws('saved', '2026-10-23T10:00:00Z', [
+            'launcher:launcher',
+            'notebook:b.ipynb',
+            'terminal:1'
+          ])
+        ],
+        terminals: [{ name: '1' }],
+        liveTabs: [
+          { key: 'launcher:launcher-0', title: 'Launcher' },
+          { key: 'notebook:a.ipynb', path: 'a.ipynb', title: 'a.ipynb' },
+          { key: 'terminal:1', title: 'Terminal 1' }
+        ]
+      })
+    );
+    for (const [id, notebook] of [
+      ['default', 'notebook:a.ipynb'],
+      ['saved', 'notebook:b.ipynb']
+    ]) {
+      const section = byId(sections, id);
+      expect(section.tabs.map(t => t.key)).toEqual([notebook]);
+      expect(section.terminals.map(t => t.name)).toEqual(['1']);
+    }
+    // the card's count, (N): its rows, the notebook and the terminal
+    expect(
+      filterSections(sections, '', false).cards.map(c => [
+        c.section.id,
+        c.total
+      ])
+    ).toEqual([
+      ['default', 2],
+      ['saved', 2]
+    ]);
+  });
+
   it('DEF-PANEL-69-TABS-SAMEFILE: a saved layout lists a key once per New View of one document, and holds one tab of it', () => {
     const shared = {
       type: 'tab-area',
@@ -519,6 +557,35 @@ describe('model', () => {
       { key: 'terminal:2', path: undefined, name: undefined }
     ]);
     expect(tabsOf({})).toEqual([]);
+  });
+
+  it("DEF-PANEL-91-WEBTAB-LABEL: a saved web tab on another workspace's card is named by its saved title or menu text", () => {
+    const help = 'help-doc:https://jupyterlab.readthedocs.io/en/stable/';
+    const model = buildModel(
+      input({
+        workspaces: [
+          ws('other', '2026-10-23T10:00:00Z', [help, 'workspace-page:id-x'], {
+            [help]: {
+              data: {
+                url: 'https://jupyterlab.readthedocs.io/en/stable/',
+                text: 'JupyterLab Reference'
+              }
+            },
+            'workspace-page:id-x': {
+              data: {
+                url: '/proxy/5123/index.html',
+                title: 'My app',
+                id: 'id-x'
+              }
+            }
+          })
+        ]
+      })
+    );
+    expect(byId(model.sections, 'other').tabs.map(t => t.label)).toEqual([
+      'JupyterLab Reference',
+      'My app'
+    ]);
   });
 
   describe('ACC-LISTS-268-MOVE-TAB: withTab', () => {
