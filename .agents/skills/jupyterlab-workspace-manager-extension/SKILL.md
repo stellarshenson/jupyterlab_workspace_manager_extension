@@ -19,25 +19,25 @@ Run it on the lab's host; with no variable set it uses the one running server th
 
 Use this when the app needs the lab's session, its storage or its cookies, or its POSTs must reach its own server.
 
-1. Serve the app on 127.0.0.1 in its own directory, with its own store or API:
+1. Serve the app on 127.0.0.1 in its own directory, with its own store or API, and send `Cache-Control: no-store` on every file:
 
    ```bash
    cd <app directory>
-   python3 -m http.server <port> --bind 127.0.0.1
+   python3 -c 'import http.server as h,sys; H=type("H",(h.SimpleHTTPRequestHandler,),{"end_headers":lambda s:(s.send_header("Cache-Control","no-store"),h.SimpleHTTPRequestHandler.end_headers(s))}); h.ThreadingHTTPServer(("127.0.0.1",int(sys.argv[1])),H).serve_forever()' <port>
    ```
 
 2. Build the URL from the lab base that `jupyter server list` prints: `<lab base>/proxy/<port>/<path>`, for example `http://127.0.0.1:8888/proxy/5123/index.html`. The proxy path serves the app from the lab origin.
-3. Open it with a null sandbox:
+3. Open it:
 
    ```bash
-   jupyterlab-commands execute workspace-page:open --args '{"url": "<lab base>/proxy/<port>/<path>", "title": "My app", "icon": "<lab base>/proxy/<port>/favicon.svg", "policy": {"sandbox": null}}'
+   jupyterlab-commands execute workspace-page:open --args '{"url": "<lab base>/proxy/<port>/<path>", "title": "My app", "icon": "<lab base>/proxy/<port>/favicon.svg"}'
    ```
 
-   The null removes the sandbox attribute, so the page keeps the lab origin: its scripts, storage, cookies and POSTs work. The `icon` URL overrides the tab's standard page icon (a comment bubble); leave it out to keep that icon. The mockup handover passes `{"policy": {"sandbox": null}}` for the same reason: the mockup saves its comments through `/proxy/<port>/comments`.
+   A URL under the lab's `/proxy/<port>/` or `/proxy/absolute/<port>/` gets the sandbox `server-proxy:open` gives, `allow-same-origin allow-scripts allow-popups allow-forms allow-downloads allow-modals`, so the page keeps the lab origin: its scripts, storage, cookies and POSTs work and it needs no policy. The `icon` URL overrides the tab's standard page icon (a comment bubble); leave it out to keep that icon.
 
-4. Without a policy the iframe is sandboxed to `allow-scripts`. The page renders and its scripts run, but its origin is opaque: no lab session, no storage, no cookies, and its requests do not reach the store. Keep the default for a page that only shows content; pass the null sandbox when it must save or read the lab.
+4. After rewriting the files the server serves, run the same command again. A page tab this command opened on the same port, or with the same `id`, is reused: no second tab opens, the iframe loads the URL again, and the tab takes the new title and icon and becomes the current tab. The page document of a URL on the lab's origin is fetched past the browser cache, so a rewritten page shows its new content. The scripts, styles and data the page loads follow their server's caching headers: without `Cache-Control: no-store`, as `python3 -m http.server` sends none, the browser can show their old content.
 
-`allow`, `referrerPolicy` and `csp` set their iframe attributes; `icon` is an image URL (svg or png) that overrides the tab's standard page icon (a comment bubble), which shows when it is left out; a malformed policy throws, naming the field, and opens no tab.
+Any other URL is sandboxed to `allow-scripts`: the page renders and its scripts run, but its origin is opaque, with no lab session, storage or cookies. A lab whose Content-Security-Policy frames only its own origin shows no page of another origin, such as `http://127.0.0.1:<port>/`; serve it through `/proxy/<port>/`. `policy.sandbox` replaces either sandbox verbatim: a narrower value restricts a proxy page, and `null` removes the attribute, for a page that needs a permission the proxy sandbox leaves out, such as navigating the lab's top window. `allow`, `referrerPolicy` and `csp` set their iframe attributes. `id` becomes the id of the tab's content, and `newBrowserTab: true` opens the URL in a new browser tab and no lab tab, as `server-proxy:open` does. A malformed argument throws, naming it, and opens no tab.
 
 <!-- improved 2026-10-25 | body 102→91w / 11→11L | benchmark n/a (not-requested) | via improve-skill -->
 <!-- improved 2026-10-25 | body 91→75w / 11→10L | benchmark n/a (not-requested) | via improve-skill -->

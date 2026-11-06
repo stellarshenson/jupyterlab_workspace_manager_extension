@@ -1,5 +1,6 @@
 import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
 import type { Locator, Page } from '@playwright/test';
+import * as path from 'path';
 
 import {
   activeTab,
@@ -145,6 +146,10 @@ const css = (l: Locator, property: string): Promise<string> =>
     property
   );
 
+/** The outline and number ink of a badge held by a workspace of `colour`: the hue at 45 % over inverse layout colour 1 (ACC-TERM-296-BADGE-INK). */
+const holderInk = (colour: string): string =>
+  `color-mix(in srgb, var(--wm-${colour}) 45%, var(--jp-inverse-layout-color1))`;
+
 /** The name, the process and the time stand side by side on one line, in that order. */
 const oneLine = (row: Locator): Promise<boolean> =>
   row.evaluate(
@@ -269,6 +274,11 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
     expect((await tooltip(inCard))[0]).toBe(`terminal ${numbered}`);
     // a card row drops the tN of a numbered terminal (ACC-TERM-275-CARD-LABEL)
     await expect(inCard.locator(LABEL)).toHaveText('');
+    // the colour of the workspace holding the numbered terminal, from its card
+    const colour = await card(page, current).evaluate(
+      (n, colours) => colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+      COLOURS
+    );
 
     // the same terminal and the named one in TERMINALS
     await openSection(page, 'terminals');
@@ -277,12 +287,13 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
     const namedRow = rowOf(listed, rowLabel(named));
     await expect(numberedRow).toBeVisible();
     await expect(namedRow).toBeVisible();
-    // ACC-TERM-285-NUMBER-BADGE: the number in a box badge, read as the number; a badge holding a workspace colour takes --jp-inverse-layout-color1, the ink that holds 4.5:1 on the wash
+    // ACC-TERM-285-NUMBER-BADGE: the number in a box badge, read as the number; a badge holding a workspace colour takes that hue at 45 % over --jp-inverse-layout-color1 (ACC-TERM-296-BADGE-INK)
     await expect(numberedRow.locator(LABEL)).toHaveText(numbered);
     const badge = numberedRow.locator(
       `${LABEL} .jp-WorkspaceManager-terminalBadge`
     );
     await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveClass(new RegExp(`jp-mod-${colour}`));
     await expect(badge).toHaveAttribute('role', 'img');
     await expect(badge).toHaveAttribute('aria-label', numbered);
     const box = await badge.locator('rect').evaluate(n => {
@@ -301,8 +312,8 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
       width: 18,
       height: 13.5,
       radius: '3',
-      // ACC-TERM-285-NUMBER-BADGE: the coloured badge's ink, which holds 4.5:1 on its wash
-      stroke: await rgba(page, 'var(--jp-inverse-layout-color1)'),
+      // ACC-TERM-285-NUMBER-BADGE, ACC-TERM-296-BADGE-INK: the coloured badge's outline in its holder's ink, resolved from the tokens
+      stroke: await rgba(page, holderInk(colour)),
       strokeWidth: '1.2'
     });
     // the number sits centred in its box
@@ -334,7 +345,7 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
   }
 });
 
-test('ACC-TERM-290-BADGE-TINT: a numbered terminal in TERMINALS draws its badge 18 x 13.5 px filled with the 24 % wash of the first workspace holding it in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel, its number keeping 4.5:1, while an unheld terminal keeps the empty box', async ({
+test('ACC-TERM-290-BADGE-TINT, ACC-TERM-296-BADGE-INK: a numbered terminal in TERMINALS draws its badge 18 x 13.5 px filled with the 24 % wash of the first workspace holding it, its outline and number in that hue at 45 % over inverse layout colour 1, in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel; for all six colours the number keeps 4.5:1 on its wash and the outline 3:1 on the section, while an unheld terminal keeps the empty box in the row ink', async ({
   page
 }) => {
   test.setTimeout(180000);
@@ -420,9 +431,15 @@ test('ACC-TERM-290-BADGE-TINT: a numbered terminal in TERMINALS draws its badge 
     // a terminal in no workspace keeps the empty box
     await expect(empty).toHaveCount(1);
     await expect(empty).not.toHaveClass(/jp-mod-coloured/);
-    expect(
-      await empty.locator('rect').evaluate(n => getComputedStyle(n).fill)
-    ).toBe('none');
+    /** A badge's computed rect fill, rect stroke and number fill. */
+    const paint = (svg: Element) => {
+      const rect = getComputedStyle(svg.querySelector('rect')!);
+      return {
+        fill: rect.fill,
+        stroke: rect.stroke,
+        number: getComputedStyle(svg.querySelector('text')!).fill
+      };
+    };
     for (const theme of [
       'JupyterLab Light',
       'JupyterLab Dark',
@@ -433,13 +450,77 @@ test('ACC-TERM-290-BADGE-TINT: a numbered terminal in TERMINALS draws its badge 
         page,
         `color-mix(in srgb, var(--wm-${colour}) 24%, var(--jp-layout-color1))`
       );
-      const fill = await rgba(
-        page,
-        await badge.locator('rect').evaluate(n => getComputedStyle(n).fill)
-      );
+      // ACC-TERM-296-BADGE-INK: the held badge's outline and number take its holder's ink, from the tokens
+      const ink = await rgba(page, holderInk(colour));
+      const held = await badge.evaluate(paint);
+      const fill = await rgba(page, held.fill);
       expect(fill, theme).toEqual(wash);
-      const ink = await rgba(page, await css(badge, 'color'));
-      expect(contrast(ink, fill), theme).toBeGreaterThanOrEqual(4.5);
+      expect(await rgba(page, held.stroke), theme).toEqual(ink);
+      const number = await rgba(page, held.number);
+      expect(number, theme).toEqual(ink);
+      expect(contrast(number, fill), theme).toBeGreaterThanOrEqual(4.5);
+      // the unheld badge keeps no fill and the row ink
+      const rowInk = await rgba(
+        page,
+        await css(unheldRow.locator(LABEL), 'color')
+      );
+      const bare = await empty.evaluate(paint);
+      expect(bare.fill, theme).toBe('none');
+      expect(await rgba(page, bare.stroke), theme).toEqual(rowInk);
+      expect(await rgba(page, bare.number), theme).toEqual(rowInk);
+      // the section body's background: the first painted surface under it
+      const ground = await rgba(
+        page,
+        await body.evaluate(n => {
+          let e: Element = n;
+          while (getComputedStyle(e).backgroundColor === 'rgba(0, 0, 0, 0)') {
+            e = e.parentElement!;
+          }
+          return getComputedStyle(e).backgroundColor;
+        })
+      );
+      // every colour: a probe badge with the held badge's classes in the TERMINALS body, measured and removed
+      for (const c of COLOURS) {
+        const probe = await badge.evaluate((n, c) => {
+          const svg = n.cloneNode(true) as SVGElement;
+          svg.setAttribute(
+            'class',
+            `jp-WorkspaceManager-terminalBadge jp-mod-${c} jp-mod-coloured`
+          );
+          n.closest('.jp-WorkspaceManager-sectionBody')!.appendChild(svg);
+          const rect = getComputedStyle(svg.querySelector('rect')!);
+          const measured = {
+            fill: rect.fill,
+            stroke: rect.stroke,
+            number: getComputedStyle(svg.querySelector('text')!).fill
+          };
+          svg.remove();
+          return measured;
+        }, c);
+        const tinted = await rgba(page, probe.fill);
+        const digits = await rgba(page, probe.number);
+        const outline = await rgba(page, probe.stroke);
+        expect(digits, `${theme} ${c}`).toEqual(await rgba(page, holderInk(c)));
+        expect(outline, `${theme} ${c}`).toEqual(digits);
+        const n = contrast(digits, tinted);
+        const o = contrast(outline, ground);
+        console.log(
+          `${theme} ${c} number ${n.toFixed(2)}:1 outline ${o.toFixed(2)}:1`
+        );
+        expect(n, `${theme} ${c} number`).toBeGreaterThanOrEqual(4.5);
+        expect(o, `${theme} ${c} outline`).toBeGreaterThanOrEqual(3);
+      }
+      // evidence for review; no assertion reads it
+      const shots = process.env.WM_SHOTS_DIR;
+      if (shots) {
+        const name = theme.toLowerCase().replace(/[^a-z]+/g, '-');
+        await heldRow.screenshot({
+          path: path.join(shots, `badge-ink-held-${name}.png`)
+        });
+        await unheldRow.screenshot({
+          path: path.join(shots, `badge-ink-unheld-${name}.png`)
+        });
+      }
     }
   } finally {
     await Promise.all(

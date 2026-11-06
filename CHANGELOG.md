@@ -2,6 +2,18 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.38] - 2026-11-06
+
+### Added
+
+- `workspace-page:open` takes server-proxy:open's `id`, `title`, `url` and `newBrowserTab` arguments: `newBrowserTab` opens the page in a browser tab instead of a lab tab, and `id` names the tab's content widget
+
+### Changed
+
+- A page under the lab's `/proxy/<port>/` opens with server-proxy:open's sandbox, so it keeps the lab session, storage, cookies and POSTs with no policy argument; any other URL keeps `allow-scripts`, and `policy.sandbox` still replaces the sandbox or removes it with null
+- Opening a page on the same port or with the same id as an open page tab reuses that tab and reloads it with the new title and icon; the page document is fetched past the browser cache, so new content shows
+- A held terminal's number badge draws its box outline and its number in its holder's colour, a deeper shade in light themes and a paler one in dark themes, the number at 4.5:1 or more on the tint
+
 ## [0.8.37] - 2026-11-06
 
 ### Added

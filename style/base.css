@@ -657,9 +657,9 @@
   height: 13.5px;
 }
 
-/* a held terminal's box takes the card header's 24 % wash of its first holder's colour; its number takes the card ink that holds 4.5:1 on that wash */
+/* a held terminal's box takes the card header's 24 % wash of its first holder's colour; its outline and number take that hue at 45 % over the inverse layout colour 1, the largest step of 5 that holds 4.5:1 on the wash and 3:1 on the section in Light, Dark and Steel (ACC-TERM-296-BADGE-INK) */
 .jp-WorkspaceManager-terminalBadge.jp-mod-coloured {
-  color: var(--jp-inverse-layout-color1);
+  color: color-mix(in srgb, var(--wm-hue) 45%, var(--jp-inverse-layout-color1));
 }
 
 .jp-WorkspaceManager-terminalBadge.jp-mod-coloured rect {

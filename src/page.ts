@@ -21,10 +21,14 @@ export interface IPagePolicy {
   csp?: string;
 }
 
-/** What a lab page tab opens: the URL, the title, the icon, the policy. */
+/** What a lab page tab opens: the server-proxy:open arguments, the icon, the policy. */
 export interface IPageArgs {
   url: string;
   title?: string;
+  /** The id of the tab's content widget, as server-proxy:open sets it. */
+  id?: string;
+  /** Open the url in a new browser tab and no lab tab. */
+  newBrowserTab?: boolean;
   /** An image URL (svg or png) the tab shows as its icon. */
   icon?: string;
   policy?: IPagePolicy;
@@ -32,6 +36,25 @@ export interface IPageArgs {
 
 /** The default sandbox: scripts run, the page's origin is opaque. */
 const DEFAULT_SANDBOX = 'allow-scripts';
+
+/** server-proxy:open's sandbox, the default for a lab proxy page: it keeps the lab origin. */
+const PROXY_SANDBOX =
+  'allow-same-origin allow-scripts allow-popups allow-forms allow-downloads allow-modals';
+
+/** The page tabs this command opened that are still open, with the arguments each shows. */
+const pages = new Map<MainAreaWidget<Widget>, IPageArgs>();
+
+/** The proxied port of a URL on the lab's own origin under /proxy/<port>/ or /proxy/absolute/<port>/. */
+function proxyPort(url: URL): string | undefined {
+  return url.origin === window.location.origin
+    ? /\/proxy\/(?:absolute\/)?(\d+)\//.exec(url.pathname)?.[1]
+    : undefined;
+}
+
+/** The port a page is on: the proxied port of a lab proxy URL, else the URL's origin. */
+function portOf(url: URL): string {
+  return proxyPort(url) ?? url.origin;
+}
 
 /** A tab icon that renders the image at `url` into the icon's svg. */
 function imageIcon(url: string): LabIcon {
@@ -58,9 +81,12 @@ const POLICY_ATTRIBUTES: [keyof IPagePolicy, string][] = [
  *
  * Throws, naming the field, before any widget exists when a field has the
  * wrong type: `sandbox` is a string, null or absent, every other field a
- * string or absent.
+ * string or absent. An absent `sandbox` sets `fallback`.
  */
-function policyAttributes(policy: IPagePolicy): [string, string][] {
+function policyAttributes(
+  policy: IPagePolicy,
+  fallback: string
+): [string, string][] {
   if (typeof policy !== 'object' || policy === null) {
     throw new Error('workspace-page:open: policy must be an object');
   }
@@ -77,7 +103,7 @@ function policyAttributes(policy: IPagePolicy): [string, string][] {
   }
   const { sandbox } = policy;
   if (sandbox === undefined) {
-    attributes.push(['sandbox', DEFAULT_SANDBOX]);
+    attributes.push(['sandbox', fallback]);
   } else if (sandbox !== null) {
     if (typeof sandbox !== 'string') {
       throw new Error(
@@ -89,45 +115,109 @@ function policyAttributes(policy: IPagePolicy): [string, string][] {
   return attributes;
 }
 
+/** A new page tab: a MainAreaWidget around a plain iframe, tracked until disposed. */
+function createPage(id?: string): MainAreaWidget<Widget> {
+  const frame = document.createElement('iframe');
+  frame.style.width = '100%';
+  frame.style.height = '100%';
+  frame.style.border = '0';
+  const content = new Widget({ node: frame });
+  if (id !== undefined) {
+    content.id = id;
+  }
+  const widget = new MainAreaWidget({ content });
+  frame.addEventListener('load', () => {
+    // readable only while the page keeps the lab origin
+    const title = frame.contentDocument?.title;
+    if (!pages.get(widget)?.title && title) {
+      widget.title.label = title;
+      frame.title = title;
+    }
+  });
+  widget.disposed.connect(() => pages.delete(widget));
+  return widget;
+}
+
 /**
- * Show `url` in a tab of the main area.
+ * Show `url` in a tab of the main area, or in a new browser tab with
+ * `newBrowserTab`, as server-proxy:open does.
  *
- * The iframe is sandboxed to `allow-scripts` by default: the page's scripts
- * run, but its origin is opaque, so it has no lab session, storage or cookies
- * and its requests do not reach the lab. A policy replaces the sandbox value
- * verbatim, or removes it with null so a page under `/proxy/<port>/` keeps the
- * lab origin, its storage and its POSTs.
+ * A URL on the lab's origin under `/proxy/<port>/` or `/proxy/absolute/<port>/`
+ * gets server-proxy:open's sandbox by default, so the page keeps the lab
+ * origin, its session, storage, cookies and POSTs. Any other URL is sandboxed
+ * to `allow-scripts`: the page's scripts run, but its origin is opaque. A
+ * policy replaces either sandbox verbatim, or removes it with null.
+ *
+ * A page tab this command opened that shows a page on the same port (the
+ * proxied port, else the URL's origin) or carries the same `id` is reused:
+ * it takes the new attributes, title and icon, loads the url again, and
+ * becomes current. A URL on the lab's origin is fetched past the browser cache
+ * before the frame loads it, so the frame shows the document the server serves
+ * now. Throws, naming the argument, before anything opens when an argument has
+ * the wrong type.
  */
 export function openPage(
   app: JupyterFrontEnd,
   args: IPageArgs
-): MainAreaWidget<Widget> {
-  const attributes = policyAttributes(args.policy ?? {});
-  const frame = document.createElement('iframe');
-  frame.src = args.url;
+): MainAreaWidget<Widget> | undefined {
+  if (
+    args.newBrowserTab !== undefined &&
+    typeof args.newBrowserTab !== 'boolean'
+  ) {
+    throw new Error('workspace-page:open: newBrowserTab must be a boolean');
+  }
+  if (args.id !== undefined && typeof args.id !== 'string') {
+    throw new Error('workspace-page:open: id must be a string');
+  }
+  const url = new URL(args.url, document.baseURI);
+  const attributes = policyAttributes(
+    args.policy ?? {},
+    proxyPort(url) ? PROXY_SANDBOX : DEFAULT_SANDBOX
+  );
+  if (args.newBrowserTab) {
+    window.open(args.url, '_blank');
+    return undefined;
+  }
+  // by the url each tab was last given: a tab whose fetch is pending has no src yet
+  const tabs = [...pages];
+  const [open] =
+    tabs.find(([tab]) => args.id !== undefined && tab.content.id === args.id) ??
+    tabs.find(
+      ([, shown]) =>
+        portOf(new URL(shown.url, document.baseURI)) === portOf(url)
+    ) ??
+    [];
+  const widget = open ?? createPage(args.id);
+  pages.set(widget, args);
+  const frame = widget.content.node as HTMLIFrameElement;
+  for (const name of ['sandbox', 'allow', 'referrerpolicy', 'csp']) {
+    frame.removeAttribute(name);
+  }
   for (const [name, value] of attributes) {
     frame.setAttribute(name, value);
   }
   if (args.title) {
     frame.title = args.title;
+    widget.title.label = args.title;
   }
-  frame.style.width = '100%';
-  frame.style.height = '100%';
-  frame.style.border = '0';
-  const widget = new MainAreaWidget({ content: new Widget({ node: frame }) });
-  widget.title.label = args.title ?? '';
   widget.title.icon = args.icon ? imageIcon(args.icon) : pageIcon;
-  if (!args.title) {
-    // readable only while the page keeps the lab origin
-    frame.addEventListener('load', () => {
-      const title = frame.contentDocument?.title;
-      if (title) {
-        widget.title.label = title;
-        frame.title = title;
+  if (url.origin === window.location.origin) {
+    // shortcut: only the page document is fetched past the cache; its scripts, styles and data follow their server's caching headers, so that server should send Cache-Control: no-store
+    const load = () => {
+      // only the url last requested for this tab
+      if (pages.get(widget) === args) {
+        frame.src = args.url;
       }
-    });
+    };
+    fetch(url.href, { cache: 'reload' })
+      .then(reply => reply.blob())
+      .then(load, load);
+  } else {
+    frame.src = args.url;
   }
-  app.shell.add(widget, 'main');
+  if (!open) {
+    app.shell.add(widget, 'main');
+  }
   app.shell.activateById(widget.id);
   return widget;
 }
@@ -152,6 +242,8 @@ export const pagePlugin: JupyterFrontEndPlugin<void> = {
           properties: {
             url: { type: 'string' },
             title: { type: 'string' },
+            id: { type: 'string' },
+            newBrowserTab: { type: 'boolean' },
             icon: { type: 'string' },
             policy: {
               type: 'object',
