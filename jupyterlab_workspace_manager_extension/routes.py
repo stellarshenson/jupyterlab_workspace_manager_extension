@@ -11,6 +11,7 @@ from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
 from jupyterlab_server.workspaces_handler import WORKSPACE_EXTENSION, slugify
 import psutil
+import ptyprocess
 import tornado
 
 NAMESPACE = "jupyterlab-workspace-manager-extension"
@@ -92,7 +93,12 @@ class TerminalsHandler(APIHandler):
         for model in models:
             pty = manager.terminals[model["name"]]
             # terminado keeps a shut-down terminal until its pty closes; a row of an ended pty leaves
-            if pty.ptyproc.terminated or not pty.ptyproc.isalive():
+            try:
+                ended = pty.ptyproc.terminated or not pty.ptyproc.isalive()
+            except ptyprocess.PtyProcessError:
+                # a child another waitpid reaped makes isalive raise; that terminal has ended too
+                ended = True
+            if ended:
                 continue
             model["process"] = process_name(pty)
             model["memory"] = process_memory(pty)

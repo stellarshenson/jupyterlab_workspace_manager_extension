@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import psutil
+import ptyprocess
 import pytest
 
 NAMESPACE = "jupyterlab-workspace-manager-extension"
@@ -104,6 +105,37 @@ async def test_ended_terminal_left_out(jp_fetch, jp_serverapp, tmp_path):
         assert [t["name"] for t in await get_terminals(jp_fetch)] == [live]
     finally:
         held.unlink(missing_ok=True)
+
+
+class ReapedPty:
+    """A terminal whose child another waitpid reaped: isalive raises PtyProcessError."""
+
+    class ptyproc:
+        terminated = False
+
+        @staticmethod
+        def isalive():
+            raise ptyprocess.PtyProcessError(
+                'isalive() encountered condition where "terminated" is 0, but there was no child process'
+            )
+
+
+async def test_reaped_child_left_out(jp_fetch, jp_serverapp):
+    """DEF-SERVER-86-PTY-RACE: a terminal whose child was reaped elsewhere is left out, not a 500; a live one stays."""
+    name = await new_terminal(jp_fetch)
+    healthy = jp_serverapp.web_app.settings["terminal_manager"].terminals[name]
+
+    class FakeManager:
+        def __init__(self):
+            self.terminals = {"reaped": ReapedPty(), name: healthy}
+
+        @staticmethod
+        def list():
+            return [{"name": "reaped"}, {"name": name}]
+
+    jp_serverapp.web_app.settings["terminal_manager"] = FakeManager()
+
+    assert [t["name"] for t in await get_terminals(jp_fetch)] == [name]
 
 
 async def test_process_at_the_prompt_is_the_shell(jp_fetch):

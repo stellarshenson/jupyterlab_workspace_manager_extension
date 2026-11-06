@@ -937,15 +937,25 @@ export class WorkspacePanel
                   undefined,
                   true // pointerFocus
                 )
-              : iconButton(
-                  powerIcon,
-                  'Shut down all',
-                  () => void this._shutDownSection(shutdown),
-                  !n,
-                  undefined,
-                  undefined,
-                  true // pointerFocus
-                ))}
+              : shutdown === 'servers'
+                ? iconButton(
+                    powerIcon,
+                    this._translation.__('Shut down all'),
+                    () => void this._shutDownSection(shutdown),
+                    !n,
+                    undefined,
+                    undefined,
+                    true // pointerFocus
+                  )
+                : iconButton(
+                    powerIcon,
+                    this._translation.__('Shut down'),
+                    e => this._bandMenu(shutdown, e),
+                    !n,
+                    undefined,
+                    undefined,
+                    true // pointerFocus
+                  ))}
         </div>
         {open && (
           <div className="jp-WorkspaceManager-sectionBody">
@@ -1264,7 +1274,13 @@ export class WorkspacePanel
     const live = inCard && !section!.current ? undefined : this._live.get(key);
     const trans = this._translation;
     const tab = terminalTabName(t);
-    const holders = (inCard ? [section!.id, ...t.alsoIn] : t.alsoIn).join(', ');
+    // a listed row's holders once, in the model's order, so its badge and tooltip agree
+    const held = listed
+      ? this._sections.filter(s => t.alsoIn.includes(s.id))
+      : null;
+    const holders = (
+      held ? held.map(s => s.id) : [section!.id, ...t.alsoIn]
+    ).join(', ');
     const numbered = /^\d+$/.test(t.name);
     return row({
       key,
@@ -1275,7 +1291,7 @@ export class WorkspacePanel
       // name, and a card row drops the label of a numbered terminal (ACC-TERM-285-NUMBER-BADGE, ACC-TERM-275-CARD-LABEL)
       label: listed
         ? numbered
-          ? terminalBadge(t.name)
+          ? terminalBadge(t.name, held?.[0]?.colour ?? null)
           : terminalLabel(t.name)
         : numbered
           ? ''
@@ -1297,7 +1313,7 @@ export class WorkspacePanel
               new Date(t.lastActivity).toLocaleString()
             )
           : trans.__('Last activity: %1', when.label),
-        field(trans.__('Workspaces'), holders)
+        field(trans.__('Workspaces'), holders || trans.__('none'))
       ),
       when,
       // this window's row or a TERMINALS row activates the tab of its terminal;
@@ -1445,6 +1461,74 @@ export class WorkspacePanel
         })
       );
     return rows(items, m.name, false);
+  }
+
+  /** The KERNELS and TERMINALS band power button: Shut down all, or only the items no workspace holds (ACC-ACCORD-292-SHUTDOWN-MENU). */
+  private _bandMenu(kind: 'terminals' | 'kernels', e: React.MouseEvent): void {
+    const detached = (this._model()?.[kind] ?? []).some(
+      x => x.alsoIn.length === 0
+    );
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    actionMenu([
+      {
+        label: this._translation.__('Shut down all'),
+        icon: powerIcon,
+        danger: true,
+        execute: () => void this._shutDownSection(kind)
+      },
+      {
+        label: this._translation.__('Shut down detached'),
+        icon: powerIcon,
+        danger: true,
+        enabled: detached,
+        execute: () => void this._shutDownDetached(kind)
+      }
+    ]).open(rect.left, rect.bottom);
+  }
+
+  /** Shut down every terminal or kernel of a section that no workspace holds, asking once (ACC-ACCORD-292-SHUTDOWN-MENU). */
+  private async _shutDownDetached(
+    kind: 'terminals' | 'kernels'
+  ): Promise<void> {
+    const n = (this._model()?.[kind] ?? []).filter(
+      x => x.alsoIn.length === 0
+    ).length;
+    if (!n) {
+      return;
+    }
+    const word = kind === 'terminals' ? 'terminal' : 'kernel';
+    if (
+      !(await confirm(
+        'Shut down detached?',
+        `Shut down ${n} detached ${word}${n === 1 ? '' : 's'}.`,
+        'Shut down detached'
+      ))
+    ) {
+      return;
+    }
+    await this._act(async () => {
+      // what runs now: an item may have been attached while the dialog was open
+      const { failed, ...data } = await load(this._settings);
+      if (failed.length) {
+        throw new Error(
+          `Nothing was shut down. Reload failed: ${failed.join(', ')}`
+        );
+      }
+      const model = this._model({ ...EMPTY, ...data })!;
+      if (kind === 'terminals') {
+        await Promise.all(
+          model.terminals
+            .filter(x => x.alsoIn.length === 0)
+            .map(x => this._app.serviceManager.terminals.shutdown(x.name))
+        );
+      } else {
+        await Promise.all(
+          model.kernels
+            .filter(x => x.alsoIn.length === 0)
+            .map(x => this._app.serviceManager.kernels.shutdown(x.id))
+        );
+      }
+    });
   }
 
   /** Shut down every item of one of the sections below WORKSPACES, asking once. */
@@ -2292,11 +2376,14 @@ function field(label: string, value?: string | null): string | undefined {
   return value ? `${label}: ${value.replace(/[\r\n]+/g, ' ')}` : undefined;
 }
 
-/** A TERMINALS row's label for a numbered terminal: its number in a small box (ACC-TERM-285-NUMBER-BADGE). */
-function terminalBadge(name: string): React.ReactElement {
+/** A TERMINALS row's label for a numbered terminal: its number in a small box (ACC-TERM-285-NUMBER-BADGE, ACC-TERM-290-BADGE-TINT). */
+function terminalBadge(
+  name: string,
+  colour?: Colour | null
+): React.ReactElement {
   return (
     <svg
-      className="jp-WorkspaceManager-terminalBadge"
+      className={`jp-WorkspaceManager-terminalBadge${colour ? ` jp-mod-${colour} jp-mod-coloured` : ''}`}
       viewBox="0 0 20 15"
       role="img"
       aria-label={name}

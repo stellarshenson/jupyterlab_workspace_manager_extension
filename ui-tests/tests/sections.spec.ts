@@ -410,7 +410,7 @@ test('ACC-LISTS-158-LANG-LISTED: a language server of the lab is listed in the L
   }
 });
 
-test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts its terminal down from its context menu, a LANGUAGE SERVERS row keeps its shutdown button, and each of the three headers carries Shut down all with its confirmation', async ({
+test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts its terminal down from its context menu, a LANGUAGE SERVERS row keeps its shutdown button, the KERNELS and TERMINALS headers carry the Shut down menu, and the LANGUAGE SERVERS header carries Shut down all with its confirmation', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -421,15 +421,21 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts it
     await expect(sectionHeader(page, 'servers')).toContainText(
       'LANGUAGE SERVERS'
     );
-    // each section header carries Shut down all
-    for (const name of ['kernels', 'terminals', 'servers']) {
+    // the KERNELS and TERMINALS headers carry the Shut down menu; LANGUAGE SERVERS keeps Shut down all
+    for (const name of ['kernels', 'terminals']) {
       await expect(
         sectionHeader(page, name).getByRole('button', {
-          name: 'Shut down all',
+          name: 'Shut down',
           exact: true
         })
       ).toBeVisible();
     }
+    await expect(
+      sectionHeader(page, 'servers').getByRole('button', {
+        name: 'Shut down all',
+        exact: true
+      })
+    ).toBeVisible();
 
     // a terminal row shuts its terminal down from its context menu
     await openSection(page, 'terminals');
@@ -467,6 +473,86 @@ test('ACC-PANEL-157-OTHERS-ACTIONS: a TERMINALS row holds no button and shuts it
   } finally {
     await languageServer(page, false);
     await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-ACCORD-292-SHUTDOWN-MENU: the TERMINALS band power button opens Shut down all and Shut down detached, both in the error colour; detached is a terminal in no workspace, the entry disables with none, the confirmation names the count, and only the detached terminal goes', async ({
+  page
+}) => {
+  const detached = await startTerminal(page);
+  // the terminals of other tests are not this test's
+  const mine = new Set([detached]);
+  await only(
+    page,
+    /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+    t => mine.has(t.name)
+  );
+  const current = await setUp(page, 'menu');
+  let held = '';
+  try {
+    held = await newTerminalTab(page);
+    mine.add(held);
+    await refresh(page);
+    const power = sectionHeader(page, 'terminals').getByRole('button', {
+      name: 'Shut down',
+      exact: true
+    });
+    await expect(power).toBeVisible();
+    await expect(power).toHaveAttribute('title', 'Shut down');
+    await power.click();
+    await expect(menuItem(page, 'Shut down all')).toBeVisible();
+    await expect(menuItem(page, 'Shut down detached')).toBeVisible();
+    for (const label of ['Shut down all', 'Shut down detached']) {
+      await expect(menuItem(page, label)).toHaveClass(
+        /jp-WorkspaceManager-danger/
+      );
+    }
+    // a terminal in no workspace makes the detached entry available
+    await expect(menuItem(page, 'Shut down detached')).not.toHaveClass(
+      /lm-mod-disabled/
+    );
+    await menuItem(page, 'Shut down detached').click();
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'Shut down detached?'
+    );
+    await expect(dialog(page).locator('.jp-Dialog-body')).toContainText(
+      'Shut down 1 detached terminal.'
+    );
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Shut down detached' })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+    // only the detached terminal goes; the held one stays
+    await expect
+      .poll(() => terminalNames(page), UNDER_LOAD)
+      .not.toContain(detached);
+    expect(await terminalNames(page)).toContain(held);
+    await refresh(page);
+    // with no detached terminal left the entry is disabled, Shut down all is not
+    await power.click();
+    await expect(menuItem(page, 'Shut down detached')).toHaveClass(
+      /lm-mod-disabled/
+    );
+    // the disabled destructive entry takes the app's disabled ink, not the danger red
+    expect(
+      await rgba(
+        page,
+        await menuItem(page, 'Shut down detached').evaluate(
+          n => getComputedStyle(n).color
+        )
+      )
+    ).toEqual(await rgba(page, 'var(--jp-ui-font-color3)'));
+    await expect(menuItem(page, 'Shut down all')).not.toHaveClass(
+      /lm-mod-disabled/
+    );
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.jp-WorkspaceManager-menu')).toHaveCount(0);
+  } finally {
+    await page.request.delete(`/api/terminals/${detached}`);
+    if (held) {
+      await page.request.delete(`/api/terminals/${held}`);
+    }
     await deleteWorkspaces(page, [current]);
   }
 });
@@ -989,7 +1075,9 @@ test.describe('kernels and sessions of the server', () => {
       // the Memory line follows Path (ACC-TERM-279-TOOLTIP-MEMORY)
       expect(lines[4]).toMatch(/^Memory: /);
       expect(lines[5]).toContain(`Last activity: ${age} (`);
-      expect(lines).toHaveLength(6);
+      // the Workspaces line always stands, none for a terminal in no workspace (ACC-TERM-291-ATTACH-TOOLTIP)
+      expect(lines[6]).toBe('Workspaces: none');
+      expect(lines).toHaveLength(7);
 
       // a kernel row: its kernelspec display name, the session path, its state
       // and the memory (ACC-KERNEL-282-TOOLTIP-MEMORY)

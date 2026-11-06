@@ -82,7 +82,7 @@ test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE, EDGE-CLEAN-UP-IC
     await expect(clean).toBeVisible();
     // the three bands below carry the same 22 px button with a 14 px glyph
     const below = sectionHeader(page, 'kernels').getByRole('button', {
-      name: 'Shut down all',
+      name: 'Shut down',
       exact: true
     });
     const box = (await clean.boundingBox())!;
@@ -95,8 +95,10 @@ test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE, EDGE-CLEAN-UP-IC
     const glyph = (await clean.locator('svg').boundingBox())!;
     expect(Math.round(glyph.width)).toBe(14);
     expect(Math.round(glyph.height)).toBe(14);
-    // EDGE-CLEAN-UP-ICON: the clean-up control draws an eraser, the three Shut down all
+    // EDGE-CLEAN-UP-ICON: the clean-up control draws an eraser, the three band power
     // controls the power symbol; each is 14 px with 5 px above and below inside the 24 px band
+    const powerName = (section: string) =>
+      section === 'servers' ? 'Shut down all' : 'Shut down';
     const band = (section: string, name: string) =>
       sectionHeader(page, section)
         .getByRole('button', { name, exact: true })
@@ -120,13 +122,16 @@ test('ACC-ACCORD-221-CLEAN-BUTTON, ACC-PANEL-240-CLEAR-CONSOLE, EDGE-CLEAN-UP-IC
       paths: ['M14.5 4.5 19.5 9.5 9.5 19.5 4.5 14.5z', 'M11.5 7.5 16.5 12.5']
     });
     for (const section of ['kernels', 'terminals', 'servers']) {
-      expect(await strokes(section, 'Shut down all')).toEqual({
+      expect(await strokes(section, powerName(section))).toEqual({
         viewBox: '0 0 24 24',
         circles: 0,
         paths: ['M12 3v8', 'M7.7 5.86A7.5 7.5 0 1 0 16.3 5.86']
       });
       // the 14 px glyph sits 5 px from the band's top edge and 5 px from its bottom edge
-      const tallyGlyph = (await band(section, 'Shut down all').boundingBox())!;
+      const tallyGlyph = (await band(
+        section,
+        powerName(section)
+      ).boundingBox())!;
       const tallyBand = (await sectionHeader(page, section).boundingBox())!;
       expect(centre(tallyGlyph), section).toBeCloseTo(reload, 1);
       expect(Math.round(tallyGlyph.width)).toBe(14);

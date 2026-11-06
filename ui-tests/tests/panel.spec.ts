@@ -1142,7 +1142,7 @@ test("ACC-PANEL-262-CARET-SIZE: each section band's triangle has the computed fo
   ).not.toBe('600');
 });
 
-test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it draws one 1 px --jp-layout-color3 bottom line, and an open section and the last section draw none; the WORKSPACES top line stands under the title band and gives way to the filter field; the band starts 1 px below a drawn top line and at the section top without one; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with WORKSPACES open and never below it; in Light, Dark and Steel the title band line is 1 px solid --jp-border-color2', async ({
+test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it draws one 1 px --jp-layout-color3 bottom line, and an open section draws none; the last section draws one only while WORKSPACES is open, where it meets the status bar, and none in every other state; the WORKSPACES top line stands under the title band and gives way to the filter field; the band starts 1 px below a drawn top line and at the section top without one; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with WORKSPACES open and never below it; in Light, Dark and Steel the title band line is 1 px solid --jp-border-color2', async ({
   page
 }) => {
   await page.goto();
@@ -1207,10 +1207,12 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
           .soft(workspaces.topRule, `${state}: WORKSPACES top`)
           .toEqual(line);
       }
-      // the line under a folded section that has a section below it, and none under an open
-      // section or the last one, because the fills already differ there
+      // the line under a folded section that has a section below it; an open section
+      // draws none, and the last section draws one only while WORKSPACES is open,
+      // where the bands dock at the panel bottom and it meets the status bar
       drawn.sections.forEach((section, i) => {
-        if (!section.open && i < drawn.sections.length - 1) {
+        const last = i === drawn.sections.length - 1;
+        if ((!section.open && !last) || (last && open === 'workspaces')) {
           expect
             .soft(section.bottomRule, `${state}: ${section.name} bottom`)
             .toEqual(line);
@@ -1319,6 +1321,75 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
   }
 });
 
+test('ACC-PANEL-289-STATUS-DIVIDER: with WORKSPACES open the last section draws one 1 px --jp-layout-color3 bottom line whose border-box bottom is the panel bottom; with any other section open and with all sections closed it draws none; in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel the line colour is the token resolved in that theme', async ({
+  page
+}) => {
+  await page.goto();
+  await openPanel(page);
+  await expect(card(page, 'default')).toBeVisible();
+  const line = [
+    'solid',
+    '1px',
+    await token(page, 'borderBottomColor', 'var(--jp-layout-color3)')
+  ];
+  // the last section's bottom rule, and the two bottoms that must meet
+  const lastBand = () =>
+    page.locator(PANEL).evaluate(panel => {
+      const sections = panel.querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-section'
+      );
+      const last = sections[sections.length - 1];
+      const s = getComputedStyle(last);
+      return {
+        bottomRule: [
+          s.borderBottomStyle,
+          s.borderBottomWidth,
+          s.borderBottomColor
+        ],
+        bottom: last.getBoundingClientRect().bottom,
+        panelBottom: panel.getBoundingClientRect().bottom
+      };
+    });
+  for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+    await showSection(page, open);
+    const drawn = await lastBand();
+    const state = `${open ?? 'all closed'} open`;
+    if (open === 'workspaces') {
+      expect(
+        drawn.bottomRule,
+        `${state}: the last section bottom line`
+      ).toEqual(line);
+      expect(
+        Math.abs(drawn.panelBottom - drawn.bottom),
+        `${state}: the last section to the panel bottom`
+      ).toBeLessThanOrEqual(WITHIN);
+    } else {
+      expect(
+        drawn.bottomRule.slice(0, 2),
+        `${state}: the last section bottom line`
+      ).toEqual(['none', '0px']);
+    }
+  }
+  for (const theme of [
+    'JupyterLab Light',
+    'JupyterLab Dark',
+    'Galaxa Dark Theme - Steel'
+  ]) {
+    await page.theme.setTheme(theme);
+    await page.mouse.move(0, 0);
+    await showSection(page, 'workspaces');
+    const drawn = await lastBand();
+    const colour = await token(
+      page,
+      'borderBottomColor',
+      'var(--jp-layout-color3)'
+    );
+    expect
+      .soft(drawn.bottomRule, `${theme}: the last section bottom line`)
+      .toEqual(['solid', '1px', colour]);
+  }
+});
+
 test.describe('a focus ring at the panel edge', () => {
   test.use({ mockState: false });
 
@@ -1404,7 +1475,7 @@ test.describe('a focus ring at the panel edge', () => {
   });
 });
 
-test('ACC-PANEL-193-SECTIONS-SHOWN: with no kernel, terminal or language server the four sections show in order; each empty one says so and its Shut down all is disabled', async ({
+test('ACC-PANEL-193-SECTIONS-SHOWN: with no kernel, terminal or language server the four sections show in order; each empty one says so and its power button is disabled', async ({
   page
 }) => {
   // Galata lists only the kernels and sessions this page starts; the terminals of other tests are not this test's
@@ -1422,7 +1493,7 @@ test('ACC-PANEL-193-SECTIONS-SHOWN: with no kernel, terminal or language server 
     await expect(sectionCount(page, name)).toHaveText('(0)');
     await expect(
       sectionHeader(page, name).getByRole('button', {
-        name: 'Shut down all',
+        name: name === 'servers' ? 'Shut down all' : 'Shut down',
         exact: true
       })
     ).toBeDisabled();

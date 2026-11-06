@@ -1,5 +1,8 @@
 // the tsconfig only auto-includes jest types; pull in node's for the real setImmediate
 /// <reference types="node" />
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 import { PageConfig } from '@jupyterlab/coreutils';
 import { RunningSessionManagers } from '@jupyterlab/running';
 import { ServerConnection } from '@jupyterlab/services';
@@ -463,11 +466,20 @@ const openSection = (panel: Widget, key: string) => {
   }
   return sectionBody(panel, key);
 };
-/** The Shut down all button of a section's header: the icon button named by its aria-label. */
-const shutDownAll = (panel: Widget, key: string) =>
+/** The power button of a section's header: Shut down on KERNELS and TERMINALS, Shut down all on LANGUAGE SERVERS. */
+const bandPower = (panel: Widget, key: string) =>
   Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
-    b => b.getAttribute('aria-label') === 'Shut down all'
+    b =>
+      b.getAttribute('aria-label') === 'Shut down' ||
+      b.getAttribute('aria-label') === 'Shut down all'
   )!;
+/** Shut a section down: KERNELS and TERMINALS open their menu, where Shut down all is the first entry; LANGUAGE SERVERS opens its dialog directly. */
+const shutDownAll = (panel: Widget, key: string) => {
+  bandPower(panel, key).click();
+  if (key !== 'servers') {
+    chooseMenuItem(0); // Shut down all
+  }
+};
 /** The clear-console button of the WORKSPACES band. */
 const cleanButton = (panel: Widget) =>
   Array.from(
@@ -592,7 +604,7 @@ describe('panel', () => {
       .click();
     expect(shutdown).toHaveBeenCalledTimes(1);
 
-    const all = shutDownAll(panel, 'servers');
+    const all = bandPower(panel, 'servers');
     all.click();
     await waitForDialog();
     expect(dialogText()).toContain('shut down all running language servers?');
@@ -1037,9 +1049,15 @@ describe('panel', () => {
     await settle();
     expect(app.serviceManager.kernels.shutdown).toHaveBeenCalledWith('k1');
 
+    // the KERNELS and TERMINALS bands carry the Shut down menu; LANGUAGE SERVERS keeps Shut down all
     for (const key of ['kernels', 'terminals']) {
-      expect(shutDownAll(panel, key)).toBeTruthy();
+      const power = bandPower(panel, key);
+      expect(power.getAttribute('aria-label')).toBe('Shut down');
+      expect(power.title).toBe('Shut down');
     }
+    expect(bandPower(panel, 'servers').getAttribute('aria-label')).toBe(
+      'Shut down all'
+    );
   });
 
   it('DEF-PANEL-10-SHARED-VIEW, DEF-PANEL-69-TABS-SAMEFILE: each open tab of one file has its own row and count; its click and Close tab act on that tab alone', async () => {
@@ -1087,8 +1105,7 @@ describe('panel', () => {
     );
     const { panel, app } = await mount(server);
     openSection(panel, 'terminals');
-    const all = shutDownAll(panel, 'terminals');
-    all.click();
+    shutDownAll(panel, 'terminals');
     await waitForDialog();
     expect(dialogText()).toContain('Shut down 3 terminals.');
     // while the dialog is open, terminal 9 ends
@@ -1120,7 +1137,7 @@ describe('panel', () => {
       ['servers', 'No language servers']
     ]) {
       expect(sectionCount(panel, key)).toBe('(0)');
-      expect(shutDownAll(panel, key).disabled).toBe(true);
+      expect(bandPower(panel, key).disabled).toBe(true);
       expect(openSection(panel, key).textContent).toBe(text);
     }
   });
@@ -2238,6 +2255,179 @@ describe('panel', () => {
     expect(listed[0].title.split('\n')[0]).toBe('terminal 7');
   });
 
+  it('ACC-TERM-290-BADGE-TINT: a listed numbered terminal takes the first holding workspace colour in the model order, an unheld one keeps the empty box, and the badge is 18 x 13.5 px filled with the 24 % wash', async () => {
+    const server = standard();
+    server.terminals = [
+      { name: '7', last_activity: iso(0), process: 'claude' },
+      { name: '9', last_activity: iso(0), process: 'htop' }
+    ];
+    // auto-5 sorts first by position and is sky; auto-6 holds 7 too and is peach
+    server.workspaces[1] = workspace('auto-6', 60 * 24 * 3, ['terminal:7']);
+    server.workspaces.push(workspace('auto-5', 60, ['terminal:7']));
+    server.records['auto-6'].position = 1;
+    server.records['auto-5'] = { colour: 'sky', position: 0 };
+    const { panel } = await mount(server);
+    const rows = Array.from(
+      openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    const badge = (row: HTMLElement) =>
+      row.querySelector<SVGElement>('.jp-WorkspaceManager-terminalBadge')!;
+    // 7 takes the first holder's colour, not the second's
+    expect(Array.from(badge(rows[0]).classList)).toEqual([
+      'jp-WorkspaceManager-terminalBadge',
+      'jp-mod-sky',
+      'jp-mod-coloured'
+    ]);
+    // the tooltip names the holders in the badge's order
+    expect(rows[0].title).toContain('Workspaces: auto-5, auto-6');
+    // 9 is in no workspace: the empty box, no colour class
+    expect(Array.from(badge(rows[1]).classList)).toEqual([
+      'jp-WorkspaceManager-terminalBadge'
+    ]);
+    // the box is 18 x 13.5 px and a coloured rect takes the card header's 24 % wash
+    const sheet = readFileSync(
+      join(__dirname, '..', '..', 'style', 'base.css'),
+      'utf8'
+    );
+    const rule = sheet
+      .match(/\.jp-WorkspaceManager-terminalBadge\s*\{([^}]*)\}/)![1]
+      .replace(/\s+/g, ' ');
+    expect(rule).toContain('width: 18px;');
+    expect(rule).toContain('height: 13.5px;');
+    expect(sheet).toMatch(
+      /\.jp-WorkspaceManager-terminalBadge\.jp-mod-coloured rect\s*\{\s*fill: var\(--wm-shade\);\s*\}/
+    );
+    for (const colour of [
+      'rose',
+      'peach',
+      'lemon',
+      'mint',
+      'sky',
+      'lavender'
+    ]) {
+      expect(sheet).toContain(
+        `.jp-WorkspaceManager-terminalBadge.jp-mod-${colour}`
+      );
+    }
+  });
+
+  it('ACC-TERM-291-ATTACH-TOOLTIP: a TERMINALS row always states its attachment, naming every holder or reading none, and a card row names its own workspace', async () => {
+    const server = standard();
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
+    });
+    const { panel } = await mount(server);
+    // a card row's holders include its own workspace
+    triangle(panel, 'w:auto-6').click();
+    const cardRow = Array.from(
+      card(panel, 'w:auto-6').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    ).find(r => r.title.startsWith('terminal 1'))!;
+    expect(cardRow.title).toContain('Workspaces: auto-6');
+    // terminal 1 is auto-6's; terminal 9 is in no workspace
+    const rows = Array.from(
+      openSection(panel, 'terminals').querySelectorAll<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )
+    );
+    const listed = (name: string) =>
+      rows.find(r => r.title.startsWith(`terminal ${name}`))!;
+    expect(listed('1').title).toContain('Workspaces: auto-6');
+    expect(listed('9').title).toContain('Workspaces: none');
+  });
+
+  it('ACC-ACCORD-292-SHUTDOWN-MENU: the KERNELS and TERMINALS band power button opens Shut down all and Shut down detached, the detached entry disables with none, each entry shuts its own items down, and LANGUAGE SERVERS keeps its direct Shut down all', async () => {
+    const server = standard();
+    // terminal 1 is auto-6's, terminal 9 is in no workspace; k1 serves auto-6's notebook
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
+    });
+    server.workspaces[1] = workspace('auto-6', 60 * 24 * 3, [
+      'notebook:a.ipynb',
+      'terminal:1'
+    ]);
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    const managers = new RunningSessionManagers();
+    const shutdownAll = jest.fn();
+    managers.add({
+      ...manager('Language servers', []),
+      running: () => [{ label: () => 'pylsp (python)', icon: () => '' }],
+      shutdownAll,
+      shutdownAllConfirmationText: 'Shut down every language server?'
+    });
+    const { panel, app } = await mount(server, { managers });
+    const bandButton = (key: string, label: string) =>
+      Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
+        b => b.getAttribute('aria-label') === label
+      )!;
+    const items = () =>
+      Array.from(
+        document.querySelectorAll('.jp-WorkspaceManager-menu .lm-Menu-item')
+      );
+
+    // KERNELS: k1 is held by auto-6, so no kernel is detached
+    const kernels = bandButton('kernels', 'Shut down');
+    expect(kernels.title).toBe('Shut down');
+    kernels.click();
+    await settle();
+    expect(menuLabels()).toEqual(['Shut down all', 'Shut down detached']);
+    expect(items()[0].classList).toContain('jp-WorkspaceManager-danger');
+    expect(items()[1].classList).toContain('jp-WorkspaceManager-danger');
+    expect(items()[0].classList).not.toContain('lm-mod-disabled');
+    expect(items()[1].classList).toContain('lm-mod-disabled');
+    pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 27);
+    await settle();
+
+    // TERMINALS: terminal 9 is detached, so the entry is enabled and shuts only it down
+    expect(bandButton('terminals', 'Shut down').title).toBe('Shut down');
+    bandButton('terminals', 'Shut down').click();
+    await settle();
+    expect(items()[1].classList).not.toContain('lm-mod-disabled');
+    chooseMenuItem(1); // Shut down detached
+    await waitForDialog();
+    expect(dialogText()).toContain('Shut down detached?');
+    expect(dialogBody()).toContain('Shut down 1 detached terminal.');
+    await dangerDialog();
+    await settle();
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['9']]);
+
+    // Shut down all keeps its count and shuts every item of the section
+    bandButton('terminals', 'Shut down').click();
+    chooseMenuItem(0);
+    await waitForDialog();
+    expect(dialogText()).toContain('Shut down all?');
+    expect(dialogBody()).toContain('Shut down 2 terminals.');
+    await dangerDialog();
+    await settle();
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([
+      ['9'],
+      ['1'],
+      ['9']
+    ]);
+
+    // LANGUAGE SERVERS keeps the single Shut down all and its direct dialog
+    expect(bandButton('servers', 'Shut down all').title).toBe('Shut down all');
+    bandButton('servers', 'Shut down all').click();
+    await waitForDialog();
+    expect(dialogText()).toContain('Shut down all?');
+    await dismissDialog();
+    await settle();
+    expect(shutdownAll).not.toHaveBeenCalled();
+  });
+
   it('ACC-TERM-272-TOOLTIP-NUMBER: a numbered terminal tooltip starts with terminal 7 and its label is the 7 badge, a named one starts with terminal build', async () => {
     const server = standard();
     server.terminals = [
@@ -2521,7 +2711,8 @@ describe('panel', () => {
       '3never'
     ]);
     expect(rows().map(r => r.title)).toEqual([
-      [...every, 'Workspaces: default, auto-6'].join('\n'),
+      // a listed row names every holder in the model's order, the first one's colour on its badge
+      [...every, 'Workspaces: auto-6, default'].join('\n'),
       [
         'terminal 2',
         'Process: bash',
@@ -2530,8 +2721,8 @@ describe('panel', () => {
       ]
         .concat('Workspaces: default')
         .join('\n'),
-      // no process, no last activity and no workspace
-      'terminal 3\nMemory: -\nLast activity: never'
+      // no process, no last activity and no workspace, which the tooltip states
+      'terminal 3\nMemory: -\nLast activity: never\nWorkspaces: none'
     ]);
     expect(three).toBeUndefined();
   });
@@ -3138,7 +3329,7 @@ describe('panel', () => {
 
     for (const key of ['kernels', 'terminals']) {
       openSection(panel, key);
-      shutDownAll(panel, key).click();
+      shutDownAll(panel, key);
       await waitForDialog();
       await dangerDialog();
       await settle();
@@ -4153,7 +4344,7 @@ describe('panel', () => {
     // Shut down all reads the server afresh and shuts down every listed terminal
     server.terminals.push(terminal('2'));
     await panel.refresh();
-    shutDownAll(panel, 'terminals').click();
+    shutDownAll(panel, 'terminals');
     await waitForDialog();
     await dangerDialog();
     await settle();

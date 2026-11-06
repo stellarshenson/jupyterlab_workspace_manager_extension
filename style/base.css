@@ -180,6 +180,14 @@
   border-bottom: var(--jp-border-width) solid var(--jp-layout-color3);
 }
 
+/* the last band draws one line where it meets the status bar, which paints the band's own --jp-layout-color2 fill; only while WORKSPACES is open, because the lab bands dock at the panel bottom then and a folded panel's free space already differs from the status bar (DQ-26 amendment 2026-11-05, ACC-PANEL-289) */
+.jp-WorkspaceManager-list:has(
+    > .jp-WorkspaceManager-section.jp-mod-open[data-section='workspaces']
+  )
+  > .jp-WorkspaceManager-section:last-child {
+  border-bottom: var(--jp-border-width) solid var(--jp-layout-color3);
+}
+
 /* an open section is as tall as its rows and shrinks to keep every band in view; the band below it follows its last row (DQ-33) */
 .jp-WorkspaceManager-section.jp-mod-open {
   flex: 0 1 auto;
@@ -335,42 +343,48 @@
 }
 
 .jp-WorkspaceManager-card.jp-mod-rose,
-.jp-WorkspaceManager-swatch.jp-mod-rose {
+.jp-WorkspaceManager-swatch.jp-mod-rose,
+.jp-WorkspaceManager-terminalBadge.jp-mod-rose {
   --wm-hue: var(--wm-rose);
   --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
   --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-peach,
-.jp-WorkspaceManager-swatch.jp-mod-peach {
+.jp-WorkspaceManager-swatch.jp-mod-peach,
+.jp-WorkspaceManager-terminalBadge.jp-mod-peach {
   --wm-hue: var(--wm-peach);
   --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
   --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-lemon,
-.jp-WorkspaceManager-swatch.jp-mod-lemon {
+.jp-WorkspaceManager-swatch.jp-mod-lemon,
+.jp-WorkspaceManager-terminalBadge.jp-mod-lemon {
   --wm-hue: var(--wm-lemon);
   --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
   --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-mint,
-.jp-WorkspaceManager-swatch.jp-mod-mint {
+.jp-WorkspaceManager-swatch.jp-mod-mint,
+.jp-WorkspaceManager-terminalBadge.jp-mod-mint {
   --wm-hue: var(--wm-mint);
   --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
   --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-sky,
-.jp-WorkspaceManager-swatch.jp-mod-sky {
+.jp-WorkspaceManager-swatch.jp-mod-sky,
+.jp-WorkspaceManager-terminalBadge.jp-mod-sky {
   --wm-hue: var(--wm-sky);
   --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
   --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
 }
 
 .jp-WorkspaceManager-card.jp-mod-lavender,
-.jp-WorkspaceManager-swatch.jp-mod-lavender {
+.jp-WorkspaceManager-swatch.jp-mod-lavender,
+.jp-WorkspaceManager-terminalBadge.jp-mod-lavender {
   --wm-hue: var(--wm-lavender);
   --wm-shade: color-mix(in srgb, var(--wm-hue) 24%, var(--jp-layout-color1));
   --wm-rows: color-mix(in srgb, var(--wm-hue) 9.6%, var(--jp-layout-color1));
@@ -636,11 +650,20 @@
   font-family: var(--jp-code-font-family);
 }
 
-/* a numbered terminal in TERMINALS: its number in a small box in the row's ink (ACC-TERM-285-NUMBER-BADGE) */
+/* a numbered terminal in TERMINALS: its number in a small box in the row's ink (ACC-TERM-285-NUMBER-BADGE, ACC-TERM-290-BADGE-TINT) */
 .jp-WorkspaceManager-terminalBadge {
   display: block;
-  width: 20px;
-  height: 15px;
+  width: 18px;
+  height: 13.5px;
+}
+
+/* a held terminal's box takes the card header's 24 % wash of its first holder's colour; its number takes the card ink that holds 4.5:1 on that wash */
+.jp-WorkspaceManager-terminalBadge.jp-mod-coloured {
+  color: var(--jp-inverse-layout-color1);
+}
+
+.jp-WorkspaceManager-terminalBadge.jp-mod-coloured rect {
+  fill: var(--wm-shade);
 }
 
 /* A terminal row's process stands in one line between the name and the time (DQ-24): it takes the free width, and shrink shares are proportional to the width, so a factor of 1e5 keeps the name whole until the process has no width left */
@@ -650,6 +673,12 @@
 
 .jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-rowProcess) {
   flex: 0 1 auto;
+}
+
+/* A badge keeps its full wash and ink under the stale fade: a child's opacity cannot undo the parent's, so the exemption sits on the label; it stands here, after the label rules, to keep the lint's selector order (ACC-TERM-290-BADGE-TINT) */
+.jp-mod-stale
+  .jp-WorkspaceManager-rowLabel:has(> .jp-WorkspaceManager-terminalBadge) {
+  opacity: 1;
 }
 
 .jp-WorkspaceManager-rowProcess {
@@ -924,6 +953,12 @@
 /* A destructive entry (DQ-11): the error-coloured label and icon on the menu's own selection background */
 .jp-WorkspaceManager-menu .lm-Menu-item.jp-WorkspaceManager-danger {
   color: var(--jp-error-color1);
+}
+
+/* A disabled destructive entry takes the app's own disabled ink; the rule above outranks the app's and would keep it red (ACC-ACCORD-292) */
+.jp-WorkspaceManager-menu
+  .lm-Menu-item.jp-WorkspaceManager-danger.lm-mod-disabled {
+  color: var(--jp-ui-font-color3);
 }
 
 .jp-WorkspaceManager-menu

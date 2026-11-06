@@ -634,6 +634,38 @@ the sidebar panel, its header and its loads
   - log: 2026-11-04T09:31:12Z @kj edited test-tags added "FUNCTIONAL"; reason: the fix is proven by comparing the rendered header heights in the Galata suite
   - log: 2026-11-04T13:53:07Z @kj amended text "the WORKBENCH title band is 29 px tall (28 px toolbar plus a 1 px border) against the standard side panel header's 37 px (2 px padding, a 32 px toolbar and a 1 px border), so the WORKBENCH band ends 8 px higher; fix direction: take the standard height, the default --jp-private-toolbar-height and the standard 2 px padding, so the outer height equals .jp-SidePanel-header's 37 px" -> "MINOR; the WORKBENCH title band is 29 px tall (28 px toolbar plus a 1 px border) against the standard side panel header's 37 px (2 px padding, a 32 px toolbar and a 1 px border), so the WORKBENCH band ends 8 px higher; fix direction: take the standard height, the default `--jp-private-toolbar-height` and the standard 2 px padding, so the outer height equals `.jp-SidePanel-header`'s 37 px"; reason: the defect body keeps the file's backtick convention around the CSS token and selector
   - log: 2026-11-04T13:53:27Z @kj closed; reason: the evidence names the criterion's own test titles and the full-suite and make-test gate logs
+- [x] `DEF-PANEL-85-STATUS-DIVIDER` **No divider line between the last section band and the status bar** - MINOR; with WORKSPACES open the lab bands dock at the panel bottom and LANGUAGE SERVERS meets the status bar; the band and .jp-StatusBar-Widget both paint --jp-layout-color2, so the panel edge shows no line
+  - evidence: Galata ACC-PANEL-289-STATUS-DIVIDER and ACC-PANEL-237-SECTION-DIVIDER pass (focused 2 passed, playwright exit 0; full suite 239 passed in 21.0m, playwright exit 0); logs tmp/workflows/wm-status-divider/logs/prove-focused-galata.log and tmp/workflows/wm-status-divider/logs/full-suite.log
+  - test-tags: FUNCTIONAL
+  - repro: open the WORKBENCH with WORKSPACES open so the lab bands dock at the panel bottom; LANGUAGE SERVERS meets the status bar with no line
+  - root-cause: 2026-11-05T19:38:52Z @kj DQ-26 draws no line under the last band because the fills are said to differ, but the status bar paints --jp-layout-color2, the band's own fill
+  - log: 2026-11-05T19:38:52Z @kj added
+  - log: 2026-11-05T19:39:49Z @kj edited test-tags added "FUNCTIONAL"
+  - log: 2026-11-05T20:11:11Z @kj closed
+- [x] `DEF-PANEL-87-DISABLED-INK` **disabled Shut down detached keeps the danger red** - MEDIUM; the disabled Shut down detached entry paints its label with var(--jp-error-color1), the enabled entry colour; the danger rule outranks the app disabled ink; fix adds a disabled counter-rule with var(--jp-ui-font-color3); `style/base.css`
+  - evidence: Galata sections.spec.ts ACC-ACCORD-292-SHUTDOWN-MENU passed on the rebuilt 0.8.36 labextension: disabled Shut down detached computes var(--jp-ui-font-color3); make test 179 Jest and 165 pytest green
+  - repro: TERMINALS band, Shut down menu with no detached terminal: Shut down detached is disabled yet its label is red
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-05T22:43:22Z @kj the danger selector (0,3,0) outranks the app .lm-Menu-item.lm-mod-disabled (0,2,0)
+  - log: 2026-11-05T22:43:22Z @kj added
+  - log: 2026-11-05T22:58:21Z @kj closed: fixed: a disabled danger entry takes var(--jp-ui-font-color3); the counter-rule outranks the danger rule
+  - log: 2026-11-05T22:58:36Z @kj edited evidence "Galata sections.spec.ts ACC-ACCORD-292 passed on the rebuilt 0.8.36 labextension: disabled Shut down detached computes var(--jp-ui-font-color3); make test 179 Jest and 165 pytest green" -> "Galata sections.spec.ts ACC-ACCORD-292-SHUTDOWN-MENU passed on the rebuilt 0.8.36 labextension: disabled Shut down detached computes var(--jp-ui-font-color3); make test 179 Jest and 165 pytest green"
+- [x] `DEF-PANEL-88-STALE-BADGE` **stale fade dims a terminal badge below the contrast floor** - MEDIUM; a stale TERMINALS row fades its label to 0.65, so a numbered terminal badge composites at 4.25-4.48:1 on the 24 % wash instead of 7.21-14.01:1; fix keeps opacity 1 on a label that directly holds a badge; `style/base.css`
+  - evidence: Galata terminals.spec.ts ACC-TERM-290-BADGE-TINT passed on the rebuilt 0.8.36 labextension: a stale numbered row computes label opacity 1; make test 179 Jest and 165 pytest green
+  - repro: TERMINALS row of a held numbered terminal over 7 days old: badge ink below 4.5:1 in Light rose and lavender and on Steel hover
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-05T22:43:25Z @kj opacity on the row label is a group opacity; the badge child cannot opt out, so it composites at 65 %
+  - log: 2026-11-05T22:43:25Z @kj added
+  - log: 2026-11-05T22:58:23Z @kj closed: fixed: a label that directly holds a badge keeps opacity 1 under the stale fade
+  - log: 2026-11-05T22:58:36Z @kj edited evidence "Galata terminals.spec.ts ACC-TERM-290 passed on the rebuilt 0.8.36 labextension: a stale numbered row computes label opacity 1; make test 179 Jest and 165 pytest green" -> "Galata terminals.spec.ts ACC-TERM-290-BADGE-TINT passed on the rebuilt 0.8.36 labextension: a stale numbered row computes label opacity 1; make test 179 Jest and 165 pytest green"
+- [x] `DEF-PANEL-89-HOLDER-ORDER` **badge tint and Workspaces tooltip disagree on holder order** - MINOR; a listed numbered terminal badge takes the first holder colour in model order, while its Workspaces tooltip names the holders in server order; fix builds one holder list in model order for both; `src/panel/panel.tsx`
+  - evidence: Jest panel.spec.ts ACC-TERM-290-BADGE-TINT and ACC-TERM-259-TOOLTIP-DETAILS passed; Galata terminals.spec.ts ACC-TERM-290-BADGE-TINT passed on the rebuilt 0.8.36 labextension; make test 179 Jest and 165 pytest green
+  - repro: terminal 7 held by auto-5 and auto-6, model order auto-5 first, server order auto-6 first: badge is sky, tooltip reads auto-6, auto-5
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-11-05T22:43:25Z @kj the badge colour read sections.find() order and the tooltip read t.alsoIn server order
+  - log: 2026-11-05T22:43:25Z @kj added
+  - log: 2026-11-05T22:58:23Z @kj closed: fixed: one holder list in model order feeds the badge colour and the Workspaces tooltip
+  - log: 2026-11-05T22:58:37Z @kj edited evidence "Jest panel.spec.ts ACC-TERM-290 and ACC-TERM-259 passed; Galata terminals.spec.ts ACC-TERM-290 passed on the rebuilt 0.8.36 labextension; make test 179 Jest and 165 pytest green" -> "Jest panel.spec.ts ACC-TERM-290-BADGE-TINT and ACC-TERM-259-TOOLTIP-DETAILS passed; Galata terminals.spec.ts ACC-TERM-290-BADGE-TINT passed on the rebuilt 0.8.36 labextension; make test 179 Jest and 165 pytest green"
 
 ## Functional tests `GALATA`
 
@@ -748,6 +780,13 @@ routes of the server extension
   - test-tags: INTEGRATION
   - log: 2026-10-29T09:44:32Z @kj added
   - log: 2026-10-29T09:53:16Z @kj closed: fixed: the post stores the live windows as targets and the read checks them
+- [x] `DEF-SERVER-86-PTY-RACE` **Terminals route answers 500 when a terminal's child was reaped elsewhere** - MAJOR; a terminal whose child another waitpid reaped between the manager listing it and the route's isalive check makes ptyprocess raise PtyProcessError, so TerminalsHandler.get answers 500 and the panel's poll breaks; expected: the ended terminal is skipped like a terminated one, with 200 and the live terminals
+  - evidence: test_terminals.py test_reaped_child_left_out passes in make test (Jest 179, pytest 165, exit 0): a fake manager lists one terminal whose ptyproc raises PtyProcessError on isalive and one healthy terminal, and the route answers 200 with only the healthy terminal; log tmp/workflows/wm-term-batch/logs/repair-make-test.log
+  - repro: run the full Galata suite: at its tail seven terminal tests time out in the finally DELETE /api/terminals after GET /jupyterlab-workspace-manager-extension/terminals answers 500 with ptyprocess.util.PtyProcessError from routes.py:95; each passes in isolation
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-11-05T21:30:43Z @kj ptyprocess.isalive raises PtyProcessError when terminated is 0 but waitpid finds no child; the route called it unguarded
+  - log: 2026-11-05T21:30:43Z @kj added
+  - log: 2026-11-05T21:32:05Z @kj closed
 
 ## Release gates `GATES`
 

@@ -376,7 +376,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-28T11:47:00Z @kj closed: closed for DQ-03 and DQ-06 in stage B batch 1
   - log: 2026-10-28T11:47:17Z @kj edited evidence "Galata legibility.spec.ts ACC-PANEL-152 passed in tmp/workflows/sections/logs/galata-rd1.log (157 of 157 passed, --retries=0) at 250 px for the title and all four labels and counts" -> "Galata legibility.spec.ts ACC-PANEL-152-NARROW-LABELS passed in tmp/workflows/sections/logs/galata-rd1.log (157 of 157 passed, --retries=0) at 250 px for the title and all four labels and counts"; reason: full ids in the evidence
   - log: 2026-10-28T12:18:28Z @kj edited evidence "Galata legibility.spec.ts ACC-PANEL-152-NARROW-LABELS passed in tmp/workflows/sections/logs/galata-rd1.log (157 of 157 passed, --retries=0) at 250 px for the title and all four labels and counts" -> "Galata legibility.spec.ts ACC-PANEL-152-NARROW-LABELS passed in tmp/workflows/sections/logs/galata-rd1.log (158 of 158 passed, --retries=0) at 250 px for the title and all four labels and counts"; reason: galata-rd1.log was rerun on the build that fixes DEF-PANEL-30-SECTIONS-OVERFLOW; every cited test passed again
-- [x] `ACC-PANEL-157-OTHERS-ACTIONS` **Section items keep their actions** - MEDIUM; a KERNELS or TERMINALS row carries no button and is shut down from its context menu; each LANGUAGE SERVERS row keeps its shutdown button; the KERNELS, TERMINALS and LANGUAGE SERVERS headers each carry Shut down all with its confirmation
+- [x] `ACC-PANEL-157-OTHERS-ACTIONS` **Section items keep their actions** - MEDIUM; **Section items keep their actions** - MEDIUM; a KERNELS or TERMINALS row carries no button and is shut down from its context menu; each LANGUAGE SERVERS row keeps its shutdown button; the KERNELS and TERMINALS headers carry the Shut down menu, with Shut down all and Shut down detached, each entry asking once with its confirmation first; the LANGUAGE SERVERS header carries Shut down all with its confirmation
   - evidence: Jest panel.spec.ts ACC-PANEL-157-OTHERS-ACTIONS passed in make-test-rd3.log (Jest 80 of 80, pytest 103); Galata sections.spec.ts ACC-PANEL-157-OTHERS-ACTIONS (no button in the TERMINALS row, Shut down all on the three headers) passed in galata-rd3.log (159 of 159, --retries=0); the pre-change code met it too (galata-rd3-red.log)
   - related: ACC-PANEL-4-OTHERS
   - test: Jest panel.spec.ts: Shut down terminal and Shut down kernel from a TERMINALS and a KERNELS row's context menu, and Shut down all on both headers; Galata sections.spec.ts: a language server and a terminal outside any workspace; assert a shutdown button on the language server row, no button in the terminal row and Shut down terminal in its context menu, and Shut down all on each header with its confirmation
@@ -391,6 +391,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-28T11:46:42Z @kj edited test "Galata sections.spec.ts: a language server and a terminal outside any workspace; assert a shutdown button on the language server row, no button in the terminal row and Shut down terminal in its context menu, and Shut down all on each header with its confirmation" -> "Jest panel.spec.ts: Shut down terminal and Shut down kernel from a TERMINALS and a KERNELS row's context menu, and Shut down all on both headers; Galata sections.spec.ts: a language server and a terminal outside any workspace; assert a shutdown button on the language server row, no button in the terminal row and Shut down terminal in its context menu, and Shut down all on each header with its confirmation"; reason: the test line names the Jest test that carries the UNIT tag; stage A's last check found the tag without it
   - log: 2026-10-28T14:44:16Z @kj closed
   - log: 2026-10-28T14:44:40Z @kj edited evidence "Jest panel.spec.ts ACC-PANEL-157 passed in make-test-rd3.log (Jest 80 of 80, pytest 103); Galata sections.spec.ts ACC-PANEL-157 (no button in the TERMINALS row, Shut down all on the three headers) passed in galata-rd3.log (159 of 159, --retries=0); the pre-change code met it too (galata-rd3-red.log)" -> "Jest panel.spec.ts ACC-PANEL-157-OTHERS-ACTIONS passed in make-test-rd3.log (Jest 80 of 80, pytest 103); Galata sections.spec.ts ACC-PANEL-157-OTHERS-ACTIONS (no button in the TERMINALS row, Shut down all on the three headers) passed in galata-rd3.log (159 of 159, --retries=0); the pre-change code met it too (galata-rd3-red.log)"
+  - log: 2026-11-05T20:27:52Z @kj amended text "a KERNELS or TERMINALS row carries no button and is shut down from its context menu; each LANGUAGE SERVERS row keeps its shutdown button; the KERNELS, TERMINALS and LANGUAGE SERVERS headers each carry Shut down all with its confirmation" -> "**Section items keep their actions** - MEDIUM; a KERNELS or TERMINALS row carries no button and is shut down from its context menu; each LANGUAGE SERVERS row keeps its shutdown button; the KERNELS and TERMINALS headers carry the Shut down menu, with Shut down all and Shut down detached, each entry asking once with its confirmation first; the LANGUAGE SERVERS header carries Shut down all with its confirmation"; reason: the owner's 2026-11-05 direction: the KERNELS and TERMINALS band power button opens the two-entry Shut down menu (ACC-ACCORD-292-SHUTDOWN-MENU); the LANGUAGE SERVERS band keeps its direct Shut down all
 - [x] `ACC-PANEL-159-LANG-OTHERS` **Language servers sit in their own section** - MEDIUM; language servers are listed only in the LANGUAGE SERVERS section below the workspace cards, never inside a workspace card
   - evidence: sections.spec.ts:243 passed in both full runs: Other sessions holds no Language servers section while the lab registers its Language servers manager.
   - related: ACC-PANEL-4-OTHERS
@@ -904,6 +905,12 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - mechanism: 2026-11-04T20:10:59Z @kj --wm-shade mixes the hue 24 % and --wm-rows 9.6 % over layout colour 1; the coloured current row mixes 24 %, its hover and selection 9.6 % over layout colour 2
   - log: 2026-11-04T20:10:59Z @kj added
   - log: 2026-11-04T22:32:41Z @kj closed
+- [x] `ACC-PANEL-289-STATUS-DIVIDER` **Divider line between the last section band and the status bar** - MEDIUM; with WORKSPACES open the lab bands dock at the panel bottom and the last section draws one 1 px --jp-layout-color3 bottom line above the status bar, whose --jp-layout-color2 fill equals the band's; while WORKSPACES is folded the free space stands below the last band and draws none
+  - evidence: Galata ACC-PANEL-289-STATUS-DIVIDER and ACC-PANEL-237-SECTION-DIVIDER pass (focused 2 passed, playwright exit 0; full suite 239 passed in 21.0m, playwright exit 0); logs tmp/workflows/wm-status-divider/logs/prove-focused-galata.log and tmp/workflows/wm-status-divider/logs/full-suite.log
+  - test: Galata panel.spec.ts ACC-PANEL-289-STATUS-DIVIDER: with WORKSPACES open assert the last section's border-bottom is 1 px solid --jp-layout-color3 with its border-box bottom at the panel bottom, and with each other section open and all closed assert none; Light, Dark and Steel
+  - test-tags: FUNCTIONAL
+  - log: 2026-11-05T19:38:55Z @kj added
+  - log: 2026-11-05T20:11:14Z @kj closed
 
 ## Workspace sections `ACCORD`
 
@@ -1719,6 +1726,12 @@ One card per workspace: colour, purpose, age, counts, actions, menu
   - mechanism: 2026-11-04T20:11:03Z @kj the menu action closes the tabs, stops the listed terminals and shuts the documents' kernels before the layout save
   - log: 2026-11-04T20:11:03Z @kj added
   - log: 2026-11-04T22:32:42Z @kj closed
+- [x] `ACC-ACCORD-292-SHUTDOWN-MENU` **The band power button opens a shut-down menu** - MEDIUM; the KERNELS and TERMINALS bands' power button opens a menu with Shut down all and Shut down detached; detached means in no workspace; an empty entry is disabled; the chosen entry confirms with its count, then shuts only those items down; LANGUAGE SERVERS keeps its single Shut down all
+  - evidence: Jest ACC-ACCORD-292-SHUTDOWN-MENU passes in make test (Jest 12 suites/179 tests, pytest 165, exit 0); Galata ACC-ACCORD-292-SHUTDOWN-MENU (tests/sections.spec.ts:480) and ACC-PANEL-157-OTHERS-ACTIONS pass in the focused run (6 passed) and the full suite (242 passed, playwright exit 0); logs tmp/workflows/wm-term-batch/logs/prove-make-test.log, prove-focused-galata.log, full-suite.log
+  - test: Jest panel.spec.ts: the menu opens and runs each action on the right set; Galata sections.spec.ts: both entries, the disabled states and the confirmation, with one terminal held and one detached
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-11-05T19:42:17Z @kj added
+  - log: 2026-11-05T22:00:19Z @kj closed
 
 ## Section content `LISTS`
 
@@ -2374,7 +2387,7 @@ What a terminal row shows and where each value comes from
   - mechanism: 2026-11-04T20:10:59Z @kj process_memory(pty) reads the foreground process's resident bytes beside process_name, and returns null on OSError
   - log: 2026-11-04T20:10:59Z @kj added
   - log: 2026-11-04T22:32:41Z @kj closed
-- [x] `ACC-TERM-285-NUMBER-BADGE` **Number badge on a TERMINALS row** - MEDIUM; the TERMINALS section labels a numbered terminal with a rectangle badge, an SVG box holding its number from 1 to the section count, in place of tN; a named terminal keeps its name; a card row keeps no label; the tooltip keeps terminal <name> and the filter keeps t7
+- [x] `ACC-TERM-285-NUMBER-BADGE` **Number badge on a TERMINALS row** - MEDIUM; the TERMINALS section labels a numbered terminal with a rectangle badge, an SVG box holding its number from 1 to the section count, in place of tN, in the row's ink; on a badge that carries a workspace colour the ink is --jp-inverse-layout-color1 at 4.5:1; a named terminal keeps its name; a card row keeps no label; the tooltip keeps terminal <name> and the filter keeps t7
   - evidence: gate3-galata-1.log: 235 passed, playwright exit: 0 - terminals.spec.ts ACC-TERM-257-SHORT-LABEL, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-BADGE: a numbered terminal reads no label in a card and its number in a box badge in TERMINALS; gate3-make-test.log: Jest 11 suites / 171 tests, pytest 164 passed
   - related: ACC-TERM-275-CARD-LABEL - supersedes its TERMINALS clause; the override lands once the gate closes 275
   - overrides: ACC-TERM-275-CARD-LABEL
@@ -2384,6 +2397,19 @@ What a terminal row shows and where each value comes from
   - log: 2026-11-04T21:17:34Z @kj added
   - log: 2026-11-04T21:17:52Z @kj overrides ACC-TERM-275-CARD-LABEL removed - the override waits for the gate to close ACC-TERM-275; a related link carries the supersession until then
   - log: 2026-11-04T22:32:41Z @kj closed
+  - log: 2026-11-05T20:47:20Z @kj amended text "the TERMINALS section labels a numbered terminal with a rectangle badge, an SVG box holding its number from 1 to the section count, in place of tN; a named terminal keeps its name; a card row keeps no label; the tooltip keeps terminal <name> and the filter keeps t7" -> "the TERMINALS section labels a numbered terminal with a rectangle badge, an SVG box holding its number from 1 to the section count, in place of tN, in the row's ink; on a badge that carries a workspace colour the ink is --jp-inverse-layout-color1 at 4.5:1; a named terminal keeps its name; a card row keeps no label; the tooltip keeps terminal <name> and the filter keeps t7"; reason: the owner's 2026-11-05 direction that a coloured badge keeps 4.5:1 on its 24 % wash, so its ink is --jp-inverse-layout-color1
+- [x] `ACC-TERM-290-BADGE-TINT` **The number badge is smaller and takes its workspace's colour** - MEDIUM; the badge is 18 x 13.5 px; a TERMINALS row takes the first holding workspace's colour at a 24 % wash like a card header, its number at 4.5:1; unattached rows and a colourless workspace keep the empty box
+  - evidence: Jest ACC-TERM-290-BADGE-TINT passes in make test (Jest 12 suites/179 tests, pytest 165, exit 0); Galata ACC-TERM-290-BADGE-TINT (tests/terminals.spec.ts:337) passes in the focused run (6 passed) and the full suite (242 passed, playwright exit 0); logs tmp/workflows/wm-term-batch/logs/prove-make-test.log, prove-focused-galata.log, full-suite.log
+  - test: Jest panel.spec.ts: the badge SVG width and height; Galata terminals.spec.ts: an attached numbered terminal's rect fill is the 24 % mix in Light, Dark and Steel, an unattached one has none, and the number keeps 4.5:1
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-11-05T19:42:11Z @kj added
+  - log: 2026-11-05T22:00:18Z @kj closed
+- [x] `ACC-TERM-291-ATTACH-TOOLTIP` **The terminal tooltip states its workspace attachment** - MEDIUM; a TERMINALS row's tooltip always states the attachment: a Workspaces line names every workspace holding it, or reads none when the terminal is in no workspace
+  - evidence: Jest ACC-TERM-291-ATTACH-TOOLTIP passes in make test (Jest 12 suites/179 tests, pytest 165, exit 0); Galata ACC-TERM-291-ATTACH-TOOLTIP (tests/terminals.spec.ts:426) passes in the focused run (6 passed) and the full suite (242 passed, playwright exit 0); logs tmp/workflows/wm-term-batch/logs/prove-make-test.log, prove-focused-galata.log, full-suite.log
+  - test: Jest panel.spec.ts: the tooltip of a held terminal names its workspaces and an unheld one reads none; Galata terminals.spec.ts asserts the same on the rendered title
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-11-05T19:42:14Z @kj added
+  - log: 2026-11-05T22:00:18Z @kj closed
 
 ## Kernel rows `KERNEL`
 

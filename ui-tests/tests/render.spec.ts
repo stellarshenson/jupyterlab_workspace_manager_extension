@@ -905,7 +905,7 @@ test('HDR-08 ACC-PANEL-9-POLL-HIDDEN, ACC-PANEL-8-POLL: visible, the panel reloa
   }
 });
 
-test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled Shut down all is a 22 px icon button carrying the power glyph, a circle with a gap at the top and one vertical stroke, in inverse layout colour 3: no background, no border, a 14 px glyph, a pointer, in a band as tall as the WORKSPACES band; hovering one paints the glyph in UI font colour 1; a disabled one keeps that look at opacity 0.4', async ({
+test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled power button, Shut down on KERNELS and TERMINALS and Shut down all on LANGUAGE SERVERS, is a 22 px icon button carrying the power glyph, a circle with a gap at the top and one vertical stroke, in inverse layout colour 3: no background, no border, a 14 px glyph, a pointer, in a band as tall as the WORKSPACES band; hovering one paints the glyph in UI font colour 1; a disabled one keeps that look at opacity 0.4', async ({
   page
 }) => {
   const terminal = await startTerminal(page);
@@ -914,15 +914,16 @@ test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled Shut d
     await enterWorkspace(page, current);
     const button = (name: string) =>
       sectionHeader(page, name).getByRole('button', {
-        name: 'Shut down all',
+        // ACC-ACCORD-292-SHUTDOWN-MENU: the KERNELS and TERMINALS bands open a menu
+        name: name === 'servers' ? 'Shut down all' : 'Shut down',
         exact: true
       });
     await expect(button('terminals')).toBeEnabled();
     await expect(button('terminals')).toHaveAttribute(
       'aria-label',
-      'Shut down all'
+      'Shut down'
     );
-    await expect(button('terminals')).toHaveAttribute('title', 'Shut down all');
+    await expect(button('terminals')).toHaveAttribute('title', 'Shut down');
     await page.mouse.move(0, 0);
     const look = async (b: Locator) => ({
       // the band shows through: no background, no border
@@ -1007,6 +1008,7 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
           otherButtons: Array.from(h.querySelectorAll('button'))
             .filter(
               b =>
+                b.getAttribute('aria-label') !== 'Shut down' &&
                 b.getAttribute('aria-label') !== 'Shut down all' &&
                 b.getAttribute('aria-label') !== 'Clean up workspaces'
             )
@@ -2467,8 +2469,9 @@ test('DLG-01 ACC-PANEL-204-DIALOG-FOOTER, ACC-TERM-112-SHUTDOWN-SHARED, ACC-KERN
       rowOf(sectionBody(page, 'terminals'), rowLabel(terminal))
     ).toHaveCount(1, UNDER_LOAD);
     await sectionHeader(page, 'terminals')
-      .getByRole('button', { name: 'Shut down all', exact: true })
+      .getByRole('button', { name: 'Shut down', exact: true })
       .click();
+    await menuItem(page, 'Shut down all').click();
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       'Shut down all?'
     );

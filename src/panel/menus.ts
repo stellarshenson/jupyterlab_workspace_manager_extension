@@ -241,6 +241,8 @@ export interface IRowAction {
   execute?: () => void;
   /** a destructive entry: the error-coloured label and icon (DQ-11) */
   danger?: boolean;
+  /** a disabled entry: shown greyed and not selectable */
+  enabled?: boolean;
   submenu?: { label: string; execute: () => void }[];
 }
 
@@ -251,7 +253,7 @@ export function actionMenu(items: IRowAction[]): Menu {
   menu.addClass('jp-WorkspaceManager-menu');
   restoreFocus(menu);
   const submenus: Menu[] = [];
-  items.forEach(({ label, icon, execute, danger, submenu }, i) => {
+  items.forEach(({ label, icon, execute, danger, enabled, submenu }, i) => {
     if (submenu?.length) {
       const sub = new MenuSvg({ commands });
       sub.addClass('jp-WorkspaceManager-menu');
@@ -272,7 +274,7 @@ export function actionMenu(items: IRowAction[]): Menu {
       label,
       icon,
       execute: () => execute?.(),
-      isEnabled: () => !submenu,
+      isEnabled: () => enabled !== false && !submenu,
       className: danger ? DANGER : '',
       describedBy: { args: null }
     });

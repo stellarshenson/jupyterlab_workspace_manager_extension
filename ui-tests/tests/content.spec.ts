@@ -232,8 +232,9 @@ test.describe('terminals, kernels and sessions of the server', () => {
       // TERMINALS: Shut down all names its terminal
       await openSection(page, 'terminals');
       await sectionHeader(page, 'terminals')
-        .getByRole('button', { name: 'Shut down all', exact: true })
+        .getByRole('button', { name: 'Shut down', exact: true })
         .click();
+      await menuItem(page, 'Shut down all').click();
       await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
         'Shut down all?'
       );
@@ -249,8 +250,9 @@ test.describe('terminals, kernels and sessions of the server', () => {
       // KERNELS: Shut down all names its kernel
       await openSection(page, 'kernels');
       await sectionHeader(page, 'kernels')
-        .getByRole('button', { name: 'Shut down all', exact: true })
+        .getByRole('button', { name: 'Shut down', exact: true })
         .click();
+      await menuItem(page, 'Shut down all').click();
       await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
         'Shut down 1 kernel.'
       );

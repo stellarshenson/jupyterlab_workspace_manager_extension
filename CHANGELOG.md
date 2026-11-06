@@ -2,6 +2,25 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.37] - 2026-11-06
+
+### Added
+
+- The KERNELS and TERMINALS bands' power button opens a menu with Shut down all and Shut down detached, detached meaning no workspace holds the item; an entry with nothing to shut down is disabled, each asks once with its count, and the LANGUAGE SERVERS band keeps its single Shut down all
+
+### Changed
+
+- The last section band draws one 1 px `--jp-layout-color3` line where it meets the status bar while WORKSPACES is open, and none otherwise
+- The numbered terminal badge is 18 x 13.5 px and takes the colour of the first workspace holding the terminal at the card header's 24 % wash, its number in the inverse ink at 4.5:1; a terminal in no workspace or a colourless workspace keeps the empty box
+- A TERMINALS row's tooltip always carries a Workspaces line, naming every holder or reading none
+
+### Fixed
+
+- The terminals route skips a terminal whose pty child was reaped mid-read instead of answering 500
+- A disabled danger entry in the band menu keeps the disabled ink instead of the danger red
+- A stale terminal row keeps its numbered badge at full wash and ink
+- The badge colour and the tooltip name the same first workspace
+
 ## [0.8.36] - 2026-11-05
 
 ### Added

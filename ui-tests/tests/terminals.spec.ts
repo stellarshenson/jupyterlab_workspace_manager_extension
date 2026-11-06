@@ -277,7 +277,7 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
     const namedRow = rowOf(listed, rowLabel(named));
     await expect(numberedRow).toBeVisible();
     await expect(namedRow).toBeVisible();
-    // ACC-TERM-285-NUMBER-BADGE: the number in a box badge, in the row's ink, read as the number
+    // ACC-TERM-285-NUMBER-BADGE: the number in a box badge, read as the number; a badge holding a workspace colour takes --jp-inverse-layout-color1, the ink that holds 4.5:1 on the wash
     await expect(numberedRow.locator(LABEL)).toHaveText(numbered);
     const badge = numberedRow.locator(
       `${LABEL} .jp-WorkspaceManager-terminalBadge`
@@ -285,26 +285,24 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
     await expect(badge).toHaveCount(1);
     await expect(badge).toHaveAttribute('role', 'img');
     await expect(badge).toHaveAttribute('aria-label', numbered);
-    const ink = await numberedRow
-      .locator(LABEL)
-      .evaluate(n => getComputedStyle(n).color);
-    expect(
-      await badge.locator('rect').evaluate(n => {
-        const svg = n.ownerSVGElement!.getBoundingClientRect();
-        const s = getComputedStyle(n);
-        return {
-          width: Math.round(svg.width),
-          height: Math.round(svg.height),
-          radius: n.getAttribute('rx'),
-          stroke: s.stroke,
-          strokeWidth: n.getAttribute('stroke-width')
-        };
-      })
-    ).toEqual({
-      width: 20,
-      height: 15,
+    const box = await badge.locator('rect').evaluate(n => {
+      const svg = n.ownerSVGElement!.getBoundingClientRect();
+      const s = getComputedStyle(n);
+      return {
+        width: svg.width,
+        height: svg.height,
+        radius: n.getAttribute('rx'),
+        stroke: s.stroke,
+        strokeWidth: n.getAttribute('stroke-width')
+      };
+    });
+    expect({ ...box, stroke: await rgba(page, box.stroke) }).toEqual({
+      // ACC-TERM-290-BADGE-TINT: the smaller box
+      width: 18,
+      height: 13.5,
       radius: '3',
-      stroke: ink,
+      // ACC-TERM-285-NUMBER-BADGE: the coloured badge's ink, which holds 4.5:1 on its wash
+      stroke: await rgba(page, 'var(--jp-inverse-layout-color1)'),
       strokeWidth: '1.2'
     });
     // the number sits centred in its box
@@ -333,6 +331,164 @@ test('ACC-TERM-272-TOOLTIP-NUMBER, ACC-TERM-275-CARD-LABEL, ACC-TERM-285-NUMBER-
       created.map(name => page.request.delete(`/api/terminals/${name}`))
     );
     await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test('ACC-TERM-290-BADGE-TINT: a numbered terminal in TERMINALS draws its badge 18 x 13.5 px filled with the 24 % wash of the first workspace holding it in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel, its number keeping 4.5:1, while an unheld terminal keeps the empty box', async ({
+  page
+}) => {
+  test.setTimeout(180000);
+  const current = fresh('tint');
+  const unheld = String(100000 + Math.floor(Math.random() * 899999));
+  const created: string[] = [];
+  // WCAG relative luminance of a colour as the page draws it
+  const luminance = (colour: number[]) => {
+    const [r, g, b] = colour.map(v => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: number[], b: number[]) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  try {
+    await enterWorkspace(page, current);
+    created.push(await newTerminalTab(page));
+    expect(
+      (
+        await page.request.post('/api/terminals', {
+          data: { name: unheld }
+        })
+      ).ok()
+    ).toBe(true);
+    created.push(unheld);
+    // the held numbered terminal reads as 9 days old, so its row is stale
+    await page.route(
+      /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+      async route => {
+        if (route.request().method() !== 'GET') {
+          return route.fallback();
+        }
+        const response = await route.fetch();
+        const json = response.ok()
+          ? (await response.json()).map((t: any) =>
+              t.name === created[0]
+                ? {
+                    ...t,
+                    last_activity: new Date(
+                      Date.now() - 9 * 24 * 3600 * 1000
+                    ).toISOString()
+                  }
+                : t
+            )
+          : undefined;
+        await route.fulfill({ response, json });
+      }
+    );
+    await refresh(page);
+    // the colour of this window's workspace, from its card
+    const colour = await card(page, current).evaluate(
+      (n, colours) => colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+      COLOURS
+    );
+    await openSection(page, 'terminals');
+    const body = sectionBody(page, 'terminals');
+    const heldRow = rowOf(body, rowLabel(created[0]));
+    const unheldRow = rowOf(body, rowLabel(unheld));
+    await expect(heldRow).toBeVisible();
+    await expect(unheldRow).toBeVisible();
+    // the stale row keeps its badge at full strength: the fade stays on bare labels
+    await expect(heldRow).toHaveClass(/jp-mod-stale/, UNDER_LOAD);
+    expect(await css(heldRow.locator(LABEL), 'opacity')).toBe('1');
+    const badge = heldRow.locator(
+      `${LABEL} .jp-WorkspaceManager-terminalBadge`
+    );
+    const empty = unheldRow.locator(
+      `${LABEL} .jp-WorkspaceManager-terminalBadge`
+    );
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveClass(/jp-mod-coloured/);
+    await expect(badge).toHaveClass(new RegExp(`jp-mod-${colour}`));
+    const box = await badge.evaluate(n => {
+      const r = n.getBoundingClientRect();
+      return [r.width, r.height];
+    });
+    expect(box[0]).toBeCloseTo(18, 1);
+    expect(box[1]).toBeCloseTo(13.5, 1);
+    // a terminal in no workspace keeps the empty box
+    await expect(empty).toHaveCount(1);
+    await expect(empty).not.toHaveClass(/jp-mod-coloured/);
+    expect(
+      await empty.locator('rect').evaluate(n => getComputedStyle(n).fill)
+    ).toBe('none');
+    for (const theme of [
+      'JupyterLab Light',
+      'JupyterLab Dark',
+      'Galaxa Dark Theme - Steel'
+    ]) {
+      await page.theme.setTheme(theme);
+      const wash = await rgba(
+        page,
+        `color-mix(in srgb, var(--wm-${colour}) 24%, var(--jp-layout-color1))`
+      );
+      const fill = await rgba(
+        page,
+        await badge.locator('rect').evaluate(n => getComputedStyle(n).fill)
+      );
+      expect(fill, theme).toEqual(wash);
+      const ink = await rgba(page, await css(badge, 'color'));
+      expect(contrast(ink, fill), theme).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    await Promise.all(
+      created.map(name => page.request.delete(`/api/terminals/${name}`))
+    );
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-TERM-291-ATTACH-TOOLTIP: a TERMINALS row states its attachment in a Workspaces line, naming every holder or reading none, and a card row names its own workspace', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const current = fresh('attach');
+  const unheld = String(100000 + Math.floor(Math.random() * 899999));
+  const created: string[] = [];
+  try {
+    await enterWorkspace(page, current);
+    created.push(await newTerminalTab(page));
+    expect(
+      (
+        await page.request.post('/api/terminals', {
+          data: { name: unheld }
+        })
+      ).ok()
+    ).toBe(true);
+    created.push(unheld);
+    await refresh(page);
+    const workspaces = async (row: Locator) =>
+      (await tooltip(row)).filter(line => line.startsWith('Workspaces:'));
+    // a card row's holders include its own workspace; the card is checked before a
+    // section opens, because an open section closes WORKSPACES and its cards
+    await openCard(page, current);
+    expect(
+      await workspaces(rowOf(card(page, current), rowLabel(created[0])))
+    ).toEqual([`Workspaces: ${current}`]);
+    await openSection(page, 'terminals');
+    const body = sectionBody(page, 'terminals');
+    expect(await workspaces(rowOf(body, rowLabel(created[0])))).toEqual([
+      `Workspaces: ${current}`
+    ]);
+    expect(await workspaces(rowOf(body, rowLabel(unheld)))).toEqual([
+      'Workspaces: none'
+    ]);
+  } finally {
+    await Promise.all(
+      created.map(name => page.request.delete(`/api/terminals/${name}`))
+    );
+    await deleteWorkspaces(page, [current]);
   }
 });
 
