@@ -540,6 +540,13 @@
   margin: -3px 0 -3px auto;
 }
 
+/* the WORKSPACES band's eraser stands right beside its + button (ACC-PANEL-297-NEW-BAND) */
+.jp-WorkspaceManager-sectionHeader
+  > .jp-WorkspaceManager-iconButton
+  + .jp-WorkspaceManager-iconButton {
+  margin-left: 0;
+}
+
 .jp-WorkspaceManager-iconButton:hover:not(:disabled),
 .jp-WorkspaceManager-iconButton.jp-mod-active {
   background: var(--jp-layout-color3);

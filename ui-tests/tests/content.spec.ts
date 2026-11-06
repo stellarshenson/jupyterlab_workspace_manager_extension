@@ -14,13 +14,13 @@ import {
   expectRefused,
   fresh,
   fromRowMenu,
-  headerButton,
   HEAVY_LOAD,
   kernelIds,
   languageServer,
   layout,
   menuItem,
   moveTo,
+  newButton,
   newTerminalTab,
   NEXT_POLL,
   only,
@@ -1204,7 +1204,7 @@ test('DEF-PANEL-78-MOVE-SIDEBARS: a workspace made with + and never shown, a tab
   const current = fresh('movenew');
   const [plain, target] = [`${current}-plain`, `${current}-target`];
   const create = async (name: string) => {
-    await headerButton(page, 'New workspace').click();
+    await newButton(page).click();
     await dialog(page).locator('input').fill(name);
     await dialog(page).locator('input').press('Enter');
     await expect(dialog(page)).toHaveCount(0);

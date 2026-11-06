@@ -469,6 +469,12 @@ export const sectionBody = (page: Page, name: string): Locator =>
     `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionBody`
   );
 
+/** The + button of the WORKSPACES section header, left of the eraser (ACC-PANEL-297-NEW-BAND). */
+export const newButton = (page: Page): Locator =>
+  sectionHeader(page, 'workspaces').locator(
+    'button[aria-label="New workspace"]'
+  );
+
 /** The count in the header of the panel section `name`, such as (3). */
 export const sectionCount = (page: Page, name: string): Locator =>
   page.locator(

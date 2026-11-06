@@ -24,6 +24,7 @@ import {
   listed,
   openCardMenu,
   menuItem,
+  newButton,
   newTerminalTab,
   only,
   onlyWorkspaces,
@@ -101,12 +102,7 @@ const shot = (name: string): string => path.join(SHOTS, `${name}.png`);
 const POLLED = '/jupyterlab-workspace-manager-extension/terminals';
 const TERMINALS = /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/;
 const ROW = '.jp-WorkspaceManager-row';
-const HEADER_BUTTONS = [
-  'New workspace',
-  'Filter',
-  'Show hidden workspaces',
-  'Refresh'
-];
+const HEADER_BUTTONS = ['Filter', 'Show hidden workspaces', 'Refresh'];
 
 /** A computed style property of an element. */
 const style = (l: Locator, property: string): Promise<string> =>
@@ -239,14 +235,14 @@ async function setUp(
 
 /** Create a workspace through the + dialog. */
 async function createWorkspace(page: Page, name: string): Promise<void> {
-  await headerButton(page, 'New workspace').click();
+  await newButton(page).click();
   await dialog(page).locator('input').fill(name);
   await dialog(page).locator('input').press('Enter');
   await expect(dialog(page)).toHaveCount(0);
   await expect(card(page, name)).toBeVisible(UNDER_LOAD);
 }
 
-/** The x, display and visibility of the four header buttons. */
+/** The x, display and visibility of the three header buttons. */
 const headerPlaces = (page: Page): Promise<string[]> =>
   page.locator(`${PANEL} .jp-WorkspaceManager-header`).evaluate(
     (h, labels) =>
@@ -737,7 +733,7 @@ test('HDR-05 ACC-PANEL-7-REFRESH-BUSY: a click on Refresh disables it and turns 
   }
 });
 
-test('HDR-06 ACC-PANEL-214-HEADER-PLACE: the four header buttons keep their place and stay shown in every view', async ({
+test('HDR-06 ACC-PANEL-214-HEADER-PLACE: the three header buttons keep their place and stay shown in every view', async ({
   page
 }) => {
   const current = fresh('places');
@@ -1010,7 +1006,8 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
               b =>
                 b.getAttribute('aria-label') !== 'Shut down' &&
                 b.getAttribute('aria-label') !== 'Shut down all' &&
-                b.getAttribute('aria-label') !== 'Clean up workspaces'
+                b.getAttribute('aria-label') !== 'Clean up workspaces' &&
+                b.getAttribute('aria-label') !== 'New workspace'
             )
             .map(b => b.getAttribute('aria-label') ?? b.className),
           caretTag: caret.tagName.toLowerCase(),
@@ -2410,7 +2407,7 @@ test('DLG-01 ACC-PANEL-204-DIALOG-FOOTER, ACC-TERM-112-SHUTDOWN-SHARED, ACC-KERN
     await enterWorkspace(page, current);
 
     // New workspace: Create is the only filled button, Cancel the surface button
-    await headerButton(page, 'New workspace').click();
+    await newButton(page).click();
     await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
       'New workspace'
     );
@@ -2679,7 +2676,7 @@ test('NEW-01 DLG-02 ACC-PANEL-142-NEW-NAME, ACC-PANEL-144-NEW-PURPOSE, ACC-PANEL
   try {
     await enterWorkspace(page, current);
     const before = (await listed(page)).sort();
-    await headerButton(page, 'New workspace').click();
+    await newButton(page).click();
     const name = dialog(page).locator('input');
     await expect(name).toBeFocused();
     const rule = dialog(page).locator('.jp-WorkspaceManager-rule');
@@ -2956,10 +2953,10 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
         await openCard(page, ids[1]);
       }
       // a keyboard focus: focus it, step back and Tab forward again; in the
-      // toolbar, whose buttons are one tab stop, ArrowRight from the button before
+      // toolbar, whose buttons are one tab stop, ArrowLeft from the button after
       if (name === 'header-button') {
-        await headerButton(page, 'New workspace').focus();
-        await page.keyboard.press('ArrowRight');
+        await headerButton(page, 'Show hidden workspaces').focus();
+        await page.keyboard.press('ArrowLeft');
       } else {
         await target.focus();
         await page.keyboard.press('Shift+Tab');

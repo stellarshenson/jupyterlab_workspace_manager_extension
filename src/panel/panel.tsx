@@ -213,10 +213,6 @@ export class WorkspacePanel
     title.node.appendChild(label);
     this.toolbar.addItem('title', title);
     this.toolbar.addItem('spacer', Toolbar.createSpacerItem());
-    this.toolbar.addItem(
-      'new',
-      button(addIcon, 'New workspace', () => void this.newWorkspace())
-    );
     this._filterButton = button(filterIcon, 'Filter', () =>
       this._toggleFilter()
     );
@@ -885,7 +881,7 @@ export class WorkspacePanel
 
   /**
    * One section: the header carries the label, the count and its action button -
-   * Work spaces cleans up, the three below shut down all; an open section shows
+   * Work spaces adds a workspace and cleans up, the three below shut down all; an open section shows
    * its body, which scrolls on its own, and one of those three with nothing in it
    * says so.
    */
@@ -926,6 +922,16 @@ export class WorkspacePanel
           </span>
           <span className="jp-WorkspaceManager-sectionLabel">{label}</span>
           <span className="jp-WorkspaceManager-sectionCount">({n})</span>
+          {shutdown === 'workspaces' &&
+            iconButton(
+              addIcon,
+              'New workspace',
+              () => void this.newWorkspace(),
+              false,
+              undefined,
+              undefined,
+              true // pointerFocus
+            )}
           {shutdown &&
             (shutdown === 'workspaces'
               ? iconButton(

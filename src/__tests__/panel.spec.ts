@@ -707,6 +707,18 @@ describe('panel', () => {
     expect(cleanButton(fourth.panel).disabled).toBe(false);
   });
 
+  it('ACC-PANEL-297-NEW-BAND: the WORKSPACES header carries New workspace immediately before the eraser, and the toolbar carries none', async () => {
+    const { panel } = await mount(standard());
+    expect(
+      Array.from(
+        sectionHeader(panel, 'workspaces').querySelectorAll('button')
+      ).map(b => b.getAttribute('aria-label'))
+    ).toEqual(['New workspace', 'Clean up workspaces']);
+    expect(
+      panel.toolbar.node.querySelector('[aria-label="New workspace"]')
+    ).toBeNull();
+  });
+
   it('ACC-ACCORD-222-CLEAN-DIALOG: the clear-console button asks with a dialog titled Clean up workspaces that counts the workspaces and names each one, what it holds and its outcome, Clean up at the far left and Cancel at the right', async () => {
     const { panel, fake } = await mount(cleanup(), { live: cleanupWidgets() });
     cleanButton(panel).click();
@@ -4266,7 +4278,8 @@ describe('panel', () => {
     const { panel } = await mount(standard());
     const glyph = (key: string) =>
       sectionHeader(panel, key)
-        .querySelector('.jp-WorkspaceManager-iconButton svg')!
+        // the band-end button: WORKSPACES carries the + before it (ACC-PANEL-297-NEW-BAND)
+        .querySelector('.jp-WorkspaceManager-iconButton:last-child svg')!
         .getAttribute('data-icon');
     expect(glyph('workspaces')).toBe(
       '@stellarshenson/jupyterlab-workspace-manager-extension:eraser'

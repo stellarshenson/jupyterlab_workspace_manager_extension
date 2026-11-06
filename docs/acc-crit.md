@@ -294,6 +294,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-23T22:13:50Z @kj added
   - log: 2026-10-24T10:03:59Z @kj closed; reason: final verification of the implementation, 2026-10-24
 - [x] `ACC-PANEL-140-NEW-BUTTON` **New workspace button** - HIGH; the panel header has a + button, tooltip New workspace, that opens the New workspace dialog
+  - overridden-by: ACC-PANEL-297-NEW-BAND
   - evidence: 1 test(s) in Galata new.spec.ts passed in full Galata rig run of final-verify (galata-full.log and galata-full.json, 91 of 91 passed, 6 workers, --retries=0)
   - test: Galata new.spec.ts: click +, assert the dialog titled New workspace
   - test-tags: FUNCTIONAL
@@ -345,6 +346,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
 - [x] `ACC-PANEL-147-HEADER-ORDER` **Header button order** - LOW; the panel header shows its buttons in this order: new workspace, filter, show hidden, refresh; each is a 24 px square with a 14 px glyph
   - evidence: Galata panel.spec.ts ACC-PANEL-147-HEADER-ORDER passed in tmp/workflows/sections/logs/galata-rd1.log (158 of 158 passed, --retries=0); its 14 px glyph assertion failed on the pre-change frontend, 16 px (tmp/workflows/sections/logs/galata-rd1-red.log)
   - overrides: ACC-PANEL-136-HEADER-BUTTONS
+  - overridden-by: ACC-PANEL-297-NEW-BAND
   - test: Galata panel.spec.ts: assert the order of the header buttons, each bounding box 24 x 24 and each svg 14 x 14
   - test-tags: FUNCTIONAL
   - log: 2026-10-23T22:21:15Z @kj added
@@ -489,6 +491,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-25T03:51:01Z @kj closed; reason: layout workflow, 2026-10-25
   - log: 2026-10-25T03:51:09Z @kj edited evidence "panel.spec.ts ACC-PANEL-183 passed in both full runs; with an In no workspace line rendered it failed" -> "panel.spec.ts ACC-PANEL-183-OTHERS-GONE passed in both full runs; with an In no workspace line rendered it failed"; reason: full id in the evidence
 - [x] `ACC-PANEL-184-TITLE-NAME` **The panel is named WORKBENCH** - MEDIUM; the panel header reads WORKBENCH on one line at the 250 px sidebar width, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces, then the cards, then the KERNELS, TERMINALS and LANGUAGE SERVERS sections
+  - overridden-by: ACC-PANEL-297-NEW-BAND
   - evidence: panel.spec.ts ACC-PANEL-184-TITLE-NAME passed in both full runs; with the old WORKSPACES title it failed
   - test: Galata panel.spec.ts: the panel header text is WORKBENCH, its rendered height is one line at 250 px, and the add, filter, hidden and refresh buttons are present
   - test-tags: FUNCTIONAL
@@ -650,6 +653,7 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-10-30T15:54:35Z @kj amended text "a missing or unreadable stored open state, or a `localStorage` that throws, means every section open, and the sections still open and close" -> "a missing or unreadable stored open state, or a localStorage that throws, means WORKSPACES open and the other three closed; the sections still open and close"; reason: owner's 2026-10-30 direction: sections open exclusively
   - log: 2026-10-30T15:54:36Z @kj edited test "Jest panel.spec.ts: localStorage.getItem throws, then returns {; assert all four sections open and a click still closes one; Galata render.spec.ts SEC-08: the same with an init script that makes localStorage throw on the key" -> "Jest panel.spec.ts: localStorage.getItem throws, then returns {; assert WORKSPACES open and the other three closed and a click still opens KERNELS; Galata render.spec.ts SEC-08: the same with an init script that makes localStorage throw on the key"
 - [x] `ACC-PANEL-214-HEADER-PLACE` **Header buttons keep their place** - MEDIUM; the four panel header buttons keep their place on every view: filter field shown or not, hidden workspaces shown or not, during a refresh, with no card and with a filter that matches nothing; a button that does not apply is disabled, never hidden; a card header button is a 24 px square with a 14 px glyph
+  - overridden-by: ACC-PANEL-297-NEW-BAND
   - evidence: Galata render.spec.ts HDR-06 and WS-20 passed in tmp/workflows/sections/logs/galata-rd1.log (158 of 158 passed, --retries=0); WS-20 failed on the pre-change frontend, glyph 16 x 16 (tmp/workflows/sections/logs/galata-rd1-red.log)
   - test: Galata render.spec.ts HDR-06: record each header button's x, switch through the five views, assert each visible at the same x with display not none; render.spec.ts WS-20: assert each card header button 24 x 24 with a 14 x 14 svg
   - test-tags: FUNCTIONAL
@@ -911,6 +915,16 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - test-tags: FUNCTIONAL
   - log: 2026-11-05T19:38:55Z @kj added
   - log: 2026-11-05T20:11:14Z @kj closed
+- [x] `ACC-PANEL-297-NEW-BAND` **New workspace button in the WORKSPACES header** - MEDIUM; the + New workspace button sits in the WORKSPACES section header immediately left of the Clean up workspaces eraser, shown with the section open or closed; a click, Enter or Space on it opens the New workspace dialog without opening or closing the section; the WORKBENCH toolbar has none
+  - overrides: ACC-PANEL-140-NEW-BUTTON
+  - overrides: ACC-PANEL-147-HEADER-ORDER
+  - overrides: ACC-PANEL-184-TITLE-NAME
+  - overrides: ACC-PANEL-214-HEADER-PLACE
+  - evidence: Jest panel.spec.ts ACC-PANEL-297-NEW-BAND passed in make test (Jest 196 of 196 in 12 suites, pytest 165 passed, auth gate clean; tmp/workflows/wm-new-band/logs/prove-1-make-test.log); Galata new.spec.ts ACC-PANEL-297-NEW-BAND passed in full suite, 248 of 248 passed, 0 failed (prove-1-galata.log); both failed on HEAD (prove-1-jest-red-head.log, galata-red-head.log); Space not asserted
+  - test: Galata new.spec.ts ACC-PANEL-297-NEW-BAND: toolbar has no New workspace button; WORKSPACES header has it just before the eraser; a click with the section open, then closed, opens the dialog, section state unchanged; focus and Enter open it; Escape creates nothing; Jest panel.spec.ts ACC-PANEL-297-NEW-BAND
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-11-06T12:26:59Z @kj added
+  - log: 2026-11-06T13:04:19Z @kj closed
 
 ## Workspace sections `ACCORD`
 

@@ -141,7 +141,7 @@ test('ACC-PANEL-183-OTHERS-GONE: the panel shows no OTHER SESSIONS header and no
   await expect(page.locator(`${PANEL} [data-key="x:none"]`)).toHaveCount(0);
 });
 
-test('ACC-PANEL-184-TITLE-NAME: the panel header reads WORKBENCH, with the add, filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces', async ({
+test('ACC-PANEL-184-TITLE-NAME: the panel header reads WORKBENCH, with the filter, hidden and refresh buttons beside it; below it a WORKSPACES header carries the number of workspaces', async ({
   page
 }) => {
   await page.goto();
@@ -158,12 +158,7 @@ test('ACC-PANEL-184-TITLE-NAME: the panel header reads WORKBENCH, with the add, 
       return r.getClientRects().length;
     })
   ).toBe(1);
-  for (const label of [
-    'New workspace',
-    'Filter',
-    'Show hidden workspaces',
-    'Refresh'
-  ]) {
+  for (const label of ['Filter', 'Show hidden workspaces', 'Refresh']) {
     await expect(headerButton(page, label)).toBeVisible();
   }
   await expect(sectionHeader(page, 'workspaces')).toContainText('WORKSPACES');
@@ -801,7 +796,7 @@ test('ACC-PANEL-169-NO-SEARCH, DEF-PANEL-13-SEARCH-ICON: no Search Tabs and Runn
   ).toHaveCount(1);
 });
 
-test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the buttons of other extensions, each 24px square with a 14 px glyph', async ({
+test('ACC-PANEL-147-HEADER-ORDER: filter, show hidden, refresh, then the buttons of other extensions, each 24px square with a 14 px glyph', async ({
   page
 }) => {
   await page.goto();
@@ -833,17 +828,16 @@ test('ACC-PANEL-147-HEADER-ORDER: new, filter, show hidden, refresh, then the bu
         };
       })
     );
-  expect(buttons.slice(0, 4).map(b => b.label)).toEqual([
-    'New workspace',
+  expect(buttons.slice(0, 3).map(b => b.label)).toEqual([
     'Filter',
     'Show hidden workspaces',
     'Refresh'
   ]);
-  expect(buttons[4].label).toBe('Button of another extension');
+  expect(buttons[3].label).toBe('Button of another extension');
   for (const b of buttons) {
     expect([b.label, b.size]).toEqual([b.label, [24, 24]]);
   }
-  for (const b of buttons.slice(0, 4)) {
+  for (const b of buttons.slice(0, 3)) {
     expect([b.label, b.glyph]).toEqual([b.label, [14, 14]]);
   }
 });

@@ -1,5 +1,6 @@
 import { expect, test } from '@jupyterlab/galata';
 import type { Page } from '@playwright/test';
+import * as path from 'path';
 
 import {
   card,
@@ -10,12 +11,14 @@ import {
   gotoWorkspace,
   headerButton,
   listed,
+  newButton,
   onlyWorkspaces,
   openPanel,
   PANEL,
   putWorkspace,
   refresh,
   sectionBody,
+  sectionHeader,
   triangle,
   UNDER_LOAD
 } from './helpers';
@@ -30,7 +33,7 @@ const cards = (page: Page) =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`);
 
 async function openDialog(page: Page): Promise<void> {
-  await headerButton(page, 'New workspace').click();
+  await newButton(page).click();
   await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
     'New workspace'
   );
@@ -54,14 +57,74 @@ test('ACC-PANEL-140-NEW-BUTTON: the + button opens the New workspace dialog', as
   try {
     await gotoWorkspace(page, current);
     await openPanel(page);
-    await expect(headerButton(page, 'New workspace')).toHaveAttribute(
-      'title',
-      'New workspace'
-    );
+    await expect(newButton(page)).toHaveAttribute('title', 'New workspace');
     await openDialog(page);
     await expect(dialog(page)).toBeVisible();
   } finally {
     await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-297-NEW-BAND: the + button sits in the WORKSPACES header immediately before the eraser, not in the toolbar; a click with the section open or closed, or Enter, opens the New workspace dialog and leaves the section as it was; Escape creates nothing', async ({
+  page
+}) => {
+  const current = fresh('band');
+  const escaped = `${current}-esc`;
+  try {
+    await gotoWorkspace(page, current);
+    await openPanel(page);
+    const band = sectionHeader(page, 'workspaces');
+    await expect(headerButton(page, 'New workspace')).toHaveCount(0);
+    await expect(newButton(page)).toHaveAttribute('title', 'New workspace');
+    expect(
+      await band
+        .locator('button')
+        .evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label')))
+    ).toEqual(['New workspace', 'Clean up workspaces']);
+    // side by side on one line: the + ends where the eraser starts
+    const plus = (await newButton(page).boundingBox())!;
+    const eraser = (await band
+      .getByRole('button', { name: 'Clean up workspaces', exact: true })
+      .boundingBox())!;
+    expect(Math.round(eraser.x - plus.x - plus.width)).toBe(0);
+    expect(Math.round(plus.y)).toBe(Math.round(eraser.y));
+    // evidence for review; no assertion reads it
+    const shots = process.env.WM_SHOTS_DIR;
+    if (shots) {
+      await page.theme.setTheme('JupyterLab Light');
+      await page.mouse.move(0, 0);
+      await page
+        .locator(`${PANEL} .jp-WorkspaceManager-header`)
+        .screenshot({ path: path.join(shots, 'new-band-toolbar-light.png') });
+      await band.screenshot({
+        path: path.join(shots, 'new-band-workspaces-header-light.png')
+      });
+    }
+    // a click opens the dialog with WORKSPACES open, then closed, and never toggles it
+    for (const expanded of ['true', 'false']) {
+      if ((await band.getAttribute('aria-expanded')) !== expanded) {
+        await band.click();
+      }
+      await expect(band).toHaveAttribute('aria-expanded', expanded);
+      await openDialog(page);
+      await expect(band).toHaveAttribute('aria-expanded', expanded);
+      await page.keyboard.press('Escape');
+      await expect(dialog(page)).toHaveCount(0);
+      await expect(band).toHaveAttribute('aria-expanded', expanded);
+    }
+    // focus and Enter open it too; Escape closes it and creates nothing
+    await newButton(page).focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'New workspace'
+    );
+    await expect(band).toHaveAttribute('aria-expanded', 'false');
+    await dialog(page).getByLabel('Name', { exact: true }).fill(escaped);
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await listed(page)).not.toContain(escaped);
+  } finally {
+    await deleteWorkspaces(page, [current, escaped]);
   }
 });
 

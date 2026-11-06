@@ -2,6 +2,12 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [0.8.39] - 2026-11-06
+
+### Changed
+
+- The + New workspace button sits in the WORKSPACES section header, left of the clean-up eraser, instead of the WORKBENCH toolbar; a click, Enter or Space opens the New workspace dialog without opening or closing the section, and the button shows while the section is closed
+
 ## [0.8.38] - 2026-11-06
 
 ### Added

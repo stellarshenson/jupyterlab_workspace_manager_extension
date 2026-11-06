@@ -22,6 +22,7 @@ import {
   layout,
   openCardMenu,
   menuItem,
+  newButton,
   newTerminalTab,
   only,
   onlyWorkspaces,
@@ -747,7 +748,7 @@ test('ACC-ACCORD-16-ROTATION: after a reload, a new workspace takes the colour a
 
 /** Create a workspace through the + dialog. */
 async function createWorkspace(page: Page, name: string): Promise<void> {
-  await headerButton(page, 'New workspace').click();
+  await newButton(page).click();
   await dialog(page).locator('input').fill(name);
   await dialog(page).locator('input').press('Enter');
   await expect(dialog(page)).toHaveCount(0);
