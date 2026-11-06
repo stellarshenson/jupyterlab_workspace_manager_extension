@@ -351,3 +351,6 @@ This journal tracks substantive work on documents, diagrams, and documentation c
 
 116. **Task - New-workspace button moved to the WORKSPACES band and released** (v0.8.39): the owner's "move + to workspace section" shipped<br>
     **Result**: The + New workspace button left the WORKBENCH toolbar for the WORKSPACES section header, immediately left of the clean-up eraser, built with the eraser's `iconButton` and `pointerFocus` so both look and focus alike. A click, Enter or Space opens the New workspace dialog without toggling the section, and the + shows while the section is closed. One CSS rule sets `margin-left: 0` on a second band button: both buttons otherwise take `margin-left: auto` and the + sits mid-band. `ACC-PANEL-297-NEW-BAND` closed, overriding `ACC-PANEL-140`, `147`, `184` and `214`; the Galata helper `newButton(page)` replaces the toolbar route. Run `wf_3c625a36-a1c` passed its first verification. Full Galata 248 of 248, Jest 196, pytest 165, 0 open criteria and defects. Release moves 0.8.38 to 0.8.39.
+
+117. **Task [Short] - Version 1.0.2 released** (v1.0.2): the owner's "change version to 1.0.2"<br>
+    **Result**: the order arrived while `make publish` uploaded 0.8.39, so 1.0.2 republishes that code unchanged; version set in `package.json`, published with `make -o increment_version publish` so the Makefile does not raise it to 1.0.3.

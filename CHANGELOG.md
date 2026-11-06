@@ -2,6 +2,12 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.2] - 2026-11-06
+
+### Changed
+
+- The version moves to 1.0.2 at the owner's direction; the code and behaviour are those of 0.8.39
+
 ## [0.8.39] - 2026-11-06
 
 ### Changed
