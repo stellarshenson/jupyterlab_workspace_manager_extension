@@ -2,6 +2,18 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.4] - 2026-11-07
+
+### Added
+
+- Move to workspace copies the icon a server-proxy or Help tab shows in this window into the entry the target workspace saves, also when that workspace already holds the tab, so the target card draws the same icon until that workspace opens the tab; a tab without a copy shows the web-page globe, or the file icon where jupyterlab-vscode-icons-extension is not installed
+
+### Fixed
+
+- Another workspace's card draws a saved tab without a path with its own icon instead of the file icon: a page tab by its saved icon, a code viewer by its file type, and a Settings Editor, Advanced Settings Editor, Log Console, Contextual Help, Licenses, Plugin Manager or LSP Diagnostics tab by its kind
+- Another workspace's card names those tabs as their own window does, and a code viewer by its saved label, instead of by the end of their saved key; a Licenses row reads Licenses without the bundle name
+- A saved page icon that is not text no longer stops a card from drawing its rows
+
 ## [1.0.3] - 2026-11-06
 
 ### Added

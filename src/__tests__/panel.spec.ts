@@ -12,11 +12,23 @@ import {
   waitForDialog
 } from '@jupyterlab/testutils';
 import { nullTranslator } from '@jupyterlab/translation';
+import {
+  copyrightIcon,
+  extensionIcon,
+  inspectorIcon,
+  LabIcon,
+  listIcon,
+  markdownIcon,
+  pythonIcon,
+  settingsIcon,
+  textEditorIcon
+} from '@jupyterlab/ui-components';
 import { CommandRegistry } from '@lumino/commands';
 import { MessageLoop } from '@lumino/messaging';
 import { Signal } from '@lumino/signaling';
 import { Menu, Widget } from '@lumino/widgets';
 
+import { pageIcon } from '../icons';
 import { withoutTabs } from '../model/model';
 import { workspaceMenu } from '../panel/menus';
 import { WorkspacePanel } from '../panel/panel';
@@ -3183,6 +3195,67 @@ describe('panel', () => {
     ).toHaveLength(1);
   });
 
+  it("DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-304-PATHLESS-ICON: a saved tab without a path on another workspace's card draws the icon its own window shows; a document keeps its file-type icon", async () => {
+    // the icon jupyterlab-lsp registers for its diagnostics panel
+    const diagnostics = new LabIcon({
+      name: 'lsp:diagnostics',
+      svgstr:
+        '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>'
+    });
+    // each saved entry as its tracker saves it, and the icon its own window gives the tab
+    const tabs: { [key: string]: [any, string] } = {
+      'workspace-page:p1': [
+        { url: '/proxy/9/a.html', title: 'Icon page', icon: '/proxy/9/i.svg' },
+        'workspace-page:/proxy/9/i.svg'
+      ],
+      'workspace-page:p2': [
+        { url: '/proxy/9/b.html', title: 'Plain page' },
+        pageIcon.name
+      ],
+      'setting-editor:setting-editor': [{}, settingsIcon.name],
+      'json-setting-editor:json-setting-editor': [{}, settingsIcon.name],
+      'logconsole:logconsole': [{}, listIcon.name],
+      'inspector:inspector': [{}, inspectorIcon.name],
+      'help-licenses:licenses': [{ packageFilter: {} }, copyrightIcon.name],
+      'plugin-manager:plugins': [{ query: '' }, extensionIcon.name],
+      'lsp-diagnostics:listing': [{}, diagnostics.name],
+      'codeviewer:cv1': [
+        { content: 'print(1)', label: 'a', mimeType: 'text/x-python' },
+        pythonIcon.name
+      ],
+      'codeviewer:cv2': [
+        { content: 'x', label: 'b', mimeType: 'text/x-unknown' },
+        textEditorIcon.name
+      ],
+      'editor:docs/README.md': [
+        { path: 'docs/README.md', factory: 'Editor' },
+        markdownIcon.name
+      ]
+    };
+    const server = standard();
+    server.workspaces[1] = workspace('auto-6', 60, Object.keys(tabs));
+    for (const [key, [data]] of Object.entries(tabs)) {
+      server.workspaces[1].data[key] = { data };
+    }
+    const { panel, app } = await mount(server);
+    app.docRegistry.getFileTypesForPath = (path: string) =>
+      path.endsWith('.md') ? [{ icon: markdownIcon }] : [];
+    app.docRegistry.fileTypes = () => [
+      { name: 'python', mimeTypes: ['text/x-python'], icon: pythonIcon }
+    ];
+    triangle(panel, 'w:auto-6').click();
+    const icon = (key: string) =>
+      card(panel, 'w:auto-6').querySelector(
+        `[data-row-key="${key}"] .jp-WorkspaceManager-rowIcon svg`
+      )!;
+    for (const [key, [, name]] of Object.entries(tabs)) {
+      expect([key, icon(key).getAttribute('data-icon')]).toEqual([key, name]);
+    }
+    expect(
+      icon('workspace-page:p1').querySelector('image')!.getAttribute('href')
+    ).toBe('/proxy/9/i.svg');
+  });
+
   it('ACC-TERM-279-TOOLTIP-MEMORY: a terminal with memory 536870912 carries Memory: 512 MB after Path; null carries Memory: -', async () => {
     const server = standard();
     Object.assign(server.terminals[0], {
@@ -4477,6 +4550,236 @@ describe('panel', () => {
       await settle();
       expect(saves(log)).toEqual([]);
       expect(close).not.toHaveBeenCalled();
+    });
+
+    /** The svgstr of a page favicon as jupyterlab-vscode-icons-extension makes it once the page has loaded. */
+    const faviconSvg = (href: string) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><image x="0.5" y="0.5" width="13" height="13" href="${href}"/></svg>`;
+    const favicon = (href: string) =>
+      new LabIcon({
+        name: `jupyterlab_vscode_icons_extension:favicon:${href}`,
+        svgstr: faviconSvg(href)
+      });
+    /** The globes jupyterlab-vscode-icons-extension makes when it loads. */
+    const globes = () => {
+      for (const kind of ['local', 'remote']) {
+        new LabIcon({
+          name: `jupyterlab_vscode_icons_extension:${kind}-page`,
+          svgstr:
+            '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6"/></svg>'
+        });
+      }
+    };
+    const GLOBES = ['local', 'remote'].map(
+      kind => `jupyterlab_vscode_icons_extension:${kind}-page`
+    );
+    /** The server-proxy and the Help entry of WEB, whose own icon is a page favicon. */
+    const FAVICON_KEYS = Object.keys(WEB).slice(0, 2);
+    /** The svg of the row keyed `key` on the card of `id`. */
+    const rowIcon = (panel: Widget, id: string, key: string) =>
+      card(panel, `w:${id}`).querySelector(
+        `[data-row-key="${key}"] .jp-WorkspaceManager-rowIcon svg`
+      )!;
+
+    it("DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-305-COPIED-ICON: a server-proxy or Help row with no copied icon on another workspace's card draws the globe jupyterlab-vscode-icons-extension draws before the page loads, local-page for the lab's origin and remote-page for another site; without that extension the file icon", async () => {
+      const server = three();
+      server.workspaces[1] = workspace('auto-6', 60, FAVICON_KEYS);
+      for (const key of FAVICON_KEYS) {
+        server.workspaces[1].data[key] = WEB[key];
+      }
+      const { panel } = await mount(server);
+      triangle(panel, 'w:auto-6').click();
+      const names = () =>
+        FAVICON_KEYS.map(key =>
+          rowIcon(panel, 'auto-6', key).getAttribute('data-icon')
+        );
+      // that extension is not installed: its names resolve to LabIcon's loading glyph
+      const before = names();
+      globes();
+      triangle(panel, 'w:auto-6').click();
+      triangle(panel, 'w:auto-6').click();
+      await settle();
+      expect([before, names()]).toEqual([
+        ['ui-components:file', 'ui-components:file'],
+        GLOBES
+      ]);
+    });
+
+    it('DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-305-COPIED-ICON: Move to workspace copies the live icon of a server-proxy or Help tab of this window into the moved entry as data.copiedIcon, over a copy the entry held; a page tab, whose entry names its icon, gets no copy', async () => {
+      const icons = [
+        '/proxy/9000/icon.svg',
+        'https://jupyter.org/favicon.ico'
+      ].map(favicon);
+      const tabs = [
+        webTab('jp-ServerProxy', { id: 'sp-1' }, 'Proxy page'),
+        webTab(
+          'jp-Help',
+          { url: 'https://jupyter.org/documentation' },
+          'Jupyter Reference'
+        ),
+        webTab('jp-WorkspaceManager-page', { id: 'page-1' }, 'Lab page')
+      ];
+      // that extension puts a view of the favicon bound to the tab stylesheet on the title
+      tabs[0].title.icon = icons[0].bindprops({ stylesheet: 'mainAreaTab' });
+      tabs[1].title.icon = icons[1];
+      tabs[2].title.icon = favicon('/proxy/9001/i.svg');
+      const keys = Object.keys(WEB);
+      const server = three(keys);
+      Object.assign(server.workspaces[0].data, WEB);
+      // a copy this window's restorer has not yet saved over
+      server.workspaces[0].data[keys[0]] = {
+        data: {
+          ...WEB[keys[0]].data,
+          copiedIcon: faviconSvg('/proxy/9000/old.svg')
+        }
+      };
+      const { panel } = await mount(server, { live: tabs });
+      const moved: unknown[] = [];
+      for (const key of keys) {
+        rowMenu(panel, 'default', key);
+        moveTo(1, 'auto-7');
+        await settle();
+        moved.push(server.saved!['auto-7'].data[key]);
+      }
+      expect(moved).toEqual([
+        { data: { ...WEB[keys[0]].data, copiedIcon: icons[0].svgstr } },
+        { data: { ...WEB[keys[1]].data, copiedIcon: icons[1].svgstr } },
+        WEB[keys[2]]
+      ]);
+    });
+
+    it('DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-305-COPIED-ICON: Move to workspace copies the live icon of a server-proxy tab into a target workspace that already holds its key', async () => {
+      const key = FAVICON_KEYS[0];
+      const icon = favicon('/proxy/9000/icon.svg');
+      const tab = webTab('jp-ServerProxy', { id: 'sp-1' }, 'Proxy page');
+      tab.title.icon = icon;
+      const server = three([key]);
+      server.workspaces[0].data[key] = WEB[key];
+      // jupyter-server-proxy gives every app one fixed key, so the target can hold it already
+      server.workspaces[2] = workspace('auto-7', 30, [key]);
+      server.workspaces[2].data[key] = WEB[key];
+      const { panel } = await mount(server, { live: [tab] });
+      rowMenu(panel, 'default', key);
+      moveTo(1, 'auto-7');
+      await settle();
+      expect(server.saved!['auto-7'].data[key].data.copiedIcon).toBe(
+        icon.svgstr
+      );
+    });
+
+    it("DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-305-COPIED-ICON: a server-proxy or Help row on another workspace's card draws the icon its entry copied, through LabIcon", async () => {
+      const server = three();
+      server.workspaces[1] = workspace('auto-6', 60, FAVICON_KEYS);
+      for (const [i, key] of FAVICON_KEYS.entries()) {
+        server.workspaces[1].data[key] = {
+          data: {
+            ...WEB[key].data,
+            copiedIcon: faviconSvg(`/proxy/900${i}/icon.svg`)
+          }
+        };
+      }
+      const { panel } = await mount(server);
+      globes();
+      triangle(panel, 'w:auto-6').click();
+      expect(
+        FAVICON_KEYS.map(key =>
+          rowIcon(panel, 'auto-6', key)
+            .querySelector('image')
+            ?.getAttribute('href')
+        )
+      ).toEqual(['/proxy/9000/icon.svg', '/proxy/9001/icon.svg']);
+    });
+
+    it('DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-305-COPIED-ICON: a live icon over 16384 characters is not copied, and a copy over 16384 characters, with an attribute the favicon and the globes do not use (an event handler, children), or with an element in a comment or a processing instruction in a saved entry is not drawn: the card draws the globe', async () => {
+      const key = FAVICON_KEYS[0];
+      const big = new LabIcon({
+        name: 'test:big-icon',
+        svgstr: `<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0${' h1'.repeat(6000)}"/></svg>`
+      });
+      expect(big.svgstr.length).toBeGreaterThan(16384);
+      const tab = webTab('jp-ServerProxy', { id: 'sp-1' }, 'Proxy page');
+      tab.title.icon = big;
+      const server = three([key]);
+      server.workspaces[0].data[key] = WEB[key];
+      // the HTML parser LabIcon renders through reads the img out of these
+      const hidden: Record<string, { data: Record<string, unknown> }> = {
+        'server-proxy:sp-2': {
+          data: {
+            url: '/proxy/9002/',
+            copiedIcon:
+              '<svg xmlns="http://www.w3.org/2000/svg"><!--><img src="x" onerror="window.copied = 1">--></svg>'
+          }
+        },
+        'help-doc:https://jupyter.org/install': {
+          data: {
+            url: 'https://jupyter.org/install',
+            copiedIcon:
+              '<svg xmlns="http://www.w3.org/2000/svg"><?x ><img src="x" onerror="window.copied = 1">?></svg>'
+          }
+        },
+        // LabIcon passes the root's attributes to React as props
+        'server-proxy:sp-3': {
+          data: {
+            url: '/proxy/9003/',
+            copiedIcon:
+              '<svg xmlns="http://www.w3.org/2000/svg" children="x"><path d="M0 0"/></svg>'
+          }
+        }
+      };
+      server.workspaces[1] = workspace('auto-6', 60, [
+        ...FAVICON_KEYS,
+        ...Object.keys(hidden)
+      ]);
+      Object.assign(server.workspaces[1].data, hidden);
+      server.workspaces[1].data[FAVICON_KEYS[0]] = {
+        data: { ...WEB[FAVICON_KEYS[0]].data, copiedIcon: big.svgstr }
+      };
+      server.workspaces[1].data[FAVICON_KEYS[1]] = {
+        data: {
+          ...WEB[FAVICON_KEYS[1]].data,
+          copiedIcon:
+            '<svg xmlns="http://www.w3.org/2000/svg"><image href="x" onerror="window.copied = 1"/></svg>'
+        }
+      };
+      const { panel } = await mount(server, { live: [tab] });
+      globes();
+      rowMenu(panel, 'default', key);
+      moveTo(1, 'auto-7');
+      await settle();
+      triangle(panel, 'w:auto-6').click();
+      expect([
+        server.saved!['auto-7'].data[key],
+        [...FAVICON_KEYS, ...Object.keys(hidden)].map(k =>
+          rowIcon(panel, 'auto-6', k).getAttribute('data-icon')
+        )
+      ]).toEqual([WEB[key], [...GLOBES, ...GLOBES, GLOBES[0]]]);
+    });
+
+    it("DEF-PANEL-95-WEBTAB-ICON, ACC-LISTS-305-COPIED-ICON: a server-proxy row of another workspace's card moved to a third workspace keeps the icon its entry copied", async () => {
+      const key = FAVICON_KEYS[0];
+      const server = three();
+      server.workspaces[1] = workspace('auto-6', 60, [key]);
+      server.workspaces[1].data[key] = {
+        data: {
+          ...WEB[key].data,
+          copiedIcon: faviconSvg('/proxy/9000/icon.svg')
+        }
+      };
+      const { panel } = await mount(server);
+      globes();
+      rowMenu(panel, 'auto-6', key);
+      moveTo(1, 'auto-7');
+      await settle();
+      // the fake server keeps what was saved apart: auto-7 now holds it
+      server.workspaces[2].data = server.saved!['auto-7'].data;
+      refreshButton(panel).click();
+      await settle();
+      triangle(panel, 'w:auto-7').click();
+      expect(
+        rowIcon(panel, 'auto-7', key)
+          .querySelector('image')
+          ?.getAttribute('href')
+      ).toBe('/proxy/9000/icon.svg');
     });
 
     it('ACC-LISTS-269-MOVE-REFUSED: a document with unsaved changes is refused and stays open', async () => {

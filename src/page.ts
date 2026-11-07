@@ -62,7 +62,7 @@ function portOf(url: URL): string {
 }
 
 /** A tab icon that renders the image at `url` into the icon's svg. */
-function imageIcon(url: string): LabIcon {
+export function imageIcon(url: string): LabIcon {
   // LabIcon runs svgstr through decodeURIComponent, which throws on `%`, so
   // escape the URL's `%` and use pixel sizes.
   const href = url

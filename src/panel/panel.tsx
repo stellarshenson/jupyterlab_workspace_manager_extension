@@ -22,6 +22,7 @@ import {
   refreshIcon,
   SidePanel,
   tabIcon,
+  textEditorIcon,
   Toolbar
 } from '@jupyterlab/ui-components';
 import type { Message } from '@lumino/messaging';
@@ -46,6 +47,7 @@ import {
   eraserIcon,
   eyeIcon,
   eyeOffIcon,
+  pageIcon,
   powerIcon,
   terminalGlyph
 } from '../icons';
@@ -73,7 +75,7 @@ import {
 import { newRecord } from '../model/new';
 import { givePositions, moved } from '../model/order';
 import { assignColours, type Colour, nextColour } from '../model/palette';
-import { PAGE_CLASS } from '../page';
+import { imageIcon, PAGE_CLASS } from '../page';
 import {
   confirm,
   cleanUpDialog,
@@ -113,6 +115,134 @@ const WEB_OPEN = new Map([
   ['help-doc', 'help:open'],
   ['workspace-page', 'workspace-page:open']
 ]);
+
+/**
+ * The icon a saved tab without a path shows in its own window, by the namespace
+ * of its saved key, for a row no live tab of this window draws
+ * (DEF-PANEL-95-WEBTAB-ICON). A server-proxy or Help tab is not here: see
+ * COPIED_ICON_KINDS.
+ * shortcut: an lsp-diagnostics entry in a lab without jupyterlab-lsp draws the
+ * loading glyph LabIcon.resolve makes; upgrade if such an entry shows.
+ */
+const SAVED_ICONS = new Map([
+  ['setting-editor', 'ui-components:settings'],
+  ['json-setting-editor', 'ui-components:settings'],
+  ['logconsole', 'ui-components:list'],
+  ['inspector', 'ui-components:inspector'],
+  ['help-licenses', 'ui-components:copyright'],
+  ['plugin-manager', 'ui-components:extension'],
+  ['lsp-diagnostics', 'lsp:diagnostics']
+]);
+
+/**
+ * The kinds whose own icon is the page favicon jupyterlab-vscode-icons-extension
+ * sets once the page loads, which no saved entry holds: Move to workspace copies
+ * the live icon into the moved entry as data.copiedIcon, and the restorer of the
+ * target workspace's window saves the entry again without it
+ * (ACC-LISTS-305-COPIED-ICON).
+ */
+const COPIED_ICON_KINDS = new Set(['server-proxy', 'help-doc']);
+
+/** The longest icon svgstr a move copies and a card draws, in characters. */
+const COPIED_ICON_MAX = 16384;
+
+/** The elements a copied icon may hold: those of the favicon and the globes that extension draws. */
+const COPIED_ICON_ELEMENTS = new Set([
+  'svg',
+  'g',
+  'path',
+  'circle',
+  'ellipse',
+  'image'
+]);
+
+/**
+ * The attributes a copied icon may hold: those of the favicon and the globes.
+ * LabIcon passes the root's attributes to React as props, where one named
+ * `children` unmounts the panel.
+ */
+const COPIED_ICON_ATTRIBUTES = new Set([
+  'xmlns',
+  'width',
+  'height',
+  'viewBox',
+  'x',
+  'y',
+  'href',
+  'fill',
+  'stroke-width',
+  'style',
+  'cx',
+  'cy',
+  'r',
+  'rx',
+  'ry',
+  'd'
+]);
+
+/**
+ * Whether `svgstr` is an icon a move copies and a card draws: at most
+ * COPIED_ICON_MAX characters, COPIED_ICON_ELEMENTS, COPIED_ICON_ATTRIBUTES and
+ * text only, because a card renders it from a saved workspace file.
+ */
+function copyable(svgstr: unknown): svgstr is string {
+  if (typeof svgstr !== 'string' || svgstr.length > COPIED_ICON_MAX) {
+    return false;
+  }
+  try {
+    // LabIcon URI-decodes an svgstr before it parses it
+    const svg = new DOMParser().parseFromString(
+      decodeURIComponent(svgstr),
+      'image/svg+xml'
+    ).documentElement;
+    // every node: LabIcon renders the svg's innerHTML through the HTML parser,
+    // which reads elements out of an XML comment or processing instruction
+    const walk = document.createTreeWalker(svg, NodeFilter.SHOW_ALL);
+    for (let node: Node | null = svg; node; node = walk.nextNode()) {
+      const e = node as Element;
+      if (
+        node.nodeType !== Node.TEXT_NODE &&
+        (node.nodeType !== Node.ELEMENT_NODE ||
+          !COPIED_ICON_ELEMENTS.has(e.localName) ||
+          Array.from(e.attributes).some(
+            a => !COPIED_ICON_ATTRIBUTES.has(a.name)
+          ))
+      ) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The hosts jupyterlab-vscode-icons-extension counts as local, besides the lab's origin. */
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0']);
+
+/**
+ * The globe jupyterlab-vscode-icons-extension draws on a live web page tab until
+ * its favicon loads, chosen as it chooses: local-page for the lab's origin or a
+ * loopback host, remote-page for another http or https site. Undefined for
+ * another address, and where that extension is not installed: LabIcon.resolve
+ * then answers its loading glyph, the refresh icon.
+ */
+function globeOf(url: string | undefined): LabIcon | undefined {
+  let page: URL | undefined;
+  try {
+    page = url ? new URL(url, document.baseURI) : undefined;
+  } catch {
+    return undefined;
+  }
+  if (page?.protocol !== 'http:' && page?.protocol !== 'https:') {
+    return undefined;
+  }
+  const local = page.origin === location.origin || LOOPBACK.has(page.hostname);
+  const globe = LabIcon.resolve({
+    icon: `jupyterlab_vscode_icons_extension:${local ? 'local' : 'remote'}-page`
+  });
+  return globe.svgstr === refreshIcon.svgstr ? undefined : globe;
+}
 
 /** The four section keys, in render order. */
 const SECTION_KEYS = ['workspaces', 'kernels', 'terminals', 'servers'] as const;
@@ -1227,6 +1357,38 @@ export class WorkspacePanel
     };
   }
 
+  /**
+   * The icon a saved tab without a path shows in its own window
+   * (DEF-PANEL-95-WEBTAB-ICON): a page its saved image, else pageIcon, as
+   * workspace-page:open sets it; a code viewer the icon of the file type of its
+   * MIME type, else textEditorIcon, as code-viewer:open sets it;
+   * a server-proxy or Help tab the icon a move copied into its entry, else the
+   * globe of its address (ACC-LISTS-305-COPIED-ICON);
+   * another kind by SAVED_ICONS, else fileIcon.
+   */
+  private _savedIcon(tab: ITab, workspace: string): LabIcon {
+    const kind = tab.key.split(':')[0];
+    if (COPIED_ICON_KINDS.has(kind)) {
+      return copyable(tab.copiedIcon)
+        ? new LabIcon({
+            name: `jupyterlab-workspace-manager-extension:copied-icon:${workspace}:${tab.key}`,
+            svgstr: tab.copiedIcon
+          })
+        : (globeOf(tab.url) ?? fileIcon);
+    }
+    if (kind === 'workspace-page') {
+      return tab.icon ? imageIcon(tab.icon) : pageIcon;
+    }
+    if (kind === 'codeviewer') {
+      const type = Array.from(this._app.docRegistry.fileTypes()).find(t =>
+        t.mimeTypes.includes(tab.mimeType ?? '')
+      );
+      return type?.icon ?? textEditorIcon;
+    }
+    const name = SAVED_ICONS.get(kind);
+    return name ? LabIcon.resolve({ icon: name }) : fileIcon;
+  }
+
   private _tabRow(
     section: ISection,
     tab: ITabRow,
@@ -1238,7 +1400,7 @@ export class WorkspacePanel
         fileIcon)
       : live?.title.icon instanceof LabIcon
         ? live.title.icon
-        : fileIcon;
+        : this._savedIcon(tab, section.id);
     // a document with a running kernel shows its state dot; a document with more
     // than one kernel names each in its menu
     const kernels = tab.path
@@ -2021,7 +2183,32 @@ export class WorkspacePanel
         if (!to.metadata.last_modified) {
           throw new Error(`Workspace ${target.id} no longer exists`);
         }
-        await store.save(target.id, withTab(to, saved.key, entry));
+        // a live web page tab's favicon is in no saved entry: the target's cards draw a copy of its live icon (ACC-LISTS-305-COPIED-ICON)
+        const icon =
+          live?.title.icon instanceof LabIcon
+            ? live.title.icon.svgstr
+            : undefined;
+        const moved =
+          live && COPIED_ICON_KINDS.has(saved.key.split(':')[0])
+            ? {
+                ...(entry as any),
+                data: {
+                  ...(entry as any).data,
+                  copiedIcon: copyable(icon) ? icon : undefined
+                }
+              }
+            : entry;
+        // withTab keeps a target that holds the key, and a server-proxy app has one fixed key: the copy goes into the target's data first
+        await store.save(
+          target.id,
+          withTab(
+            moved === entry
+              ? to
+              : { ...to, data: { ...to.data, [saved.key]: moved } },
+            saved.key,
+            moved
+          )
+        );
       } else if (saved.key.startsWith('terminal:')) {
         await this._openTerminal(saved.key.slice('terminal:'.length));
       } else {

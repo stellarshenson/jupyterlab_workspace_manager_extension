@@ -557,6 +557,14 @@ describe('model', () => {
       { key: 'terminal:2', path: undefined, name: undefined }
     ]);
     expect(tabsOf({})).toEqual([]);
+    expect(
+      tabsOf({
+        'layout-restorer:data': {
+          main: { dock: { type: 'tab-area', widgets: ['workspace-page:p'] } }
+        },
+        'workspace-page:p': { data: { url: '/proxy/9001/', icon: 7 } }
+      })[0].icon
+    ).toBeUndefined();
   });
 
   it("DEF-PANEL-91-WEBTAB-LABEL: a saved web tab on another workspace's card is named by its saved title or menu text", () => {
@@ -586,6 +594,61 @@ describe('model', () => {
       'JupyterLab Reference',
       'My app'
     ]);
+  });
+
+  it("DEF-PANEL-97-PATHLESS-NAME, ACC-LISTS-306-PATHLESS-NAME: a saved tab without a path on another workspace's card reads the name its own window gives the tab; a document, a terminal and a titled web tab keep their names", () => {
+    // each saved entry as its tracker saves it, and the row name expected
+    const tabs: { [key: string]: [any, string] } = {
+      'setting-editor:setting-editor': [{}, 'Settings'],
+      'json-setting-editor:json-setting-editor': [
+        {},
+        'Advanced Settings Editor'
+      ],
+      'logconsole:logconsole': [{}, 'Log Console'],
+      'inspector:inspector': [{}, 'Contextual Help'],
+      'help-licenses:licenses': [{ packageFilter: {} }, 'Licenses'],
+      'plugin-manager:plugins': [{ query: '' }, 'Advanced Plugin Manager'],
+      'lsp-diagnostics:listing': [{}, 'Diagnostics Panel'],
+      'codeviewer:cv-1': [
+        {
+          content: 'print(1)',
+          label: 'Viewed code',
+          mimeType: 'text/x-python',
+          widgetId: 'cv-1'
+        },
+        'Viewed code'
+      ],
+      'editor:docs/README.md': [
+        { path: 'docs/README.md', factory: 'Editor' },
+        'README.md'
+      ],
+      'workspace-page:id-x': [
+        { url: '/proxy/5123/index.html', title: 'My app', id: 'id-x' },
+        'My app'
+      ]
+    };
+    const entries: { [key: string]: any } = {};
+    for (const [key, [data]] of Object.entries(tabs)) {
+      entries[key] = { data };
+    }
+    const model = buildModel(
+      input({
+        workspaces: [
+          ws(
+            'other',
+            '2026-10-23T10:00:00Z',
+            [...Object.keys(tabs), 'terminal:7'],
+            entries
+          )
+        ],
+        terminals: [{ name: '7' }]
+      })
+    );
+    const other = byId(model.sections, 'other');
+    expect(other.tabs.map(t => [t.key, t.label])).toEqual(
+      Object.entries(tabs).map(([key, [, label]]) => [key, label])
+    );
+    expect(other.terminals.map(t => t.name)).toEqual(['7']);
   });
 
   describe('ACC-LISTS-268-MOVE-TAB: withTab', () => {

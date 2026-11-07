@@ -39,6 +39,14 @@ export interface ITab {
   path?: string;
   name?: string;
   title?: string;
+  /** the image URL a saved page tab shows as its icon */
+  icon?: string;
+  /** the MIME type of a saved code viewer, which picks its icon */
+  mimeType?: string;
+  /** the address a saved web page tab shows, which picks its globe */
+  url?: string;
+  /** the svgstr of the icon a moved web page tab showed in the window it moved from */
+  copiedIcon?: string;
 }
 
 /** A row under Tabs: a document or another widget. */
@@ -163,6 +171,22 @@ export function formatCpu(percent: number | null | undefined): string {
 }
 
 /**
+ * The tab label of each kind the layout restorer saves with no name, the English
+ * string its widget's title.label is set from (DEF-PANEL-97-PATHLESS-NAME).
+ * SAVED_ICONS in src/panel/panel.tsx lists the same kinds for their icons: the
+ * model holds the names and the view the icons, so a kind added to one goes into both.
+ */
+const SAVED_LABELS = new Map([
+  ['setting-editor', 'Settings'],
+  ['json-setting-editor', 'Advanced Settings Editor'],
+  ['logconsole', 'Log Console'],
+  ['inspector', 'Contextual Help'],
+  ['help-licenses', 'Licenses'],
+  ['plugin-manager', 'Advanced Plugin Manager'],
+  ['lsp-diagnostics', 'Diagnostics Panel']
+]);
+
+/**
  * The tabs a saved workspace holds, in the main area and the down area, once
  * per key: the layout repeats a key for a second New View of one document, and
  * a reload restores one tab of it.
@@ -178,7 +202,16 @@ export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
       key,
       path: saved.path,
       name: saved.name,
-      title: saved.title ?? saved.text
+      // a code viewer saves its name as label
+      title:
+        saved.title ??
+        saved.text ??
+        saved.label ??
+        SAVED_LABELS.get(prefix(key)),
+      icon: typeof saved.icon === 'string' ? saved.icon : undefined,
+      mimeType: saved.mimeType,
+      url: saved.url,
+      copiedIcon: saved.copiedIcon
     };
   });
 }
