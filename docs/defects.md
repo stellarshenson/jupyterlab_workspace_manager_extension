@@ -910,11 +910,13 @@ CI gates: the docs link check and the release check wheel metadata
   - root-cause: 2026-10-29T00:09:13Z @kj the DQ-20 band rules were added after the hover rule, so the lower-specificity selector follows the higher one and no-descending-specificity fails
   - log: 2026-10-29T00:09:13Z @kj added
   - log: 2026-10-29T00:09:33Z @kj closed: fixed: the DQ-20 block moved above the hover rule; the 14 px glyph size has one authority
-- [ ] `DEF-GATES-100-PAYPAL-LINK` **Check Links fails on the PayPal donate badge** - MINOR; CI job Check Links ends red on the README donate link: paypal.com answers 403 Forbidden to the GitHub runner; the link opens in a browser
+- [x] `DEF-GATES-100-PAYPAL-LINK` **Check Links fails on the PayPal donate badge** - MINOR; CI job Check Links ends red on the README donate link: paypal.com answers 403 Forbidden to the GitHub runner; the link opens in a browser
+  - evidence: CI job Check Links of the Build workflow completed with success at commit 8f49654, with the PayPal host pattern in ignore_links of build.yml; it failed at 2622cff
   - repro: push any commit, read the Check Links job of the Build workflow: FAILED README.md, 403 Forbidden on the PayPal donate link
   - test-tags: MANUAL
   - root-cause: 2026-11-13T19:17:04Z @kj paypal.com refuses requests from GitHub runners; ignore_links of the check-links step in build.yml does not list the host
   - log: 2026-11-13T19:17:04Z @kj added
+  - log: 2026-11-13T19:44:18Z @kj closed
 
 ## Command line `CLI`
 
