@@ -108,7 +108,15 @@ class TerminalsHandler(APIHandler):
         self.finish(json.dumps(live))
 
 
-def resources(kernel_id, kernel):
+def children_by_parent():
+    """Every process under its parent's pid, from one scan of the process table."""
+    by_parent = {}
+    for process in psutil.process_iter(["ppid"]):
+        by_parent.setdefault(process.info["ppid"], []).append(process)
+    return by_parent
+
+
+def resources(kernel_id, kernel, by_parent):
     """Resident memory in bytes of a kernel's process and its children, and their CPU percent of one core."""
     # a local kernel's Popen; a remote provisioner has none
     pid = getattr(getattr(kernel.provisioner, "process", None), "pid", None)
@@ -119,7 +127,13 @@ def resources(kernel_id, kernel):
         process = known.get(pid) or psutil.Process(pid)  # keyed by pid, so a restarted kernel gets a new object
         memory, cpu = process.memory_info().rss, process.cpu_percent()
         tree = {pid: process}
-        for child in process.children(recursive=True):
+        # every descendant from the one scan: children(recursive=True) scans the table again per kernel
+        pending = list(by_parent.get(pid, ()))
+        while pending:
+            child = pending.pop()
+            if child.pid in tree:
+                continue
+            pending += by_parent.get(child.pid, ())
             child = tree[child.pid] = known.get(child.pid, child)
             with suppress(psutil.Error):  # a child may end while it is read
                 memory += child.memory_info().rss
@@ -139,7 +153,8 @@ class KernelsHandler(APIHandler):
         ids = set(manager.list_kernel_ids())
         for gone in PROCESSES.keys() - ids:
             del PROCESSES[gone]
-        self.finish(json.dumps({kernel: resources(kernel, manager.get_kernel(kernel)) for kernel in ids}))
+        by_parent = children_by_parent() if ids else {}
+        self.finish(json.dumps({kernel: resources(kernel, manager.get_kernel(kernel), by_parent) for kernel in ids}))
 
 
 def records_path(serverapp):

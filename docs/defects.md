@@ -861,6 +861,11 @@ routes of the server extension
   - root-cause: 2026-11-05T21:30:43Z @kj ptyprocess.isalive raises PtyProcessError when terminated is 0 but waitpid finds no child; the route called it unguarded
   - log: 2026-11-05T21:30:43Z @kj added
   - log: 2026-11-05T21:32:05Z @kj closed
+- [ ] `DEF-SERVER-98-KERNEL-SCAN` **Kernels route scans the process table once per kernel** - MINOR; GET kernels calls psutil children(recursive=True) per kernel, each a full /proc scan inside the tornado handler: 9 ms per kernel at 86 processes, every 10 s per visible panel; several kernels in several windows stall kernel output
+  - repro: start 2 kernels, GET jupyterlab-workspace-manager-extension/kernels, count psutil process table scans: 2, expected 1
+  - test-tags: UNIT
+  - root-cause: 2026-11-13T10:32:29Z @kj resources() asks psutil for the descendants of each kernel separately; the handler holds no shared parent to children map
+  - log: 2026-11-13T10:32:29Z @kj added
 
 ## Release gates `GATES`
 

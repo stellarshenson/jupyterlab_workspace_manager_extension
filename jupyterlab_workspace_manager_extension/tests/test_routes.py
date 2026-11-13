@@ -62,6 +62,19 @@ async def test_kernel_memory_and_cpu(jp_fetch):
         assert isinstance(resources["cpu"], float) and resources["cpu"] >= 0
 
 
+async def test_kernels_scan_the_process_table_once(jp_fetch, monkeypatch):
+    """DEF-SERVER-98-KERNEL-SCAN: two kernels cost one scan of the process table, and each still has its memory."""
+    kernels = {await new_kernel(jp_fetch), await new_kernel(jp_fetch)}
+    scans = []
+    scan = psutil.process_iter
+    monkeypatch.setattr(psutil, "process_iter", lambda *args: scans.append(args) or scan(*args))
+
+    resources = await get_resources(jp_fetch)
+
+    assert len(scans) == 1
+    assert resources.keys() == kernels and all(figures["memory"] > 0 for figures in resources.values())
+
+
 async def test_kernel_process_gone(jp_fetch, monkeypatch):
     """ACC-SERVER-197: a kernel whose process cannot be read gets null for both, and still 200."""
     kernel = await new_kernel(jp_fetch)
