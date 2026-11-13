@@ -794,6 +794,18 @@ the Galata suite under ui-tests/ and its rig
   - log: 2026-10-27T13:38:08Z @kj same wait after a terminal shutdown takes UNDER_LOAD at sections.spec.ts:413 (ACC-PANEL-157-OTHERS-ACTIONS, row) and culler.spec.ts:69-76 (ACC-CULLER-65-CULLED, Terminals count and row); sections and culler specs 36 of 36, --retries=0 (galata-r7-waits.log)
   - log: 2026-10-27T18:43:41Z @kj the panel now removes the row itself after a successful Shut down (ACC-TERM-200-ROW-LEAVES); the row waits in ACC-TERM-111-SHUTDOWN, ACC-TERM-112-SHUTDOWN-SHARED and ACC-PANEL-157-OTHERS-ACTIONS take the default 5 s again, before the server poll; culler.spec.ts keeps UNDER_LOAD
   - log: 2026-10-27T20:30:14Z @kj the 2026-10-27T18:43:41Z line held only when the pty closed before the panel reload: for a terminal listed after its DELETE the route gave the bare pid and the row came back (verify-r8b.json check 9); the route now keeps each pty's first fingerprint (ACC-TERM-200-ROW-LEAVES, pytest test_fingerprint_kept_while_listed_after_delete)
+- [x] `DEF-GALATA-99-THEME-FOLDER` **Test lab lacks the Steel dark theme** - MEDIUM; ui-tests/jupyter_server_test_config.py copies the theme labextension by its old folder name galaxalabs_jupyterlab_steel_dark_theme; theme 1.0.109 installs under @stellarshenson/galaxalabs-jupyterlab-steel-dark-theme, so page.theme.setTheme never returns and 19 Galata tests time out, 39 min of a 60 min CI job
+  - evidence: the 19 tests that timed out (legibility 9, menu 1, panel 3, render 2, sections 3, terminals 1) pass in 1.6 min with the scoped folder name in the copy list: jlpm playwright test of those 19, 19 passed, logs/galata-theme-fix.log
+  - repro: pip install galaxalabs_jupyterlab_steel_dark_theme, then in ui-tests: jlpm playwright test tests/panel.spec.ts:895 - Test timeout of 60000ms exceeded at page.theme.setTheme
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-13T19:17:04Z @kj the theme's labextension folder took the npm scope at its 1.0.109 release; the copy loop skips a name it does not find, without an error
+  - log: 2026-11-13T19:17:04Z @kj added
+  - log: 2026-11-13T19:17:26Z @kj closed
+- [ ] `DEF-GALATA-101-PAGE-SERVER` **25 page tests need a hand-started page server** - MEDIUM; page.spec.ts (7), webtab.spec.ts (17) and toast.spec.ts (1) throw WM_PAGE_PORT is not set in beforeEach: they need tmp/mockups/serve.py, which is gitignored, started by hand, plus jupyter-server-proxy and the notifications extension, which the CI job does not install; CI job Integration tests is red on every push
+  - repro: in ui-tests with WM_PAGE_PORT unset: jlpm playwright test tests/webtab.spec.ts - 17 failed, Error: WM_PAGE_PORT is not set: start tmp/mockups/serve.py <port> first
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-13T19:17:04Z @kj the three specs were written for the workstation: the suite does not start the page server and the repository does not hold it
+  - log: 2026-11-13T19:17:04Z @kj added
 
 ## Server extension `SERVER`
 
@@ -861,11 +873,13 @@ routes of the server extension
   - root-cause: 2026-11-05T21:30:43Z @kj ptyprocess.isalive raises PtyProcessError when terminated is 0 but waitpid finds no child; the route called it unguarded
   - log: 2026-11-05T21:30:43Z @kj added
   - log: 2026-11-05T21:32:05Z @kj closed
-- [ ] `DEF-SERVER-98-KERNEL-SCAN` **Kernels route scans the process table once per kernel** - MINOR; GET kernels calls psutil children(recursive=True) per kernel, each a full /proc scan inside the tornado handler: 9 ms per kernel at 86 processes, every 10 s per visible panel; several kernels in several windows stall kernel output
+- [x] `DEF-SERVER-98-KERNEL-SCAN` **Kernels route scans the process table once per kernel** - MINOR; GET kernels calls psutil children(recursive=True) per kernel, each a full /proc scan inside the tornado handler: 9 ms per kernel at 86 processes, every 10 s per visible panel; several kernels in several windows stall kernel output
+  - evidence: pytest test_kernels_scan_the_process_table_once passes: 2 kernels, 1 psutil.process_iter call, both kernels report memory; build_test.py make test 167 pytest passed, commit f395bff
   - repro: start 2 kernels, GET jupyterlab-workspace-manager-extension/kernels, count psutil process table scans: 2, expected 1
   - test-tags: UNIT
   - root-cause: 2026-11-13T10:32:29Z @kj resources() asks psutil for the descendants of each kernel separately; the handler holds no shared parent to children map
   - log: 2026-11-13T10:32:29Z @kj added
+  - log: 2026-11-13T19:17:03Z @kj closed
 
 ## Release gates `GATES`
 
@@ -896,6 +910,11 @@ CI gates: the docs link check and the release check wheel metadata
   - root-cause: 2026-10-29T00:09:13Z @kj the DQ-20 band rules were added after the hover rule, so the lower-specificity selector follows the higher one and no-descending-specificity fails
   - log: 2026-10-29T00:09:13Z @kj added
   - log: 2026-10-29T00:09:33Z @kj closed: fixed: the DQ-20 block moved above the hover rule; the 14 px glyph size has one authority
+- [ ] `DEF-GATES-100-PAYPAL-LINK` **Check Links fails on the PayPal donate badge** - MINOR; CI job Check Links ends red on the README donate link: paypal.com answers 403 Forbidden to the GitHub runner; the link opens in a browser
+  - repro: push any commit, read the Check Links job of the Build workflow: FAILED README.md, 403 Forbidden on the PayPal donate link
+  - test-tags: MANUAL
+  - root-cause: 2026-11-13T19:17:04Z @kj paypal.com refuses requests from GitHub runners; ignore_links of the check-links step in build.yml does not list the host
+  - log: 2026-11-13T19:17:04Z @kj added
 
 ## Command line `CLI`
 

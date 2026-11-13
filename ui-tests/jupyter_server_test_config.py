@@ -49,7 +49,7 @@ c.ServerApp.port = int(os.environ.get("JUPYTER_TEST_PORT") or "8888")
 only = mkdtemp(prefix="galata-labextensions-")
 for name in [
     "@stellarshenson/jupyterlab-workspace-manager-extension",
-    "galaxalabs_jupyterlab_steel_dark_theme",
+    "@stellarshenson/galaxalabs-jupyterlab-steel-dark-theme",
     "@stellarshenson/jupyterlab-notifications-extension",
     "@jupyterhub/jupyter-server-proxy",
 ]:
