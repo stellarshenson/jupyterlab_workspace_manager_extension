@@ -1890,7 +1890,7 @@ export class WorkspacePanel
       absent ? 'Workspace manager' : 'Workspace open in another window',
       absent
         ? `${action} is refused: the server extension is not available, so the panel cannot tell which workspaces another window shows.`
-        : `${action} is refused: workspace ${id} is open in another browser window. Close it there first.`
+        : `${action} is refused: workspace ${id} is open in another browser window. Close it there first. A window closed less than 90 seconds ago still counts as open.`
     );
   }
 

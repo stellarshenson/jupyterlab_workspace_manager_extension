@@ -395,7 +395,7 @@ def _switch(base, token, workspace=None, tab=None, window=None):
 def _cmd_workspaces_remove(args, base, token):
     name = _name(args.name)
     if name in _shown_elsewhere(base, token):
-        raise CLIError(f'workspace {name} is open in another browser window; close it there first')
+        raise CLIError(f'workspace {name} is open in another browser window; close it there first - a window closed less than 90 seconds ago still counts as open')
     if not args.yes:
         raise CLIError(f'would remove workspace {name}; run again with --yes')
     _request(base, token, 'DELETE', _workspace_path(name))

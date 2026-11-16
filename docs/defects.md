@@ -740,6 +740,13 @@ the sidebar panel, its header and its loads
   - root-cause: 2026-11-07T12:11:39Z @kj tabsOf (src/model/model.ts) carries only the saved title ?? text, and buildModel falls back to basename of the key's last segment; these kinds save neither: Settings Editor, Log Console and the others save no name, a code viewer saves its name as label
   - log: 2026-11-07T12:11:39Z @kj added; reason: filed on the owner's order 2026-11-07, File and fix; the body names the eight kinds the fix covers
   - log: 2026-11-07T12:20:31Z @kj closed: fixed: tabsOf takes the saved label, else the tab label of the key's kind from SAVED_LABELS
+- [x] `DEF-PANEL-104-REFUSAL-TEXT` **Refusal tells the user to close a window that is already closed** - MEDIUM; a closed browser window keeps its workspace refused for up to 90 s; the refusal said only to close it there first; fix: both refusal strings add that a window closed less than 90 seconds ago still counts as open; `src/panel/panel.tsx`, `jupyterlab_workspace_manager_extension/cli.py`
+  - evidence: both strings carry the 90 seconds sentence, panel.tsx:1893 and cli.py:398; build_test.py at 1.0.8: Jest 216, pytest 167, Galata 270 green
+  - repro: open a workspace in a second browser window, close that window, delete the workspace from the first window within 60 s
+  - test-tags: UNIT
+  - root-cause: 2026-11-16T08:52:08Z @kj the refusal gave an instruction the user had already followed: routes.py counts a presence report for PRESENCE_SECONDS = 90 and a closed window sends no departure report
+  - log: 2026-11-16T08:52:08Z @kj added
+  - log: 2026-11-16T09:18:02Z @kj closed: fixed: panel dialog and CLI error state that a window closed less than 90 seconds ago still counts as open
 
 ## Functional tests `GALATA`
 
