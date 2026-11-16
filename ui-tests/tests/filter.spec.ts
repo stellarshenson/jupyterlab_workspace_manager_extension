@@ -107,12 +107,15 @@ test("ACC-FILTER-59-ROWS, ACC-FILTER-60-MATCH-COUNT: only matching cards and car
   try {
     await enterWorkspace(page, current);
     // a program named claude runs in one of the two terminals; a terminal
-    // starts in the server's working directory, not in its root
+    // starts in the server's working directory, not in its root. A script, not
+    // a link to sleep: the sleep of Ubuntu 26.04 is one binary for every
+    // coreutils command and refuses to run under another name. The exit line
+    // keeps the shell from replacing itself with sleep.
     const program = `"$JUPYTER_SERVER_ROOT/${tmpPath}/claude"`;
     await sendToTerminal(
       page,
       named,
-      `ln -s "$(command -v sleep)" ${program} && ${program} 300\r`
+      `printf '#!/bin/sh\\nsleep 300\\nexit\\n' > ${program} && chmod +x ${program} && ${program}\r`
     );
     await expect
       .poll(() => processOf(page, named), PROCESS_START)
