@@ -5,11 +5,9 @@ import { expect, test } from '@jupyterlab/galata';
 import type { Page } from '@playwright/test';
 
 /**
- * The comment store runs beside the lab, outside the bubblewrap sandbox,
- * because the runner mounts this project read-only:
- *   python3 tmp/mockups/serve.py <port>
- * Start it before the suite and pass the same port as WM_PAGE_PORT. The lab
- * reaches it through /proxy/<port>/.
+ * The comment store runs beside the lab: playwright.config.js starts
+ * page-server/serve.py on WM_PAGE_PORT, or uses the one started by hand on that
+ * port. The lab reaches it through /proxy/<port>/.
  */
 const PORT = Number(process.env.WM_PAGE_PORT);
 const PAGE = 'workbench-card-mockup.html';
@@ -106,7 +104,7 @@ async function openFromToast(
 test.beforeEach(async () => {
   if (!PORT) {
     throw new Error(
-      'WM_PAGE_PORT is not set: start tmp/mockups/serve.py <port> first'
+      'WM_PAGE_PORT is not set: playwright.config.js sets it and starts page-server/serve.py'
     );
   }
   const empty = await fetch(`${origin}/comments`, {

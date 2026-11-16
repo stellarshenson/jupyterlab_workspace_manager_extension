@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WORKBENCH Card Mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<style>
+  /* Page chrome tokens; the mock panel keeps JupyterLab Light regardless. */
+  :root {
+    --bg: #f6f7f8;
+    --surface: #ffffff;
+    --ink: #1f2429;
+    --muted: #5c656d;
+    --line: #dfe4e8;
+    --accent: #1e88e5;
+    --danger: #c62828;
+    --stage: #eef1f3;
+    --scroll-thumb: #c3ccd4;
+    color-scheme: light;
+
+    --jpl-ink: #212121;
+    --jpl-ink2: rgba(0, 0, 0, 0.6);
+    --jpl-ink3: rgba(0, 0, 0, 0.45);
+    --jpl-line: #e0e0e0;
+    --jpl-band: #f5f5f5;
+    --jpl-sep: #bdbdbd;
+    --jpl-hover: #eeeeee;
+    --jpl-brand: #2196f3;
+    --jpl-surface: #ffffff;
+    --jpl-glyph: #616161;
+    --jpl-layout1: #ffffff;
+    --jpl-layout2: #eeeeee;
+    --jpl-tip-bg: #ffffff;
+    --jpl-tip-border: #c6c6c6;
+    --jpl-tip-ink: #202124;
+    --jpl-menu-bg: #ffffff;
+    --jpl-menu-border: #c6c6c6;
+    --jpl-menu-glyph: #616161;
+    --jpl-error: #e53935;
+  }
+  .mockwrap { color-scheme: light; }
+  .mockwrap[data-theme='dark'] {
+    color-scheme: dark;
+    --jpl-ink: rgba(255, 255, 255, 0.87);
+    --jpl-ink2: rgba(255, 255, 255, 0.54);
+    --jpl-ink3: rgba(255, 255, 255, 0.38);
+    --jpl-line: #424242;
+    --jpl-band: #424242;
+    --jpl-sep: #616161;
+    --jpl-hover: #424242;
+    --jpl-surface: #212121;
+    --jpl-glyph: rgba(255, 255, 255, 0.54);
+    --jpl-layout1: #212121;
+    --jpl-layout2: #424242;
+    --jpl-tip-bg: #424242;
+    --jpl-tip-border: #616161;
+    --jpl-tip-ink: rgba(255, 255, 255, 0.87);
+    --jpl-menu-bg: #424242;
+    --jpl-menu-border: #616161;
+    --jpl-menu-glyph: rgba(255, 255, 255, 0.54);
+    --jpl-error: #f44336;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181b;
+      --surface: #1d2125;
+      --ink: #e7eaed;
+      --muted: #9aa4ad;
+      --line: #2b3238;
+      --accent: #64b5f6;
+      --danger: #ef9a9a;
+      --stage: #101315;
+      --scroll-thumb: #3a444d;
+      color-scheme: dark;
+    }
+  }
+
+  html { scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--scroll-thumb) 80%, var(--ink)); background-clip: padding-box; }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 48px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  .masthead { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
+  h1 { margin: 0 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -0.01em; }
+  .lede { margin: 0; max-width: 62ch; color: var(--muted); }
+  .tools { display: flex; gap: 8px; align-items: center; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .seg-btn { font: inherit; font-size: 12px; font-weight: 600; padding: 6px 10px; background: transparent; color: var(--muted); border: 0; cursor: pointer; }
+  .seg-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--surface);
+    background: var(--accent); border: 1px solid transparent; border-radius: 4px;
+    padding: 7px 12px; cursor: pointer;
+  }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn:hover { filter: brightness(1.05); }
+  .btn:focus-visible, .pin:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+  .stage {
+    position: relative;
+    background: var(--stage);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 24px;
+    min-height: 680px;
+    cursor: crosshair;
+  }
+  .mockwrap { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+  .callouts { display: flex; flex-direction: column; gap: 22px; min-width: 230px; flex: 1; }
+  figure.callout { margin: 0; }
+  figure.callout figcaption {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+
+  /* ---------- the panel mock, JupyterLab Light ---------- */
+  .panel {
+    width: 300px;
+    display: flex; flex-direction: column;
+    min-height: 560px;
+    background: var(--jpl-surface);
+    border: 1px solid var(--jpl-sep);
+    border-radius: 2px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    color: var(--jpl-ink);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 6px;
+    height: 37px; padding: 0 6px 0 12px;
+    border-bottom: 1px solid var(--jpl-line);
+    background: var(--jpl-surface);
+  }
+  .titlebar .title { font-size: 13px; font-weight: 600; letter-spacing: 0.03em; }
+  .spacer { flex: 1; }
+  .glyph {
+    width: 22px; height: 22px; display: grid; place-items: center;
+    color: var(--jpl-glyph); border-radius: 2px;
+  }
+  .glyph svg { width: 14px; height: 14px; }
+
+  .band {
+    display: flex; align-items: center; gap: 6px;
+    height: 24px; padding: 0 6px 0 10px;
+    background: var(--jpl-band);
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    color: var(--jpl-ink);
+  }
+  .band .count { font-weight: 400; color: var(--jpl-ink2); letter-spacing: 0; }
+  .band.after-line { border-top: 1px solid var(--jpl-sep); }
+  .band.folded { border-bottom: 1px solid var(--jpl-sep); }
+  .caret {
+    width: 0; height: 0; flex: 0 0 auto;
+    border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-top: 6px solid var(--jpl-glyph);
+  }
+  .caret.closed { transform: rotate(-90deg); }
+
+  .cards { background: var(--jpl-surface); padding: 2px 0 4px; flex: 1 1 auto; }
+  .bands-bottom { background: var(--jpl-surface); margin-top: auto; }
+  .panel.mini { min-height: 0; }
+  .card { margin: 4px 2px; border-left: 4px solid var(--hue); border-radius: 0 2px 2px 0; overflow: hidden; background: var(--body); }
+  .card.current { outline: 2px solid var(--jpl-brand); outline-offset: -2px; }
+  .card.plain { --head: var(--jpl-layout2); --body: var(--jpl-surface); border-left-color: transparent; }
+  .card-head {
+    display: flex; align-items: center; gap: 6px;
+    height: 37px; padding: 0 4px 0 8px;
+    background: var(--head);
+  }
+  .card-head .name { font-size: 13px; color: var(--jpl-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-head .counter { font-size: 13px; color: var(--jpl-ink2); }
+  .card-head .age { font-size: 12px; color: var(--jpl-ink3); margin-left: 2px; }
+  .card-head .head-actions { margin-left: auto; display: flex; }
+  .purpose { padding: 1px 10px 5px 14px; font-size: 12px; color: var(--jpl-ink2); background: var(--head); }
+  .purpose.lower { padding-top: 0; }
+
+  .row { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px 0 14px; }
+  .row:hover { background: var(--jpl-hover); }
+  .icon { width: 16px; height: 16px; flex: 0 0 16px; display: grid; place-items: center; color: var(--jpl-glyph); }
+  .icon svg { width: 14px; height: 14px; }
+  .kglyph { width: 13px; height: 13px; flex: 0 0 13px; display: grid; place-items: center; color: var(--jpl-glyph); margin-left: -1px; }
+  .kglyph svg { width: 12px; height: 12px; }
+  .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .process { color: var(--jpl-ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .path { color: var(--jpl-ink3); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 74px; }
+  .row .time { margin-left: auto; font-size: 11px; color: var(--jpl-ink3); font-variant-numeric: tabular-nums; }
+  .state { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--jpl-ink2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--jpl-glyph); display: inline-block; }
+  .dot.idle { background: #4caf50; }
+  .dot.busy { background: #2196f3; }
+  .mem { font-size: 12px; color: var(--jpl-ink2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tcode { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; color: var(--jpl-ink); }
+  .tbadge { display: grid; place-items: center; color: var(--jpl-ink); }
+  .tbadge svg { width: 20px; height: 15px; display: block; }
+  .kname { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; }
+
+  .section-body { background: var(--jpl-surface); padding: 3px 0; }
+  .section-body .row { padding-left: 12px; }
+
+  /* native-tooltip style callout */
+  .tooltip {
+    background: var(--jpl-tip-bg); border: 1px solid var(--jpl-tip-border); border-radius: 3px;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.18);
+    padding: 6px 9px; font: 11px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--jpl-tip-ink); white-space: pre-line; max-width: 265px;
+  }
+  .menu {
+    width: 224px; background: var(--jpl-menu-bg); border: 1px solid var(--jpl-menu-border); border-radius: 2px;
+    box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.2); padding: 4px 0;
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--jpl-ink);
+  }
+  .menu div { display: flex; align-items: center; gap: 8px; padding: 5px 14px; white-space: nowrap; }
+  .menu svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--jpl-menu-glyph); }
+  .menu .danger { color: var(--jpl-error); }
+  .menu hr { border: 0; border-top: 1px solid var(--jpl-line); margin: 4px 0; }
+
+  /* ---------- comments ---------- */
+  .sheet { display: flex; flex-direction: column; gap: 16px; }
+  .sheet section { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .sheet h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .pill { color: var(--muted); font-weight: 700; letter-spacing: 0; font-size: 12px; }
+  .key ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 13px; }
+  .key li { display: grid; grid-template-columns: 10px 1fr; gap: 8px; }
+  .key li::before { content: ""; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--accent); opacity: 0.7; }
+  .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+  ol#list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  ol#list:empty { display: none; }
+  .comment { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: start; }
+  .comment .num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+  .comment .body { min-width: 0; }
+  .comment .where { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .comment .what { font-size: 13px; overflow-wrap: anywhere; }
+  .comment .del { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 3px; border-radius: 3px; }
+  .comment .del:hover { color: var(--danger); }
+
+  .pins { position: absolute; inset: 0; pointer-events: none; }
+  .pin {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    font: 700 11px/1 system-ui, sans-serif; cursor: pointer; pointer-events: auto;
+    display: grid; place-items: center; padding: 0;
+  }
+  .pin:hover { filter: brightness(1.08); }
+  .pin.pending { background: var(--muted); border-style: dashed; opacity: 0.85; pointer-events: none; }
+  .sync { font-size: 11px; color: var(--muted); margin: -4px 0 10px; min-height: 15px; }
+
+  .composer {
+    position: absolute; z-index: 6; width: 280px; max-width: calc(100% - 16px);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22); padding: 12px;
+    cursor: default;
+  }
+  .composer .where { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .composer textarea {
+    width: 100%; min-height: 66px; resize: vertical; font: inherit; font-size: 13px;
+    color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 7px 8px;
+  }
+  .composer .row-buttons { display: flex; gap: 8px; margin-top: 8px; }
+  .composer .btn { padding: 5px 10px; font-size: 12px; }
+  .composer .btn.danger { background: transparent; color: var(--danger); border-color: var(--line); margin-left: auto; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 16px; z-index: 20; }
+  .overlay .card { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 16px; width: min(680px, 100%); }
+  .overlay textarea { width: 100%; height: 220px; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .pin { transition: filter 120ms ease; }
+  }
+
+  /* ---------- harness polish ---------- */
+  :root {
+    --accent-bg: #1565c0;
+    --accent-ink: #ffffff;
+    --pin-bg: #d32f2f;
+    --grid-dot: rgba(23, 28, 33, 0.1);
+    --shadow-1: 0 1px 2px rgba(16, 24, 32, 0.06), 0 6px 18px rgba(16, 24, 32, 0.07);
+    --shadow-2: 0 12px 34px rgba(16, 24, 32, 0.18);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent-bg: #64b5f6;
+      --accent-ink: #0f1317;
+      --pin-bg: #ef5350;
+      --grid-dot: rgba(232, 237, 241, 0.08);
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.35);
+      --shadow-2: 0 14px 40px rgba(0, 0, 0, 0.5);
+    }
+  }
+  .masthead { align-items: flex-start; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 24px; letter-spacing: -0.02em; }
+  .tools { align-items: center; }
+  .btn { background: var(--accent-bg); color: var(--accent-ink); border-radius: 8px; padding: 8px 14px; box-shadow: var(--shadow-1); }
+  .btn:hover { filter: brightness(0.96); }
+  .btn.ghost { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: none; }
+  .btn.ghost:hover { filter: none; background: color-mix(in srgb, var(--ink) 5%, var(--surface)); }
+  .seg { border-radius: 8px; background: var(--surface); }
+  .seg-btn { padding: 7px 12px; }
+  .seg-btn[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-ink); }
+  .layout { grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; }
+  .stage {
+    border-radius: 14px; border: 1px solid var(--line); padding: 28px; min-height: 700px;
+    background-color: var(--stage);
+    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 18px 18px;
+    box-shadow: var(--shadow-1);
+  }
+  .panel { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), 0 18px 44px rgba(0, 0, 0, 0.12); }
+  .sheet { position: sticky; top: 16px; }
+  @media (max-width: 980px) { .sheet { position: static; } }
+  .sheet section { border-radius: var(--radius); border-color: var(--line); box-shadow: var(--shadow-1); padding: 16px 18px; }
+  .sheet h2 { font-size: 11px; letter-spacing: 0.12em; margin-bottom: 12px; }
+  .key li::before { background: var(--accent-bg); opacity: 0.8; }
+  .sync {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--muted);
+    margin: -2px 0 12px;
+  }
+  .sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #9e9e9e; flex: 0 0 auto; }
+  .sync[data-state="ok"]::before { background: #2e7d32; }
+  .sync[data-state="local"]::before { background: #ed6c02; }
+  .sync[data-state="busy"]::before { background: #0288d1; }
+  .sync:empty { display: none; }
+  .comment { padding: 8px; border-radius: 8px; }
+  .comment:hover { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+  .comment .num { background: var(--pin-bg); color: #fff; }
+  .pin { width: 24px; height: 24px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); background: var(--pin-bg); color: #fff; touch-action: none; cursor: grab; }
+  .pin.dragging { cursor: grabbing; filter: brightness(1.1); }
+  .pin.pending { background: transparent; border: 2px dashed var(--pin-bg); color: var(--pin-bg); box-shadow: none; opacity: 1; }
+  .pin.pending::after { display: none; }
+  .pin::after {
+    content: none;
+  }
+  .pin.pending::after { display: none; }
+  .composer { border-radius: var(--radius); border-color: var(--line); box-shadow: var(--shadow-2); }
+  .composer textarea { border-radius: 8px; }
+  .composer textarea:focus { outline: none; border-color: var(--accent-bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-bg) 20%, transparent); }
+  .overlay .card { border-radius: var(--radius); box-shadow: var(--shadow-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <h1>WORKBENCH card mockup</h1>
+      <p class="lede">The panel after the 2026-11-04 orders, in JupyterLab Dark or Light through the switch. Click anywhere in the panel to leave a comment; click a pin to edit or delete it. Comments save to the project server; if the status line says browser only, press Copy comments and paste the text into the chat. Workspaces and processes shown are examples.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Mockup theme">
+        <button class="seg-btn" type="button" data-mock="light" aria-pressed="false">Light</button>
+        <button class="seg-btn" type="button" data-mock="dark" aria-pressed="true">Dark</button>
+      </div>
+      <button class="btn" id="copy" type="button">Copy comments</button>
+      <button class="btn ghost" id="clear" type="button">Clear all</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage" aria-label="Panel mockup, click to comment">
+      <div class="mockwrap" data-theme="dark">
+        <div class="panel" data-label="the whole panel">
+          <div class="titlebar" data-label="WORKBENCH title bar">
+            <span class="title">WORKBENCH</span>
+            <span class="spacer"></span>
+            <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg></span>
+            <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 3h12L9.5 8.5V13l-3 1.5V8.5L2 3z"/></svg></span>
+            <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S4 3.8 8 3.8 14.5 8 14.5 8 12 12.2 8 12.2 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/></svg></span>
+            <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V6h-3.4"/></svg></span>
+          </div>
+
+          <div class="band after-line" data-label="WORKSPACES band">
+            <span class="caret"></span>
+            <span>WORKSPACES</span>
+            <span class="count">(3)</span>
+            <span class="spacer"></span>
+            <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 12h10M4.5 9.5c2-.6 4-2.6 5.2-5l1.2 1.2c-2.4 1.2-4.4 3.2-5 5.2z"/></svg></span>
+          </div>
+
+          <div class="cards">
+            <div class="card current" style="--hue: #77bae0; --head: color-mix(in srgb, #77bae0 24%, var(--jpl-layout1)); --body: color-mix(in srgb, #77bae0 9.6%, var(--jpl-layout1));" data-label="the workspace tint">
+              <div class="card-head" data-label="card header: name, (N), age, eye">
+                <span class="caret"></span>
+                <span class="name">Analysis</span>
+                <span class="counter">(4)</span>
+                <span class="age">2h ago</span>
+                <span class="head-actions">
+                  <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S4 3.8 8 3.8 14.5 8 14.5 8 12 12.2 8 12.2 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/></svg></span>
+                </span>
+              </div>
+              <div class="purpose" data-label="the purpose line">wind tunnel sweeps and plots</div>
+              <div class="row" data-label="tab row with the kernel glyph">
+                <span class="icon" aria-hidden="true"><svg viewBox="0 0 22 22" width="14" height="14"><g fill="#EF6C00"><path d="M18.7 3.3v15.4H3.3V3.3zm1.5-1.5H1.8v18.3h18.3z"/><path d="m16.5 16.5-5.4-4.3-5.6 4.3v-11h11z"/></g></svg></span>
+                <span class="kglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M15 9H9v6h6zm-2 4h-2v-2h2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2zm-4 6H7V7h10z"/></svg></span>
+                <span class="label">train.ipynb</span>
+                <span class="state"><span class="dot idle"></span>idle</span>
+                <span class="time">5m</span>
+              </div>
+              <div class="row" data-label="tab row with the kernel glyph">
+                <span class="icon" aria-hidden="true"><svg viewBox="0 0 22 22" width="14" height="14"><g fill="#EF6C00"><path d="M18.7 3.3v15.4H3.3V3.3zm1.5-1.5H1.8v18.3h18.3z"/><path d="m16.5 16.5-5.4-4.3-5.6 4.3v-11h11z"/></g></svg></span>
+                <span class="kglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M15 9H9v6h6zm-2 4h-2v-2h2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2zm-4 6H7V7h10z"/></svg></span>
+                <span class="label">eval.ipynb</span>
+                <span class="state"><span class="dot busy"></span>busy</span>
+                <span class="time">1m</span>
+              </div>
+              <div class="row" data-label="card terminal row without tN">
+                <span class="icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3"/></svg></span>
+                <span class="process">bash</span>
+                <span class="path">/projects/wind</span>
+                <span class="time">1m</span>
+              </div>
+              <div class="row" data-label="card terminal row without tN">
+                <span class="icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3"/></svg></span>
+                <span class="process">sleep</span>
+                <span class="path">/projects/wind</span>
+                <span class="time">3m</span>
+              </div>
+            </div>
+
+            <div class="card" style="--hue: #e39fb1; --head: color-mix(in srgb, #e39fb1 24%, var(--jpl-layout1)); --body: color-mix(in srgb, #e39fb1 9.6%, var(--jpl-layout1));" data-label="folded card counter">
+              <div class="card-head">
+                <span class="caret closed"></span>
+                <span class="name">Notes</span>
+                <span class="counter">(2)</span>
+                <span class="age">1d ago</span>
+                <span class="head-actions">
+                  <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S4 3.8 8 3.8 14.5 8 14.5 8 12 12.2 8 12.2 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/></svg></span>
+                </span>
+              </div>
+            </div>
+
+            <div class="card plain" data-label="plain card">
+              <div class="card-head">
+                <span class="caret"></span>
+                <span class="name">Scratch</span>
+                <span class="counter">(0)</span>
+                <span class="age">3h ago</span>
+                <span class="head-actions">
+                  <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S4 3.8 8 3.8 14.5 8 14.5 8 12 12.2 8 12.2 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/></svg></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bands-bottom">
+            <div class="band folded" data-label="KERNELS band (folded, separator below)">
+              <span class="caret closed"></span>
+              <span>KERNELS</span>
+              <span class="count">(2)</span>
+              <span class="spacer"></span>
+              <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2.6v5"/><circle cx="8" cy="9.4" r="4.4"/></svg></span>
+            </div>
+            <div class="band folded" data-label="TERMINALS band (folded, separator below)">
+              <span class="caret closed"></span>
+              <span>TERMINALS</span>
+              <span class="count">(2)</span>
+              <span class="spacer"></span>
+              <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2.6v5"/><circle cx="8" cy="9.4" r="4.4"/></svg></span>
+            </div>
+            <div class="band" data-label="LANGUAGE SERVERS band (last, no separator)">
+              <span class="caret closed"></span>
+              <span>LANGUAGE SERVERS</span>
+              <span class="count">(1)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="callouts">
+          <figure class="callout" data-label="KERNELS section open">
+            <figcaption>State - KERNELS open</figcaption>
+            <div class="panel mini">
+              <div class="band">
+                <span class="caret"></span>
+                <span>KERNELS</span>
+                <span class="count">(2)</span>
+                <span class="spacer"></span>
+                <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2.6v5"/><circle cx="8" cy="9.4" r="4.4"/></svg></span>
+              </div>
+              <div class="section-body">
+                <div class="row" data-label="KERNELS row with memory">
+                  <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M15 9H9v6h6zm-2 4h-2v-2h2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2zm-4 6H7V7h10z"/></svg></span>
+                  <span class="kname">train.ipynb</span>
+                  <span class="state"><span class="dot idle"></span>idle</span>
+                  <span class="mem">1.4 GB</span>
+                  <span class="time">5m</span>
+                </div>
+                <div class="row" data-label="KERNELS row with memory">
+                  <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M15 9H9v6h6zm-2 4h-2v-2h2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2zm-4 6H7V7h10z"/></svg></span>
+                  <span class="kname">Console 1</span>
+                  <span class="state"><span class="dot busy"></span>busy</span>
+                  <span class="mem">512 MB</span>
+                  <span class="time">1m</span>
+                </div>
+              </div>
+            </div>
+          </figure>
+          <figure class="callout" data-label="TERMINALS section open">
+            <figcaption>State - TERMINALS open</figcaption>
+            <div class="panel mini">
+              <div class="band">
+                <span class="caret"></span>
+                <span>TERMINALS</span>
+                <span class="count">(2)</span>
+                <span class="spacer"></span>
+                <span class="glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2.6v5"/><circle cx="8" cy="9.4" r="4.4"/></svg></span>
+              </div>
+              <div class="section-body">
+                <div class="row" data-label="TERMINALS row: terminal icon and number badge">
+                  <span class="icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3"/></svg></span>
+                  <span class="tbadge" aria-hidden="true"><svg viewBox="0 0 20 15"><rect x="1" y="1" width="18" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/><text x="10" y="11" text-anchor="middle" font-size="9.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="currentColor">7</text></svg></span>
+                  <span class="process">bash</span>
+                  <span class="path">/projects/wind</span>
+                  <span class="time">1m</span>
+                </div>
+                <div class="row" data-label="TERMINALS row: terminal icon and number badge">
+                  <span class="icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3"/></svg></span>
+                  <span class="tbadge" aria-hidden="true"><svg viewBox="0 0 20 15"><rect x="1" y="1" width="18" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/><text x="10" y="11" text-anchor="middle" font-size="9.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="currentColor">8</text></svg></span>
+                  <span class="process">sleep</span>
+                  <span class="path">/projects/wind</span>
+                  <span class="time">3m</span>
+                </div>
+              </div>
+            </div>
+          </figure>
+          <figure class="callout" data-label="terminal tooltip with Memory">
+            <figcaption>Hover a terminal - tooltip</figcaption>
+            <div class="tooltip">terminal 7
+Tab: bash - wind tunnel
+Process: bash
+Command: sleep 30
+Path: /home/lab/projects/wind
+Memory: 24 MB
+Last activity: 1 minute ago (2026-11-04 21:11)
+Workspaces: Analysis, Notes</div>
+          </figure>
+          <figure class="callout" data-label="workspace menu with Clear workspace">
+            <figcaption>Right-click a card header - menu</figcaption>
+            <div class="menu">
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="5.6"/><path d="M5.4 8h5.2M8.2 5.8l2.2 2.2-2.2 2.2"/></svg>Open workspace</div>
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 10l6.5-6.5M8.5 3.5h4v4"/><path d="M11 9.5V12a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1H7"/></svg>Open in new browser tab</div>
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1"><rect x="2" y="4.5" width="9" height="8" rx="1"/><path d="M4 4.5V3h9v8h-1.5"/><path d="M4.8 6.3l4.4 4.4M9.2 6.3l-4.4 4.4"/></svg>Clear workspace</div>
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 13l.7-3.2 6-6a1.4 1.4 0 0 1 2 2l-6 6L3 13z"/><path d="M10.5 3.5l2 2"/></svg>Set description...</div>
+              <div><svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2" fill="#77bae0"/></svg>Colour</div>
+              <hr>
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 8c2.2-3.6 4.3-5 6.5-5s4.3 1.4 6.5 5c-2.2 3.6-4.3 5-6.5 5s-4.3-1.4-6.5-5z"/><circle cx="8" cy="8" r="1.8" fill="currentColor" stroke="none"/><path d="M2.5 13.5l11-11"/></svg>Hide workspace</div>
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 12.5v-9M4.5 7L8 3.5 11.5 7"/></svg>Move up</div>
+              <div><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 3.5v9M4.5 9l3.5 3.5L11.5 9"/></svg>Move down</div>
+              <hr>
+              <div class="danger"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.2"/></svg>Delete workspace</div>
+            </div>
+          </figure>
+        </div>
+      </div>
+      <div class="pins" id="pins"></div>
+      <span class="pin pending" id="pending" hidden aria-hidden="true"></span>
+      <div class="composer" id="composer" hidden>
+        <span class="where" id="c-where">the panel</span>
+        <textarea id="c-text" placeholder="What should change here?"></textarea>
+        <div class="row-buttons">
+          <button class="btn" id="c-save" type="button">Save</button>
+          <button class="btn ghost" id="c-cancel" type="button">Cancel</button>
+          <button class="btn danger" id="c-delete" type="button" hidden>Delete</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="sheet">
+      <section class="key">
+        <h2>What to look at</h2>
+        <ul>
+          <li>Card header: name then (N), no count icons, no ... button</li>
+          <li>Card terminal rows: no tN; TERMINALS shows the number in a box badge</li>
+          <li>Tab rows: the kernel glyph beside the file icon</li>
+          <li>Tints: header 24 %, body 9.6 % of the workspace hue</li>
+          <li>Memory: terminal and kernel tooltips, and every KERNELS row</li>
+          <li>Menu: Clear workspace stops the workspace's terminals and kernels</li>
+        </ul>
+      </section>
+      <section class="comments">
+        <h2>Comments <span class="pill" id="count">(0)</span></h2>
+        <p class="sync" id="sync"></p>
+        <ol id="list"></ol>
+        <p class="hint" id="hint">Click anywhere on the panel to leave the first comment.</p>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="card">
+    <p style="margin:0 0 8px;font-size:13px;color:var(--muted)">Clipboard is blocked in this browser. Select the text and copy it yourself.</p>
+    <textarea id="fallback-text" readonly></textarea>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px">
+      <button class="btn" id="overlay-close" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var KEY = 'wm-card-mockup-comments-v1';
+  var stage = document.getElementById('stage');
+  var pins = document.getElementById('pins');
+  var composer = document.getElementById('composer');
+  var where = document.getElementById('c-where');
+  var text = document.getElementById('c-text');
+  var deleteBtn = document.getElementById('c-delete');
+  var list = document.getElementById('list');
+  var count = document.getElementById('count');
+  var hint = document.getElementById('hint');
+  var overlay = document.getElementById('overlay');
+  var fallbackText = document.getElementById('fallback-text');
+
+  var comments = [];
+  var deleted = [];
+  var editing = null;
+  var at = null;
+  var syncLine = document.getElementById('sync');
+  var pending = document.getElementById('pending');
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) { return; }
+      var data = JSON.parse(raw);
+      if (Array.isArray(data)) { comments = data; return; }
+      comments = data.comments || [];
+      deleted = data.deleted || [];
+    } catch (e) { comments = []; deleted = []; }
+  }
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify({ comments: comments, deleted: deleted })); }
+    catch (e) { setStatus('this browser blocks storage - press Copy comments'); }
+  }
+  function setStatus(s) {
+    syncLine.textContent = s;
+    syncLine.dataset.state = s.indexOf('saved') === 0 ? 'ok' : s.indexOf('stored') === 0 ? 'local' : 'busy';
+  }
+  function merge(list) {
+    var seen = {};
+    var out = [];
+    comments.concat(list).forEach(function (c) {
+      if (!c || !c.id || seen[c.id] || deleted.indexOf(c.id) !== -1) { return; }
+      seen[c.id] = true;
+      out.push(c);
+    });
+    return out;
+  }
+  function post(list) {
+    return fetch('comments', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(list), cache: 'no-store' })
+      .then(function (r) { if (!r.ok) { throw new Error('post'); } deleted = []; persist(); setStatus('saved to the project server'); })
+      .catch(function () { setStatus('stored in this browser only - press Copy comments'); });
+  }
+  function sync() {
+    setStatus('syncing...');
+    fetch('comments', { credentials: 'include', cache: 'no-store' })
+      .then(function (r) { if (!r.ok) { throw new Error('get'); } return r.json(); })
+      .then(function (server) {
+        if (!Array.isArray(server)) { throw new Error('shape'); }
+        var merged = merge(server);
+        comments = merged;
+        persist();
+        render();
+        if (JSON.stringify(merged) !== JSON.stringify(server)) {
+          return post(merged).then(function () { setStatus('saved to the project server'); });
+        }
+        deleted = [];
+        persist();
+        setStatus('saved to the project server');
+      })
+      .catch(function () { setStatus('stored in this browser only - press Copy comments'); });
+  }
+  function uid() { return 'c' + Math.random().toString(36).slice(2, 9); }
+
+  function renderPins() {
+    pins.textContent = '';
+    comments.forEach(function (c, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pin';
+      b.style.left = c.x + '%';
+      b.style.top = c.y + '%';
+      b.textContent = String(i + 1);
+      b.title = c.text;
+      b.setAttribute('aria-label', 'Comment ' + (i + 1) + ' on ' + c.label + '. Drag to move it.');
+      b.addEventListener('pointerdown', function (ev) { startDrag(ev, c, b); });
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (justDragged) { return; }
+        openComposer({ id: c.id, x: c.x, y: c.y, label: c.label, body: c.text });
+      });
+      pins.appendChild(b);
+    });
+  }
+
+  var drag = null;
+  var justDragged = false;
+
+  function startDrag(ev, c, el) {
+    if (ev.button !== undefined && ev.button !== 0) { return; }
+    ev.stopPropagation();
+    closeComposer();
+    var r = stage.getBoundingClientRect();
+    drag = { c: c, el: el, startX: ev.clientX, startY: ev.clientY, moved: false };
+    el.classList.add('dragging');
+    try { el.setPointerCapture(ev.pointerId); } catch (e) { /* pointer capture optional */ }
+    function move(e) {
+      if (!drag) { return; }
+      var dx = e.clientX - drag.startX;
+      var dy = e.clientY - drag.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; }
+      if (!drag.moved) { return; }
+      var x = Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100));
+      var y = Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100));
+      drag.c.x = x;
+      drag.c.y = y;
+      el.style.left = x + '%';
+      el.style.top = y + '%';
+    }
+    function end() {
+      el.classList.remove('dragging');
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', end);
+      el.removeEventListener('pointercancel', end);
+      if (drag && drag.moved) {
+        justDragged = true;
+        setTimeout(function () { justDragged = false; }, 120);
+        persist();
+        post(comments);
+        render();
+      }
+      drag = null;
+    }
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  function renderList() {
+    list.textContent = '';
+    count.textContent = '(' + comments.length + ')';
+    hint.hidden = comments.length > 0;
+    comments.forEach(function (c, i) {
+      var li = document.createElement('li');
+      li.className = 'comment';
+      var num = document.createElement('span');
+      num.className = 'num';
+      num.textContent = String(i + 1);
+      var body = document.createElement('div');
+      body.className = 'body';
+      var w = document.createElement('div');
+      w.className = 'where';
+      w.textContent = c.label;
+      var t = document.createElement('div');
+      t.className = 'what';
+      t.textContent = c.text;
+      body.appendChild(w);
+      body.appendChild(t);
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'del';
+      del.textContent = '×';
+      del.title = 'Delete comment ' + (i + 1);
+      del.addEventListener('click', function () { remove(c.id); });
+      li.appendChild(num);
+      li.appendChild(body);
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+  }
+
+  function render() { renderPins(); renderList(); }
+
+  function openComposer(opts) {
+    editing = opts.id || null;
+    at = { x: opts.x, y: opts.y };
+    where.textContent = opts.label;
+    text.value = opts.body || '';
+    deleteBtn.hidden = !editing;
+    composer.hidden = false;
+    if (editing) {
+      pending.hidden = true;
+    } else {
+      pending.style.left = opts.x + '%';
+      pending.style.top = opts.y + '%';
+      pending.hidden = false;
+    }
+    var sw = stage.clientWidth;
+    var sh = stage.clientHeight;
+    var cw = composer.offsetWidth;
+    var ch = composer.offsetHeight;
+    var px = (opts.x / 100) * sw;
+    var py = (opts.y / 100) * sh;
+    var left = px + 12;
+    if (left + cw > sw - 8) { left = px - 12 - cw; }
+    if (left < 8) { left = 8; }
+    var top = py + 12;
+    if (top + ch > sh - 8) { top = py - 12 - ch; }
+    if (top < 8) { top = 8; }
+    composer.style.left = left + 'px';
+    composer.style.top = top + 'px';
+    text.focus();
+  }
+
+  function closeComposer() {
+    composer.hidden = true;
+    pending.hidden = true;
+    editing = null;
+    at = null;
+  }
+
+  function remove(id) {
+    comments = comments.filter(function (c) { return c.id !== id; });
+    if (deleted.indexOf(id) === -1) { deleted.push(id); }
+    persist();
+    post(comments);
+    if (editing === id) { closeComposer(); }
+    render();
+  }
+
+  stage.addEventListener('click', function (e) {
+    if (e.target.closest('#composer, .pin, .btn, a, button')) { return; }
+    if (!composer.hidden) { closeComposer(); return; }
+    var r = stage.getBoundingClientRect();
+    var x = ((e.clientX - r.left) / r.width) * 100;
+    var y = ((e.clientY - r.top) / r.height) * 100;
+    if (x < 0 || y < 0 || x > 100 || y > 100) { return; }
+    var holder = e.target.closest('[data-label]');
+    openComposer({ x: x, y: y, label: holder ? holder.getAttribute('data-label') : 'the panel' });
+  });
+
+  function saveComment() {
+    var body = text.value.trim();
+    if (!body) { text.focus(); return; }
+    if (editing) {
+      comments.forEach(function (c) { if (c.id === editing) { c.text = body; } });
+    } else if (at) {
+      comments.push({ id: uid(), x: at.x, y: at.y, label: where.textContent, text: body, time: new Date().toISOString() });
+    }
+    persist();
+    post(comments);
+    closeComposer();
+    render();
+  }
+  document.getElementById('c-save').addEventListener('click', saveComment);
+
+  document.getElementById('c-cancel').addEventListener('click', closeComposer);
+  deleteBtn.addEventListener('click', function () { if (editing) { remove(editing); } });
+  text.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeComposer(); } });
+
+  function summary() {
+    var head = 'WORKBENCH card mockup comments';
+    if (!comments.length) { return head + '\n(no comments)'; }
+    return head + '\n' + comments.map(function (c, i) {
+      return (i + 1) + '. [' + c.label + '] ' + c.text + ' (pinned at ' + Math.round(c.x) + '%, ' + Math.round(c.y) + '%)';
+    }).join('\n');
+  }
+
+  function flash(label) {
+    var btn = document.getElementById('copy');
+    var old = btn.textContent;
+    btn.textContent = label;
+    setTimeout(function () { btn.textContent = old; }, 1400);
+  }
+
+  document.getElementById('copy').addEventListener('click', function () {
+    if (!comments.length) { flash('No comments yet'); return; }
+    var t = summary();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () { flash('Copied'); }, function () { fallbackText.value = t; overlay.hidden = false; fallbackText.select(); });
+    } else {
+      fallbackText.value = t; overlay.hidden = false; fallbackText.select();
+    }
+  });
+
+  var clearArmed = false;
+  var clearTimer = null;
+  document.getElementById('clear').addEventListener('click', function () {
+    var btn = this;
+    if (!comments.length) { return; }
+    if (!clearArmed) {
+      clearArmed = true;
+      btn.textContent = 'Confirm clear';
+      clearTimer = setTimeout(function () { clearArmed = false; btn.textContent = 'Clear all'; }, 4000);
+      return;
+    }
+    clearTimeout(clearTimer);
+    clearArmed = false;
+    btn.textContent = 'Clear all';
+    comments = [];
+    persist();
+    post(comments);
+    closeComposer();
+    render();
+  });
+
+  document.getElementById('overlay-close').addEventListener('click', function () { overlay.hidden = true; });
+
+  var wrap = document.querySelector('.mockwrap');
+  var segBtns = Array.prototype.slice.call(document.querySelectorAll('.seg-btn'));
+  function setMockTheme(t) {
+    wrap.setAttribute('data-theme', t);
+    segBtns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-mock') === t)); });
+    try { localStorage.setItem('mockup-mock-theme', t); } catch (e) { /* storage optional */ }
+  }
+  segBtns.forEach(function (b) {
+    b.addEventListener('click', function () { setMockTheme(b.getAttribute('data-mock')); });
+  });
+  try {
+    var savedTheme = localStorage.getItem('mockup-mock-theme');
+    if (savedTheme) { setMockTheme(savedTheme); }
+  } catch (e) { /* storage optional */ }
+
+  load();
+  render();
+  sync();
+})();
+</script>
+</body>
+</html>

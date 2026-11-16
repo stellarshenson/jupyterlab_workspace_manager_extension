@@ -23,8 +23,8 @@ import {
  * The web page tabs a workspace saves, moved between workspaces
  * (DEF-PANEL-90-MOVE-WEBTAB), and a page tab reopened after a reload
  * (ACC-OPEN-303-PAGE-RESTORE). The pages come from the comment store beside
- * the lab, as in page.spec.ts: start `python3 tmp/mockups/serve.py <port>` and
- * pass the port as WM_PAGE_PORT; the lab reaches it through /proxy/<port>/.
+ * the lab, as in page.spec.ts: playwright.config.js starts page-server/serve.py
+ * on WM_PAGE_PORT; the lab reaches it through /proxy/<port>/.
  */
 const PORT = Number(process.env.WM_PAGE_PORT);
 const url = `/proxy/${PORT}/workbench-card-mockup.html`;
@@ -40,7 +40,7 @@ test.use({ autoGoto: false, mockState: false });
 test.beforeEach(() => {
   if (!PORT) {
     throw new Error(
-      'WM_PAGE_PORT is not set: start tmp/mockups/serve.py <port> first'
+      'WM_PAGE_PORT is not set: playwright.config.js sets it and starts page-server/serve.py'
     );
   }
 });
@@ -325,10 +325,9 @@ for (const kind of KINDS.slice(1)) {
       );
       const href = new URL(ICON, page.url()).href;
       const key = kind.key(await openWeb(page, kind.command, kind.args));
-      await expect(page.locator(`${IFRAMES}[src="${url}"]`)).toHaveCount(
-        1,
-        UNDER_LOAD
-      );
+      // jupyter-server-proxy 4.6 gives its iframe the absolute url, help:open the url as passed
+      const iframe = page.locator(`${IFRAMES}[src$="${url}"]`);
+      await expect(iframe).toHaveCount(1, UNDER_LOAD);
       await iconsExtension(page, { label: kind.label, href });
       await expect
         .poll(() => savedTabs(page, current), UNDER_LOAD)
@@ -363,10 +362,7 @@ for (const kind of KINDS.slice(1)) {
 
       // the restore command opens the entry holding the copy, and this window saves the tab again without it
       await moveTo(row(target), current);
-      await expect(page.locator(`${IFRAMES}[src="${url}"]`)).toHaveCount(
-        1,
-        UNDER_LOAD
-      );
+      await expect(iframe).toHaveCount(1, UNDER_LOAD);
       await expect
         .poll(async () => (await saved(page, current))[key]?.data, UNDER_LOAD)
         .toEqual(entries[key].data);

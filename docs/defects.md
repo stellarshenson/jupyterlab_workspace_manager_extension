@@ -801,11 +801,20 @@ the Galata suite under ui-tests/ and its rig
   - root-cause: 2026-11-13T19:17:04Z @kj the theme's labextension folder took the npm scope at its 1.0.109 release; the copy loop skips a name it does not find, without an error
   - log: 2026-11-13T19:17:04Z @kj added
   - log: 2026-11-13T19:17:26Z @kj closed
-- [ ] `DEF-GALATA-101-PAGE-SERVER` **25 page tests need a hand-started page server** - MEDIUM; page.spec.ts (7), webtab.spec.ts (17) and toast.spec.ts (1) throw WM_PAGE_PORT is not set in beforeEach: they need tmp/mockups/serve.py, which is gitignored, started by hand, plus jupyter-server-proxy and the notifications extension, which the CI job does not install; CI job Integration tests is red on every push
+- [x] `DEF-GALATA-101-PAGE-SERVER` **25 page tests need a hand-started page server** - MEDIUM; page.spec.ts (7), webtab.spec.ts (17) and toast.spec.ts (1) throw WM_PAGE_PORT is not set in beforeEach: they need tmp/mockups/serve.py, which is gitignored, started by hand, plus jupyter-server-proxy and the notifications extension, which the CI job does not install; CI job Integration tests is red on every push
+  - evidence: build_test.py in the environment the CI job installs, WM_PAGE_PORT unset: Galata 270 passed, 0 failed (before: 245 passed, 25 failed); playwright.config.js starts ui-tests/page-server/serve.py on a free port; the job installs jupyter-server-proxy and jupyterlab_notifications_extension
   - repro: in ui-tests with WM_PAGE_PORT unset: jlpm playwright test tests/webtab.spec.ts - 17 failed, Error: WM_PAGE_PORT is not set: start tmp/mockups/serve.py <port> first
   - test-tags: FUNCTIONAL
   - root-cause: 2026-11-13T19:17:04Z @kj the three specs were written for the workstation: the suite does not start the page server and the repository does not hold it
   - log: 2026-11-13T19:17:04Z @kj added
+  - log: 2026-11-16T06:41:21Z @kj closed
+- [x] `DEF-GALATA-102-PROXY-SRC` **Favicon test misses the server-proxy iframe** - MINOR; webtab.spec.ts:314 waits for iframe[src="/proxy/<port>/workbench-card-mockup.html"]; with jupyter-server-proxy 4.6.1 the server-proxy:open iframe has the absolute url, so the count stays 0 and the test fails; the tab itself opens
+  - evidence: webtab.spec.ts:314 matches iframe[src$=url]: both kinds passed alone (2 passed, 16.0 s) and in the whole suite, Galata 270 passed with jupyter-server-proxy 4.6.1
+  - repro: jupyter-server-proxy 4.6.1 installed; in ui-tests: jlpm playwright test tests/webtab.spec.ts -g "server-proxy:open tab showing its page favicon" - expected 1 iframe, received 0
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-16T06:14:58Z @kj server-proxy:open of 4.6.1 sets the iframe src to new URL(url, baseUrl).href; the test matched the relative url it passed
+  - log: 2026-11-16T06:14:58Z @kj added
+  - log: 2026-11-16T06:41:21Z @kj closed
 
 ## Server extension `SERVER`
 

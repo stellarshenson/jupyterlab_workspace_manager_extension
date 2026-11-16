@@ -2,7 +2,7 @@ import { expect, test } from '@jupyterlab/galata';
 
 /**
  * A jupyterlab-notify toast's action button runs the command it was created with.
- * The store runs beside the lab: python3 tmp/mockups/serve.py <port>, WM_PAGE_PORT.
+ * The store runs beside the lab: playwright.config.js starts page-server/serve.py on WM_PAGE_PORT.
  */
 const PORT = Number(process.env.WM_PAGE_PORT);
 const PAGE = 'workbench-card-mockup.html';
@@ -14,7 +14,7 @@ const origin = `http://127.0.0.1:${PORT}`;
 test.beforeEach(async () => {
   if (!PORT) {
     throw new Error(
-      'WM_PAGE_PORT is not set: start tmp/mockups/serve.py <port> first'
+      'WM_PAGE_PORT is not set: playwright.config.js sets it and starts page-server/serve.py'
     );
   }
   const empty = await fetch(`${origin}/comments`, {
