@@ -2,6 +2,21 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.9] - 2026-11-16
+
+### Changed
+
+- Close the filter test defect on its CI evidence
+- Run a script named claude in the filter test
+- Start the page server of the Galata suite from Playwright
+- Close the PayPal link check defect on its CI evidence
+- Load the Steel dark theme in the test lab and ignore the PayPal link
+- Scan the process table once per kernels request
+
+### Fixed
+
+- Say in the refusal that a closed window counts as open for 90 seconds
+
 ## [1.0.4] - 2026-11-07
 
 ### Added
