@@ -987,4 +987,13 @@ The package manifest, labextension name and plugin and state ids that decide whe
   - root-cause: 2026-10-30T16:06:43Z @kj ajv 8 in JupyterLab 4.6.5 uses fast-uri, whose scheme grammar rejects the underscore; parse of jupyterlab_workspace_manager_extension:plugin returns `URI scheme is malformed.`, so SettingRegistry.set fails and the panel never loads
   - log: 2026-10-30T16:06:43Z @kj added
   - log: 2026-10-30T16:23:32Z @kj closed
+- [x] `DEF-PACK-105-PYTHON-FLOOR` **Python floor below 3.12** - MINOR; `pyproject.toml` declares `requires-python = ">=3.10"` and classifiers for Python 3.10 and 3.11; the owner's rule is `>=3.12` on every extension, and this is the only one of 47 below it; CI builds and tests on 3.13 only; fix: floor `>=3.12`, the two classifiers removed; `pyproject.toml`
+  - evidence: wheel 1.0.11 METADATA reads Requires-Python: >=3.12 and classifiers 3.12, 3.13, 3.14 only; build_test.py passed: Jest 216, pytest 167, Galata 270; no other file names the floor, CI workflows use Python 3.13, no Python lockfile
+  - root-cause: 2026-11-16T10:32:39Z @kj floor >=3.10 and the 3.10 and 3.11 classifiers are in `pyproject.toml` since its first commit 2622cff; no later change raised them; likely cause: the template v4.6.5 renders them, not checked
+  - test-tags: MANUAL
+  - repro: grep -n 'requires-python\|Python :: 3.1[01]' pyproject.toml
+  - log: 2026-11-16T10:02:23Z @kj added
+  - log: 2026-11-16T10:32:17Z @kj edited test-tags added "MANUAL"
+  - log: 2026-11-16T10:32:18Z @kj closed: fixed: requires-python >=3.12, classifiers 3.10 and 3.11 removed
+  - log: 2026-11-16T10:32:39Z @kj root-cause updated "2026-11-16T10:32:18Z @kj the template v4.6.5 renders the floor >=3.10 with the 3.10 and 3.11 classifiers, and the project kept the rendered values" -> "floor >=3.10 and the 3.10 and 3.11 classifiers are in `pyproject.toml` since its first commit 2622cff; no later change raised them; likely cause: the template v4.6.5 renders them, not checked"
 
