@@ -815,11 +815,13 @@ the Galata suite under ui-tests/ and its rig
   - root-cause: 2026-11-16T06:14:58Z @kj server-proxy:open of 4.6.1 sets the iframe src to new URL(url, baseUrl).href; the test matched the relative url it passed
   - log: 2026-11-16T06:14:58Z @kj added
   - log: 2026-11-16T06:41:21Z @kj closed
-- [ ] `DEF-GALATA-103-SLEEP-LINK` **Filter test fails on the Ubuntu 26.04 runner** - MEDIUM; filter.spec.ts:89 runs a link to sleep named claude and waits for the terminal process claude; on the CI runner Ubuntu 26.04.1 the process stays bash for 45 s and Integration tests is red; the same test passed on 24.04.5 on 2026-11-13
+- [x] `DEF-GALATA-103-SLEEP-LINK` **Filter test fails on the Ubuntu 26.04 runner** - MEDIUM; filter.spec.ts:89 runs a link to sleep named claude and waits for the terminal process claude; on the CI runner Ubuntu 26.04.1 the process stays bash for 45 s and Integration tests is red; the same test passed on 24.04.5 on 2026-11-13
+  - evidence: CI Build 43825380894 at f0483e6 green on the Ubuntu 26.04 runner, Integration tests included; before, Build 43818572409 failed this test alone; locally Galata 270 passed with the script named claude
   - repro: push to main; CI Build 43818572409, job Integration tests: filter.spec.ts:119 Expected "claude", Received "bash", 1 failed, 269 passed
   - test-tags: FUNCTIONAL
   - root-cause: 2026-11-16T07:11:21Z @kj likely cause: the sleep of Ubuntu 26.04 is one binary for all coreutils commands that selects the command by the name it is run under, so a link named claude exits at once; not observed on the runner, inferred from the image change 24.04.5 -> 26.04.1
   - log: 2026-11-16T07:11:21Z @kj added
+  - log: 2026-11-16T08:08:38Z @kj closed
 
 ## Server extension `SERVER`
 
