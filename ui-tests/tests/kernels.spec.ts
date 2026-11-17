@@ -503,6 +503,18 @@ test.describe('kernels and sessions of the server', () => {
         new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
       );
     } finally {
+      // the last click loads workspace other, whose notebook tab starts a session when it finds none;
+      // the deletes wait for every tab's session, so the page starts none after them
+      await page.waitForFunction(
+        () => typeof (window as any).jupyterapp === 'object'
+      );
+      await page.evaluate(async () => {
+        const app = (window as any).jupyterapp;
+        await app.restored;
+        for (const w of app.shell.widgets('main')) {
+          await w.sessionContext?.ready;
+        }
+      });
       const sessions = await serverList(page, '/api/sessions');
       for (const s of sessions.filter(s => s.path.startsWith(tmpPath))) {
         await page.request.delete(`/api/sessions/${s.id}`);

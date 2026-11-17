@@ -14,6 +14,7 @@ import {
   newButton,
   onlyWorkspaces,
   openPanel,
+  openSection,
   PANEL,
   putWorkspace,
   refresh,
@@ -100,10 +101,10 @@ test('ACC-PANEL-297-NEW-BAND: the + button sits in the WORKSPACES header immedia
         path: path.join(shots, 'new-band-workspaces-header-light.png')
       });
     }
-    // a click opens the dialog with WORKSPACES open, then closed, and never toggles it
+    // a click opens the dialog with WORKSPACES open, then folded under an open KERNELS, and never toggles it
     for (const expanded of ['true', 'false']) {
-      if ((await band.getAttribute('aria-expanded')) !== expanded) {
-        await band.click();
+      if (expanded === 'false') {
+        await openSection(page, 'kernels');
       }
       await expect(band).toHaveAttribute('aria-expanded', expanded);
       await openDialog(page);

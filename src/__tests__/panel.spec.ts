@@ -1169,8 +1169,9 @@ describe('panel', () => {
     }
   });
 
-  it('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES opens by default; opening a section closes the open one; a click on the open header closes every section; a new panel keeps the state', async () => {
+  it('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE, overridden by ACC-PANEL-307-HARMONICA-LAYOUT and ACC-PANEL-312-HARMONICA-CLICK: WORKSPACES opens by default; opening a section folds the open one; a click on the open header leaves it open; a new panel keeps the state', async () => {
     const { panel } = await mount(standard());
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const expanded = (p: Widget) =>
       ['workspaces', 'kernels', 'terminals', 'servers'].map(key =>
         sectionHeader(p, key).getAttribute('aria-expanded')
@@ -1179,18 +1180,25 @@ describe('panel', () => {
     expect($$(panel, '.jp-WorkspaceManager-sectionBody')).toHaveLength(1);
     sectionHeader(panel, 'kernels').click();
     expect(expanded(panel)).toEqual(['false', 'true', 'false', 'false']);
+    // the fold ends after 400 ms: the folded section keeps its band only
+    jest.advanceTimersByTime(450);
     expect(
       section(panel, 'workspaces')!.querySelector(
         '.jp-WorkspaceManager-sectionBody'
       )
     ).toBeNull();
+    expect($$(panel, '.jp-WorkspaceManager-sectionBody')).toHaveLength(1);
     sectionHeader(panel, 'terminals').click();
+    jest.advanceTimersByTime(450);
     expect(expanded(panel)).toEqual(['false', 'false', 'true', 'false']);
+    // a click on the open header: the section stays open, never all four closed
     sectionHeader(panel, 'terminals').click();
-    expect(expanded(panel)).toEqual(['false', 'false', 'false', 'false']);
-    // the next page of this browser: every section closed stays closed
+    jest.advanceTimersByTime(450);
+    expect(expanded(panel)).toEqual(['false', 'false', 'true', 'false']);
+    // the next page of this browser opens the same section
+    jest.useRealTimers();
     const { panel: next } = await mount(standard());
-    expect(expanded(next)).toEqual(['false', 'false', 'false', 'false']);
+    expect(expanded(next)).toEqual(['false', 'false', 'true', 'false']);
     sectionHeader(next, 'workspaces').click();
     expect(expanded(next)).toEqual(['true', 'false', 'false', 'false']);
     const { panel: again } = await mount(standard());

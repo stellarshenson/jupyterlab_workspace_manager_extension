@@ -303,7 +303,7 @@ test.describe('with the workspaces of the server', () => {
     }
   });
 
-  test('ACC-PANEL-90-SCROLL: each open section body is its own scroll container under a sticky header; the panel header and the filter field stay in place', async ({
+  test('ACC-PANEL-90-SCROLL, overridden by ACC-PANEL-307-HARMONICA-LAYOUT, ACC-PANEL-308-HARMONICA-WHEEL and ACC-PANEL-313-HARMONICA-EDGE: each open section body is the one scroll container and reserves no strip; the wheel scrolls it while the panel header, the filter field and its band stay in place', async ({
     page
   }) => {
     const current = fresh('scroll');
@@ -325,16 +325,9 @@ test.describe('with the workspaces of the server', () => {
         await openSection(page, name);
         const drawn = await sectionBody(page, name).evaluate(n => {
           const s = getComputedStyle(n);
-          const h = getComputedStyle(n.previousElementSibling!);
-          return [
-            s.overflowY,
-            s.minHeight,
-            s.scrollbarGutter,
-            h.position,
-            h.top
-          ];
+          return [s.overflowY, s.minHeight, s.scrollbarGutter];
         });
-        expect(drawn, name).toEqual(['auto', '0px', 'auto', 'sticky', '0px']);
+        expect(drawn, name).toEqual(['auto', '0px', 'auto']);
         // no ancestor of a list scrolls on its axis
         const scrolling = await sectionBody(page, name).evaluate(n => {
           const found: string[] = [];
@@ -619,7 +612,7 @@ test.describe('with the workspaces of the server', () => {
       }
     });
 
-    test('ACC-PANEL-230-DOCKED-BANDS: the three laboratory bands stand at the panel bottom only while WORKSPACES is open; while it is folded they follow it from the top; an open TERMINALS section is as tall as its rows, and past the panel height every band stays in view with its body the only scroll container', async ({
+    test('ACC-PANEL-230-DOCKED-BANDS, overridden by ACC-PANEL-307-HARMONICA-LAYOUT and ACC-PANEL-308-HARMONICA-WHEEL: the bands below the open section stand at the panel bottom, with WORKSPACES open and with TERMINALS open on two rows; past the panel height every band stays in view with the open body the only scroll container', async ({
       page
     }) => {
       test.setTimeout(180000);
@@ -704,23 +697,16 @@ test.describe('with the workspaces of the server', () => {
         expect(open.bands).toEqual([true, true, true, true]);
         expect(open.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
 
-        // all four folded: each band follows the one above it and the free height stands below the last
-        await sectionHeader(page, 'workspaces').click();
-        await expect(sectionBody(page, 'workspaces')).toHaveCount(0);
-        const folded = await drawn();
-        expect(folded.bodies).toEqual([null, null, null, null]);
-        expect(folded.gaps).toEqual([0, 0, 0]);
-        expect(folded.free).toBeGreaterThan(24);
-        expect(folded.scrollables).toEqual([]);
-
-        // TERMINALS open with few rows: the band below it follows its last row and the free height stands below that band
-        await sectionHeader(page, 'terminals').click();
+        // TERMINALS open with two rows: it takes the height the bands leave, so the
+        // LANGUAGE SERVERS band stands at the panel bottom (ACC-PANEL-307-HARMONICA-LAYOUT)
+        await openSection(page, 'terminals');
         const body = sectionBody(page, 'terminals');
         await expect(rowOf(body, rowLabel(terminals[1]))).toBeVisible();
         const few = await drawn();
         expect(few.bodies).toEqual([null, null, 'terminals', null]);
         expect(few.gaps).toEqual([0, 0, 0]);
-        expect(few.free).toBeGreaterThan(24);
+        expect(few.free).toBeLessThanOrEqual(1);
+        expect(few.bands).toEqual([true, true, true, true]);
         expect(few.scrollables).toEqual(['jp-WorkspaceManager-sectionBody']);
 
         // TERMINALS open with more rows than fit: the section shrinks and only its body scrolls
@@ -1000,26 +986,17 @@ test('ACC-PANEL-192-SECTION-TITLES: each section header is a full-width band on 
   }
 });
 
-/** Open the section `name`, or with no name close them all: a click on the open band closes every section (DQ-04). */
-async function showSection(page: Page, name?: string): Promise<void> {
-  if (name) {
-    await openSection(page, name);
-  } else {
-    const open = page.locator(
-      `${PANEL} .jp-WorkspaceManager-section.jp-mod-open > .jp-WorkspaceManager-sectionHeader`
-    );
-    if (await open.count()) {
-      await open.click();
-    }
-  }
+/** Open the section `name`; one section is always open, so no state has every section closed (ACC-PANEL-307-HARMONICA-LAYOUT). */
+async function showSection(page: Page, name: string): Promise<void> {
+  await openSection(page, name);
   await expect(
     page.locator(`${PANEL} .jp-WorkspaceManager-section.jp-mod-open`)
-  ).toHaveCount(name ? 1 : 0);
+  ).toHaveCount(1);
 }
 
 const WITHIN = 0.5;
 
-test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: each of the four bands has the left and the right of the title band and of the panel, with each section open and with all closed, at the default width and at 300 px', async ({
+test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: each of the four bands has the left and the right of the title band and of the panel, with each section open, at the default width and at 300 px', async ({
   page
 }) => {
   await page.goto();
@@ -1029,7 +1006,7 @@ test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: each of the four ban
     if (width !== (await panelWidth(page))) {
       await sidebarTo(page, width);
     }
-    for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+    for (const open of SECTIONS.map(([name]) => name)) {
       await showSection(page, open);
       const drawn = await page.locator(PANEL).evaluate(panel => {
         const edges = (e: Element) => {
@@ -1044,7 +1021,7 @@ test('ACC-PANEL-192-SECTION-TITLES, DEF-PANEL-70-BAND-SPAN: each of the four ban
           ).map(edges)
         };
       });
-      const state = `${width} px, ${open ?? 'all closed'} open`;
+      const state = `${width} px, ${open} open`;
       [0, 1].forEach(side => {
         expect
           .soft(
@@ -1112,7 +1089,7 @@ test("ACC-PANEL-262-CARET-SIZE: each section band's triangle has the computed fo
   await page.goto();
   await openPanel(page);
   await expect(card(page, 'default')).toBeVisible();
-  for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+  for (const open of SECTIONS.map(([name]) => name)) {
     await showSection(page, open);
     for (const [name] of SECTIONS) {
       const drawn = await sectionHeader(page, name).evaluate(band =>
@@ -1123,7 +1100,7 @@ test("ACC-PANEL-262-CARET-SIZE: each section band's triangle has the computed fo
           }
         )
       );
-      const state = `${name}, ${open ?? 'all closed'} open`;
+      const state = `${name}, ${open} open`;
       expect.soft(drawn[0], state).toEqual(drawn[1]);
       expect.soft(drawn[0][1], state).toBe('600');
     }
@@ -1136,7 +1113,7 @@ test("ACC-PANEL-262-CARET-SIZE: each section band's triangle has the computed fo
   ).not.toBe('600');
 });
 
-test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it draws one 1 px --jp-layout-color3 bottom line, and an open section draws none; the last section draws one only while WORKSPACES is open, where it meets the status bar, and none in every other state; the WORKSPACES top line stands under the title band and gives way to the filter field; the band starts 1 px below a drawn top line and at the section top without one; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with WORKSPACES open and never below it; in Light, Dark and Steel the title band line is 1 px solid --jp-border-color2', async ({
+test('ACC-PANEL-237-SECTION-DIVIDER, overridden by ACC-PANEL-314-HARMONICA-SEPARATOR: every folded section draws one 1 px --jp-layout-color3 bottom line, the last one included, and the open section draws none; the WORKSPACES top line stands under the title band and gives way to the filter field; the band starts 1 px below a drawn top line and at the section top without one; all four sections touch; LANGUAGE SERVERS ends at the panel bottom with any section open; in Light, Dark and Steel the title band line is 1 px solid --jp-border-color2', async ({
   page
 }) => {
   await page.goto();
@@ -1154,7 +1131,7 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
         page.locator(`${PANEL} .jp-WorkspaceManager-filter`)
       ).toBeVisible();
     }
-    for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+    for (const open of SECTIONS.map(([name]) => name)) {
       await showSection(page, open);
       const drawn = await page.locator(PANEL).evaluate(panel => {
         const rule = (s: CSSStyleDeclaration, side: 'Top' | 'Bottom') => [
@@ -1189,7 +1166,7 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
           })
         };
       });
-      const state = `${open ?? 'all closed'} open, filter ${filtering}`;
+      const state = `${open} open, filter ${filtering}`;
       const [workspaces] = drawn.sections;
       // the line under the title band only while the band meets the band below it directly
       if (filtering) {
@@ -1201,12 +1178,10 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
           .soft(workspaces.topRule, `${state}: WORKSPACES top`)
           .toEqual(line);
       }
-      // the line under a folded section that has a section below it; an open section
-      // draws none, and the last section draws one only while WORKSPACES is open,
-      // where the bands dock at the panel bottom and it meets the status bar
-      drawn.sections.forEach((section, i) => {
-        const last = i === drawn.sections.length - 1;
-        if ((!section.open && !last) || (last && open === 'workspaces')) {
+      // the line under every folded section, the last one included where it meets
+      // the status bar; the open section draws none
+      drawn.sections.forEach(section => {
+        if (!section.open) {
           expect
             .soft(section.bottomRule, `${state}: ${section.name} bottom`)
             .toEqual(line);
@@ -1257,14 +1232,11 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
           )
           .toBeLessThanOrEqual(WITHIN);
       });
-      // the lab bands stand at the panel bottom only while WORKSPACES is open (DQ-33)
+      // the open section takes the height the bands leave: LANGUAGE SERVERS ends at the panel bottom
       const below =
         drawn.panelBottom - drawn.sections[drawn.sections.length - 1].bottom;
       expect
-        .soft(
-          open === 'workspaces' ? Math.abs(below) : -below,
-          `${state}: LANGUAGE SERVERS to the panel bottom`
-        )
+        .soft(Math.abs(below), `${state}: LANGUAGE SERVERS to the panel bottom`)
         .toBeLessThanOrEqual(WITHIN);
     }
   }
@@ -1315,7 +1287,7 @@ test('ACC-PANEL-237-SECTION-DIVIDER: a folded section with a section below it dr
   }
 });
 
-test('ACC-PANEL-289-STATUS-DIVIDER: with WORKSPACES open the last section draws one 1 px --jp-layout-color3 bottom line whose border-box bottom is the panel bottom; with any other section open and with all sections closed it draws none; in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel the line colour is the token resolved in that theme', async ({
+test('ACC-PANEL-289-STATUS-DIVIDER, overridden by ACC-PANEL-314-HARMONICA-SEPARATOR: while LANGUAGE SERVERS is folded the last section draws one 1 px --jp-layout-color3 bottom line whose border-box bottom is the panel bottom; open, it draws none and still ends at the panel bottom; in JupyterLab Light, JupyterLab Dark and Galaxa Dark Theme - Steel the line colour is the token resolved in that theme', async ({
   page
 }) => {
   await page.goto();
@@ -1344,25 +1316,25 @@ test('ACC-PANEL-289-STATUS-DIVIDER: with WORKSPACES open the last section draws 
         panelBottom: panel.getBoundingClientRect().bottom
       };
     });
-  for (const open of [...SECTIONS.map(([name]) => name), undefined]) {
+  for (const open of SECTIONS.map(([name]) => name)) {
     await showSection(page, open);
     const drawn = await lastBand();
-    const state = `${open ?? 'all closed'} open`;
-    if (open === 'workspaces') {
+    const state = `${open} open`;
+    if (open !== 'servers') {
       expect(
         drawn.bottomRule,
         `${state}: the last section bottom line`
       ).toEqual(line);
-      expect(
-        Math.abs(drawn.panelBottom - drawn.bottom),
-        `${state}: the last section to the panel bottom`
-      ).toBeLessThanOrEqual(WITHIN);
     } else {
       expect(
         drawn.bottomRule.slice(0, 2),
         `${state}: the last section bottom line`
       ).toEqual(['none', '0px']);
     }
+    expect(
+      Math.abs(drawn.panelBottom - drawn.bottom),
+      `${state}: the last section to the panel bottom`
+    ).toBeLessThanOrEqual(WITHIN);
   }
   for (const theme of [
     'JupyterLab Light',

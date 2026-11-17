@@ -747,6 +747,20 @@ the sidebar panel, its header and its loads
   - root-cause: 2026-11-16T08:52:08Z @kj the refusal gave an instruction the user had already followed: routes.py counts a presence report for PRESENCE_SECONDS = 90 and a closed window sends no departure report
   - log: 2026-11-16T08:52:08Z @kj added
   - log: 2026-11-16T09:18:02Z @kj closed: fixed: panel dialog and CLI error state that a window closed less than 90 seconds ago still counts as open
+- [x] `DEF-PANEL-108-WHEEL-STUCK` **Wheel stuck on a section that cannot scroll** - MAJOR; an empty KERNELS stops a scroll from WORKSPACES; TERMINALS opens only after a few tries; cause: a list that cannot scroll still needs a pull, a pause of 220 ms or more and a new scroll to switch; fix: such a list passes the wheel straight through; `src/panel/harmonica.ts`
+  - evidence: logs in tmp/workflows/wm-harmonica-review/logs: Jest harmonica.spec.ts:275 and Galata harmonica.spec.ts:451 pass; green: make test Jest 223 of 223 (e-prove-1-make-test.log), Galata harmonica + sections + keyboard 64 passed, playwright exit 0 (e-prove-1-galata.log); red on the pre-fix code: Jest :275 failed at :298, the first event after the settle pulled, open 1, not 2 (e-prove-1-red-jest.log), and its stream step at :324, KERNELS still open after 2780 ms of 16 ms events, open 1, not 3 (e-prove-1-red-jest-stream.log); Galata :451 failed at :483, TERMINALS aria-expanded false after 1500 ms of wheel events every 16 ms (e-prove-1-red-galata.log)
+  - related: ACC-PANEL-309-HARMONICA-SWITCH - the switch rule that stops the wheel at a list that cannot scroll
+  - related: ACC-PANEL-310-HARMONICA-PULL - the pull such a list shows instead of switching
+  - root-cause: 2026-11-17T06:54:28Z @kj `Harmonica.wheel` treats a list that cannot scroll as any list end: a switch needs `_hold === dir` and an event 220 ms or more after the last; `_fold` clears `_hold`, so after the 250 ms settle a steady stream only pulls and never switches
+  - repro: no kernels running, WORKSPACES open at its last entry; one steady wheel down toward TERMINALS: KERNELS opens and the scroll stops there; TERMINALS opens only on a second or third separate scroll
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-11-17T06:54:16Z @kj added
+  - log: 2026-11-17T06:54:27Z @kj reported by the owner 2026-11-17 on the build installed after the gesture fixes: "harmonica design has issue (kernels has 0 items), scrolling and moving kernels gets stuck, only after few tries it moves", then "defect"
+  - log: 2026-11-17T06:54:27Z @kj reproduced: Jest probe, fake clock, wheel events every 16 ms for 2000 ms after the switch into an empty KERNELS: 0 switches, 85 pulls; a 300 ms pause and one scroll then switched once; tmp/workflows/wm-harmonica-review/logs/e-probe.log
+  - log: 2026-11-17T06:54:27Z @kj checked for a second cause, none found: after the spring-back one event still switches; the Harmonica is built once in the panel constructor and no render writes its state; an empty list reads at its end at every pull height
+  - log: 2026-11-17T06:54:28Z @kj owner's rule 2026-11-17, chosen over "one scroll after a pause": a section whose list cannot scroll in the wheel's direction (no rows, or rows that fit) passes the wheel straight through: once the fold that opened it has ended and its 250 ms settle has passed, the next wheel event in that direction opens the next section, with no pull and no pause. A continuous scroll therefore moves through empty sections one fold and settle at a time, and a fling can pass several of them. A section that does scroll keeps the owner's 2026-11-16 rule unchanged (pull at the end, pause of 220 ms or more, new scroll). WORKSPACES at the top and LANGUAGE SERVERS at the bottom still never switch past the ends of the panel. Everything else stays: one section always open, the fold, the settle, the native scroll, the click and keys, the right edge, the separators, the focus rule and the fold start of minor.js; reason: the rule is the owner's specification of the fix, copied exactly
+  - log: 2026-11-17T07:02:05Z @kj root cause confirmed in src/panel/harmonica.ts: Harmonica.wheel tests a list at both ends (scrollTop <= 1 and at scrollHeight - span - 1) as one more list end, so it pulls; _fold sets _hold = 0, so after the settle the first event only pulls and later events under 220 ms apart never switch; second cause: none, _spring and _release keep _hold, the Harmonica is built once, select runs only on a band click, key, filter or Create workspace; reason: the cause and the second-cause check are the two findings the fix rests on
+  - log: 2026-11-17T07:40:43Z @kj closed: fixed: in Harmonica.wheel a list that cannot scroll folds into the next section on the first wheel event after its fold and settle, with no pull and no pause; a list that scrolls keeps the pull, the 220 ms pause and the new scroll; reason: names the Jest and Galata tests as run, the red run and the green log with its count
 
 ## Functional tests `GALATA`
 
@@ -829,6 +843,23 @@ the Galata suite under ui-tests/ and its rig
   - root-cause: 2026-11-16T07:11:21Z @kj likely cause: the sleep of Ubuntu 26.04 is one binary for all coreutils commands that selects the command by the name it is run under, so a link named claude exits at once; not observed on the runner, inferred from the image change 24.04.5 -> 26.04.1
   - log: 2026-11-16T07:11:21Z @kj added
   - log: 2026-11-16T08:08:38Z @kj closed
+- [x] `DEF-GALATA-106-HARMONICA-SESSIONS` **Harmonica kernel counts take a leftover session** - MEDIUM; in the full Galata run harmonica.spec.ts ACC-PANEL-307-HARMONICA-LAYOUT, ACC-PANEL-310-HARMONICA-PULL and HARMONICA-RENDER read KERNELS (3) for (2) and (2) for (1); they pass when harmonica runs first; fix: startKernels filters /api/sessions to its own kernels, as kernels.spec.ts does; `ui-tests/tests/harmonica.spec.ts`
+  - evidence: fix: startKernels in ui-tests/tests/harmonica.spec.ts:112-113 filters /api/sessions to the test's own kernels; the reproducing order cleanup.spec.ts, kernels.spec.ts:462, harmonica.spec.ts now passes 15 of 15, exit 0 (gfix-green.log, gprove-1-order.log); with a leftover session the fixed spec passes 12 of 12, pre-fix 3 failed (gprove-1-fixed-leftover.log, gprove-1-repro-leftover.log); full suite gate-2-galata.log 281 of 281 passed, playwright exit 0; logs in tmp/workflows/wm-harmonica/logs
+  - related: ACC-PANEL-307-HARMONICA-LAYOUT, ACC-PANEL-310-HARMONICA-PULL - the criteria whose tests failed
+  - repro: in ui-tests: jlpm playwright test tests/cleanup.spec.ts tests/kernels.spec.ts:462 tests/harmonica.spec.ts --retries=0 - 3 failed at the KERNELS count, Expected "(2)", Received "(3)" (gfix-repro.log)
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-16T14:02:44Z @kj kernels.spec.ts:462 deletes its sessions while its page still shows a notebook; the page starts a new session (kernel f62a683c in gfix-repro.log) that nothing deletes; harmonica sets sessions: null and filters only /api/kernels, and buildModel adds the kernel of every session to KERNELS
+  - log: 2026-11-16T14:02:44Z @kj added
+  - log: 2026-11-16T14:59:57Z @kj closed; reason: the close step requires the fix, the reproducing order that now passes and the full-suite log with its count
+- [x] `DEF-GALATA-107-ROWCLICK-LEAK` **Kernel row click test leaves a session** - MEDIUM; in about 1 of 3 runs kernels.spec.ts ACC-KERNEL-151-ROW-CLICK leaves one notebook session and its kernel on the shared Galata server for the rest of the run; a later spec that counts kernels without filtering /api/sessions reads one more; `ui-tests/tests/kernels.spec.ts`
+  - evidence: kernels.spec.ts:506-517 finally waits for app.restored and every main-area tab's sessionContext.ready before the deletes; old test + probe --repeat-each=8 left a session of notebook c in 5 of 8 repeats; fixed: 16 passed, probe left none 8 of 8; kernels.spec.ts with harmonica.spec.ts 19 passed (lprove-1-*.log)
+  - related: DEF-GALATA-106-HARMONICA-SESSIONS
+  - related: ACC-KERNEL-151-ROW-CLICK
+  - root-cause: 2026-11-16T15:05:44Z @kj the test's last click loads workspace other in its page, whose layout restores notebook c; finally deletes the 3 sessions while that page restores; when the restore lists sessions after c's delete, it starts a new session (kernel f62a683c, gfix-repro.log) that nothing deletes, because the describe sets sessions: null
+  - repro: in ui-tests: jlpm playwright test tests/kernels.spec.ts:462 --repeat-each=6 --retries=0, then GET /api/sessions lists a session of the test's notebook c
+  - test-tags: FUNCTIONAL
+  - log: 2026-11-16T15:05:39Z @kj added
+  - log: 2026-11-16T15:31:24Z @kj closed
 
 ## Server extension `SERVER`
 

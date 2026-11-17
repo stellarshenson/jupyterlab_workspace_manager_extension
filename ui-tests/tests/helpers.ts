@@ -463,7 +463,7 @@ export const sectionHeader = (page: Page, name: string): Locator =>
     `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionHeader`
   );
 
-/** The body of the panel section `name`; the section is open when it has one. */
+/** The body of the panel section `name`; at rest the section is open when it has one, and during a pull or a fold a folded section has one too. */
 export const sectionBody = (page: Page, name: string): Locator =>
   page.locator(
     `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionBody`
@@ -481,12 +481,20 @@ export const sectionCount = (page: Page, name: string): Locator =>
     `${PANEL} .jp-WorkspaceManager-section[data-section="${name}"] .jp-WorkspaceManager-sectionCount`
   );
 
-/** Open the panel section `name` if it is closed; the other sections stay as they are. */
+/** Open the panel section `name` with a click on its band if it is folded; the open section folds (ACC-PANEL-312-HARMONICA-CLICK). */
 export async function openSection(page: Page, name: string): Promise<void> {
   const header = sectionHeader(page, name);
   if ((await header.getAttribute('aria-expanded')) !== 'true') {
     await header.click();
   }
+  await atRest(page);
+}
+
+/** Wait until the panel's lists are at rest: no pull or fold draws a folded section's list. */
+export async function atRest(page: Page): Promise<void> {
+  await expect(
+    page.locator(`${PANEL} .jp-WorkspaceManager-sectionBody`)
+  ).toHaveCount(1);
 }
 
 /** The label of a terminal's TERMINALS row (ACC-TERM-275-CARD-LABEL): t<n> for a name of digits, any other name as it is. */

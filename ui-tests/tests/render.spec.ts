@@ -759,12 +759,12 @@ test('HDR-06 ACC-PANEL-214-HEADER-PLACE: the three header buttons keep their pla
     await headerButton(page, 'Show hidden workspaces').click();
     views['hidden workspaces shown'] = await headerPlaces(page);
     await headerButton(page, 'Show hidden workspaces').click();
-    await sectionHeader(page, 'workspaces').click();
+    await openSection(page, 'kernels');
     await expect(
       page.locator(`${PANEL} .jp-WorkspaceManager-card`)
     ).toHaveCount(0);
     views['no workspace card'] = await headerPlaces(page);
-    await sectionHeader(page, 'workspaces').click();
+    await openSection(page, 'workspaces');
     // during a refresh: read in the page right after the click
     views['during a refresh'] = await page
       .locator(`${PANEL} .jp-WorkspaceManager-header`)
@@ -1089,10 +1089,12 @@ test('ACC-PANEL-228-BAND-HEIGHT: each section band is ~24 px and shorter than th
         text: open ? '▾' : '▸',
         colour2: true
       });
-      await header.click();
+      // a click on another band folds an open one, a click on a folded one opens it
+      const other = name === 'workspaces' ? 'kernels' : 'workspaces';
+      await openSection(page, open ? other : name);
       await expect(header).toHaveAttribute('aria-expanded', String(!open));
       await expect(caret).toHaveText(open ? '▸' : '▾');
-      await header.click();
+      await openSection(page, open ? name : other);
       await expect(header).toHaveAttribute('aria-expanded', String(open));
     }
   } finally {
@@ -1100,7 +1102,7 @@ test('ACC-PANEL-228-BAND-HEIGHT: each section band is ~24 px and shorter than th
   }
 });
 
-test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE, ACC-PANEL-93-FOCUS: Tab reaches a section header; Enter opens the closed section and closes the open one, Space closes it; a 1 px brand colour 1 outline on keyboard focus only', async ({
+test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE, ACC-PANEL-93-FOCUS, overridden by ACC-PANEL-312-HARMONICA-CLICK: Tab reaches a section header; Enter opens the folded section and folds the open one, Space on the open band leaves it open; a 1 px brand colour 1 outline on keyboard focus only', async ({
   page
 }) => {
   const current = fresh('seckeys');
@@ -1123,19 +1125,21 @@ test('SEC-07 ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE, ACC-PANEL-93-
       await style(kernels, 'outlineWidth'),
       await rgba(page, await style(kernels, 'outlineColor'))
     ]).toEqual(['solid', '1px', brand1]);
-    // WORKSPACES opens by default; Enter opens KERNELS and closes WORKSPACES; Space closes KERNELS
+    // WORKSPACES opens by default; Enter opens KERNELS and folds WORKSPACES; Space on the open KERNELS band leaves it open
     await expect(kernels).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('Enter');
     await expect(kernels).toHaveAttribute('aria-expanded', 'true');
     await expect(workspaces).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('Space');
-    await expect(kernels).toHaveAttribute('aria-expanded', 'false');
-    // a click on a header that does not have the focus yet: a focused one keeps its keyboard state
-    await page.locator('#jp-main-dock-panel').click();
-    await kernels.click();
-    await expect(kernels).toBeFocused();
+    await page.waitForTimeout(500);
     await expect(kernels).toHaveAttribute('aria-expanded', 'true');
-    expect(await style(kernels, 'outlineStyle')).toBe('none');
+    await expect(workspaces).toHaveAttribute('aria-expanded', 'false');
+    // a click on a header that does not have the focus yet opens it and draws no outline
+    await page.locator('#jp-main-dock-panel').click();
+    await workspaces.click();
+    await expect(workspaces).toBeFocused();
+    await expect(workspaces).toHaveAttribute('aria-expanded', 'true');
+    expect(await style(workspaces, 'outlineStyle')).toBe('none');
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -2995,15 +2999,28 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
       if (name.endsWith('row')) {
         // the card has no right border; a row of this window's card gives up 2 px of right
         // padding to its margin, so it ends 2 px from the card's edge, at the inner edge of
-        // the 2 px outline, and its content stands where it does in another card
+        // the 2 px outline, and its content stands where it does in another card; the
+        // padding also keeps room for the scrollbar its list may draw, --wm-gutter less the
+        // scrollbar it draws (ACC-PANEL-313-HARMONICA-EDGE), which is taken off here
         expect
           .soft(
             await target.evaluate(n => {
               const edge = n
                 .closest('.jp-WorkspaceManager-card')!
                 .getBoundingClientRect().right;
+              const list = n.closest<HTMLElement>(
+                '.jp-WorkspaceManager-sectionBody'
+              )!;
+              const room =
+                (parseFloat(
+                  getComputedStyle(n).getPropertyValue('--wm-gutter')
+                ) || 0) -
+                (list.offsetWidth - list.clientWidth);
               const gap = edge - n.getBoundingClientRect().right;
-              return [gap, gap + parseFloat(getComputedStyle(n).paddingRight)];
+              return [
+                gap,
+                gap + parseFloat(getComputedStyle(n).paddingRight) - room
+              ];
             }),
             `${name}: the row's right edge and its content edge, from the card's right edge`
           )

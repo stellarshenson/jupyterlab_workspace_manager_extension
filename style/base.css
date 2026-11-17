@@ -150,24 +150,20 @@
 }
 
 /*
-    One flex column of the panel's height (DQ-23): KERNELS, TERMINALS and LANGUAGE
-    SERVERS keep their order after WORKSPACES, and no section scrolls the panel. They
-    stand at the panel bottom only while WORKSPACES is open; while it is folded they
-    follow it from the top and the free height stands below the last band (DQ-33).
+    One flex column of the panel's height (DQ-23), the harmonica of the design system's
+    Harmonica navigation: the four bands keep their order and stay on screen, the open
+    section takes the height they leave, so the bands above it stand at the top and the
+    bands below it at the panel bottom, and no section scrolls the panel. In a row 100cqw
+    is this column's width.
 */
 .jp-WorkspaceManager-list {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+  container-type: inline-size;
 }
 
-/*
-    The divider is one 1 px --jp-layout-color3 line between two adjacent bands of the
-    same fill: under a folded section that has a section below it only, because an open
-    section's rows and the last section already meet a different fill (DQ-26, design
-    language 2026-11-04)
-*/
 .jp-WorkspaceManager-section {
   display: flex;
   flex: 0 0 auto;
@@ -175,26 +171,13 @@
   min-height: 0;
 }
 
-/* the line under a folded section that has a section below it (DQ-26, design language 2026-11-04) */
-.jp-WorkspaceManager-section:not(.jp-mod-open, :last-child) {
+/* one 1 px --jp-layout-color3 line under every folded band, the last one included, where it meets the status bar of the band's own --jp-layout-color2 fill; the open section draws none (design language, Dividers of a docked panel; ACC-PANEL-314-HARMONICA-SEPARATOR) */
+.jp-WorkspaceManager-section:not(.jp-mod-open) {
   border-bottom: var(--jp-border-width) solid var(--jp-layout-color3);
 }
 
-/* the last band draws one line where it meets the status bar, which paints the band's own --jp-layout-color2 fill; only while WORKSPACES is open, because the lab bands dock at the panel bottom then and a folded panel's free space already differs from the status bar (DQ-26 amendment 2026-11-05, ACC-PANEL-289) */
-.jp-WorkspaceManager-list:has(
-    > .jp-WorkspaceManager-section.jp-mod-open[data-section='workspaces']
-  )
-  > .jp-WorkspaceManager-section:last-child {
-  border-bottom: var(--jp-border-width) solid var(--jp-layout-color3);
-}
-
-/* an open section is as tall as its rows and shrinks to keep every band in view; the band below it follows its last row (DQ-33) */
+/* the open section takes the height the bands leave, whatever its row count (ACC-PANEL-307-HARMONICA-LAYOUT) */
 .jp-WorkspaceManager-section.jp-mod-open {
-  flex: 0 1 auto;
-}
-
-/* only an open WORKSPACES section grows, which holds the lab bands at the panel bottom (DQ-33) */
-.jp-WorkspaceManager-section.jp-mod-open[data-section='workspaces'] {
   flex: 1 1 auto;
 }
 
@@ -258,13 +241,39 @@
   white-space: nowrap;
 }
 
-/* The open section's body is the panel's only scroll container and fills its section (DQ-23) */
+/* The open section's body is the panel's only scroll container and fills its section (DQ-23); it reserves no scrollbar strip */
 .jp-WorkspaceManager-sectionBody {
   box-sizing: border-box;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 0;
+}
+
+/* the 2 px above the first row and below the last: blocks, not padding, so a list a pull draws 3 px tall is 3 px */
+.jp-WorkspaceManager-sectionBody::before,
+.jp-WorkspaceManager-sectionBody::after {
+  content: '';
+  display: block;
+  height: 2px;
+}
+
+/* a folded list a pull or a fold shows draws no scrollbar */
+.jp-WorkspaceManager-section:not(.jp-mod-open)
+  > .jp-WorkspaceManager-sectionBody {
+  overflow: hidden;
+}
+
+/* A hidden probe that always shows a classic scrollbar: its width is --wm-gutter, 0 where the browser overlays its scrollbars (design system, Harmonica navigation) */
+.jp-WorkspaceManager-gutterProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50px;
+  height: 50px;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .jp-WorkspaceManager-filter {
@@ -410,9 +419,9 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header carries the card's 24 % tint, meeting the body's 9.6 % tint with no rule between them (DQ-02, DQ-28, ACC-PANEL-278-TINT-ALPHA); the 6 px left padding starts the name and the purpose at the row label's left edge */
+/* the header carries the card's 24 % tint, meeting the body's 9.6 % tint with no rule between them (DQ-02, DQ-28, ACC-PANEL-278-TINT-ALPHA); the 6 px left padding starts the name and the purpose at the row label's left edge; the right padding is the rows' (100% is the card's content width, 8 px of margins and strip inside the list's) */
 .jp-WorkspaceManager-cardHeader {
-  padding: 6px 10px 6px 6px;
+  padding: 6px calc(10px + var(--wm-gutter, 0px) - 100cqw + 100% + 8px) 6px 6px;
   background: var(--wm-shade);
   cursor: pointer;
 }
@@ -635,7 +644,19 @@
   background: var(--jp-layout-color2);
 }
 
+/*
+ * A row's fill reaches the panel's right edge, or the scrollbar where its list draws one; its right
+ * padding is 10 px and --wm-gutter less that scrollbar (the column's width, 100cqw, less the list's
+ * content width, 100%), so its time and buttons keep their x and nothing reflows when the scrollbar
+ * appears (design system, Harmonica navigation; ACC-PANEL-313-HARMONICA-EDGE)
+ */
+.jp-WorkspaceManager-sectionBody > .jp-WorkspaceManager-row {
+  padding-right: calc(10px + var(--wm-gutter, 0px) - 100cqw + 100%);
+}
+
+/* in a card 100% is the card's content width, 8 px of margins and strip inside the list's */
 .jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row {
+  padding-right: calc(10px + var(--wm-gutter, 0px) - 100cqw + 100% + 8px);
   padding-left: 14px;
 }
 
@@ -718,7 +739,7 @@
   > .jp-WorkspaceManager-cardBody
   .jp-WorkspaceManager-row {
   margin-right: 2px;
-  padding-right: 8px;
+  padding-right: calc(8px + var(--wm-gutter, 0px) - 100cqw + 100% + 8px);
 }
 
 /* In a coloured card the surface keeps the card's hue: the hue at 9.6 % over layout colour 2 (DQ-10, ACC-PANEL-278-TINT-ALPHA) */

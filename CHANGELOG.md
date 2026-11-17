@@ -2,6 +2,25 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.12] - 2026-11-17
+
+### Added
+
+- Harmonica navigation between the four panel sections WORKSPACES, KERNELS, TERMINALS and LANGUAGE SERVERS: one section is open and takes the panel height, the other three fold to their bands
+- The wheel scrolls the open list; at its end the next section's first rows ease into view, and a new scroll after a pause of 220 ms or more folds the section into its band and opens the next one
+- A section whose list cannot scroll, with no rows or rows that fit, passes the wheel straight on to the next section once its fold has ended
+- A click, Enter or Space on a folded band opens that section, and a reload keeps the same section open
+- When a fold removes the row that holds the keyboard focus, the focus moves to the band of the open section
+
+### Changed
+
+- One section is always open: a click on the open section's band does nothing
+- Makefile 1.49: publish installs before it tests
+
+### Fixed
+
+- The kernel row-click test no longer leaves a notebook session on the shared test server
+
 ## [1.0.9] - 2026-11-16
 
 ### Changed

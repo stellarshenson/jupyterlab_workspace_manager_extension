@@ -82,6 +82,7 @@ import {
   descriptionDialog,
   newWorkspaceDialog
 } from './dialogs';
+import { Harmonica } from './harmonica';
 import { actionMenu, type IRowAction, workspaceMenu } from './menus';
 
 /** The section of the panel that lists the running language servers. */
@@ -105,7 +106,7 @@ const EMPTY: ILoaded = {
   sessions: []
 };
 
-/** Where this browser keeps the panel sections the user closed. */
+/** Where this browser keeps the closed panel sections: every section but the open one. */
 const CLOSED_SECTIONS =
   '@stellarshenson/jupyterlab-workspace-manager-extension:closed-sections';
 
@@ -247,16 +248,24 @@ function globeOf(url: string | undefined): LabIcon | undefined {
 /** The four section keys, in render order. */
 const SECTION_KEYS = ['workspaces', 'kernels', 'terminals', 'servers'] as const;
 
-/** The sections closed in this browser; a missing or unreadable value, or no localStorage, means WORKSPACES alone open. */
-function closedSections(): Set<string> {
-  const initial = () =>
-    new Set<string>(SECTION_KEYS.filter(key => key !== 'workspaces'));
+/**
+ * The open section kept in this browser, by its index: the first section the stored
+ * closed sections leave open. A missing or unreadable value, no localStorage, or all
+ * four closed, as release 1.0.9 stores a panel with every section closed, means WORKSPACES.
+ */
+function storedSection(): number {
   try {
-    const saved = window.localStorage.getItem(CLOSED_SECTIONS);
-    const closed = saved === null ? null : JSON.parse(saved);
-    return Array.isArray(closed) ? new Set<string>(closed) : initial();
+    const closed = JSON.parse(
+      window.localStorage.getItem(CLOSED_SECTIONS) ?? 'null'
+    );
+    return Array.isArray(closed)
+      ? Math.max(
+          0,
+          SECTION_KEYS.findIndex(key => !closed.includes(key))
+        )
+      : 0;
   } catch {
-    return initial();
+    return 0;
   }
 }
 
@@ -325,7 +334,8 @@ export namespace WorkspacePanel {
  * filter field, then four sections - WORKSPACES holding one card per
  * workspace, KERNELS and TERMINALS with every running kernel and terminal, in a
  * workspace or not, and LANGUAGE SERVERS with the running language servers.
- * Each section opens and closes on its own and scrolls on its own. The cards are React, rendered
+ * One section is open and takes the panel, and the wheel anywhere over the panel
+ * scrolls it and folds it into the next (harmonica.ts). The cards are React, rendered
  * synchronously, so a reload keeps the scroll position, the focus and every
  * open card or menu.
  */
@@ -377,6 +387,110 @@ export class WorkspacePanel
     this.toolbar.addItem('open-as-modal', searchTabs);
     pressed(this._filterButton, false);
     pressed(this._hiddenButton, false);
+
+    const body = (i: number) =>
+      this.content.node.querySelector<HTMLElement>(
+        `[data-section="${SECTION_KEYS[i]}"] > .jp-WorkspaceManager-sectionBody`
+      );
+    this._harmonica = new Harmonica(
+      {
+        span: () => {
+          const list = this.content.node.querySelector(
+            '.jp-WorkspaceManager-list'
+          );
+          // the bands and their lines, never a drawn list: a list drawn 1/64 px short would
+          // shrink the next frame's span, and the open section's slack with it
+          let bands = 0;
+          for (const section of Array.from(list?.children ?? [])) {
+            const style = getComputedStyle(section);
+            bands +=
+              (section.firstElementChild?.getBoundingClientRect().height ?? 0) +
+              (parseFloat(style.borderTopWidth) || 0) +
+              (parseFloat(style.borderBottomWidth) || 0);
+          }
+          // whole px: the open section takes the fraction left over
+          return Math.max(
+            0,
+            Math.floor((list?.getBoundingClientRect().height ?? 0) - bands)
+          );
+        },
+        scrollTop: i => body(i)?.scrollTop ?? 0,
+        scrollHeight: i => body(i)?.scrollHeight ?? 0,
+        scroll: (i, top) => {
+          const b = body(i);
+          if (b) {
+            b.scrollTop = top;
+          }
+        },
+        draw: (open, heights) => {
+          const shown = (h: typeof heights) => Object.keys(h ?? {}).join();
+          const changed =
+            open !== this._open || shown(heights) !== shown(this._heights);
+          if (open !== this._open) {
+            this._open = open;
+            try {
+              window.localStorage.setItem(
+                CLOSED_SECTIONS,
+                JSON.stringify(SECTION_KEYS.filter((_, i) => i !== open))
+              );
+            } catch {
+              // not stored: the state lasts as long as this page
+            }
+          }
+          this._heights = heights;
+          if (changed) {
+            // a fold that removes the focused row gives the focus to the open band, not to the page
+            const focused = document.activeElement?.closest(
+              '.jp-WorkspaceManager-sectionBody'
+            )
+              ? document.activeElement
+              : null;
+            this._render();
+            if (focused && !focused.isConnected) {
+              this.content.node
+                .querySelector<HTMLElement>(
+                  `[data-section="${SECTION_KEYS[open]}"] > .jp-WorkspaceManager-sectionHeader`
+                )
+                ?.focus();
+            }
+          }
+          SECTION_KEYS.forEach((_, i) => {
+            const b = body(i);
+            if (b) {
+              b.style.flex =
+                heights?.[i] === undefined ? '' : `0 0 ${heights[i]}px`;
+            }
+          });
+        }
+      },
+      SECTION_KEYS.length,
+      this._open
+    );
+    // the scrollbar every row keeps room for, from a probe that always shows one
+    this._probe.className = 'jp-WorkspaceManager-gutterProbe';
+    this._probe.setAttribute('aria-hidden', 'true');
+    this.node.appendChild(this._probe);
+    // the wheel anywhere over the panel drives the open section, never the one under the pointer;
+    // over the open list the browser scrolls it natively until its end
+    this.node.addEventListener(
+      'wheel',
+      e => {
+        if (
+          e.deltaY &&
+          !e.ctrlKey &&
+          this._harmonica.wheel(
+            // a line of a Firefox mouse wheel is 16 px
+            e.deltaMode === WheelEvent.DOM_DELTA_LINE
+              ? e.deltaY * 16
+              : e.deltaY,
+            !!body(this._harmonica.open)?.contains(e.target as Node)
+          )
+        ) {
+          e.preventDefault();
+        }
+      },
+      { passive: false }
+    );
 
     this._root = createRoot(this.content.node);
     this._app.shell.currentChanged?.connect(() => {
@@ -433,6 +547,7 @@ export class WorkspacePanel
     }
     this._stopPolling();
     this._stopSwitch();
+    this._harmonica.stop();
     this._root.unmount();
     super.dispose();
   }
@@ -488,6 +603,8 @@ export class WorkspacePanel
       // a deleted workspace of this name left the position this page gave it
       delete this._positions[form.name];
       await store.save(form.name, { data: {}, metadata: { id: form.name } });
+      // the new card shows in WORKSPACES, opened with the fold
+      this._harmonica.select(0);
       this._openCards.add(`w:${form.name}`);
       this._scrollTo = `w:${form.name}`;
       await this._store(form.name, {
@@ -515,6 +632,7 @@ export class WorkspacePanel
 
   protected onAfterShow(msg: Message): void {
     super.onAfterShow(msg);
+    this._render();
     this._startPolling();
   }
 
@@ -822,24 +940,9 @@ export class WorkspacePanel
   private _setQuery(query: string): void {
     this._query = query;
     this._closedInFilter.clear();
-    this._render();
-  }
-
-  /** A section header: one section opens at a time, and a click on the open one closes every section; the state outlives the page. */
-  private _toggleSection(key: string): void {
-    // closed means every key except the one opening; an open key closes the rest too
-    this._closedSections = new Set(
-      this._closedSections.has(key)
-        ? SECTION_KEYS.filter(k => k !== key)
-        : SECTION_KEYS
-    );
-    try {
-      window.localStorage.setItem(
-        CLOSED_SECTIONS,
-        JSON.stringify([...this._closedSections])
-      );
-    } catch {
-      // not stored: the state lasts as long as this page
+    // the cards the filter opens show in WORKSPACES, opened with the fold
+    if (query.trim()) {
+      this._harmonica.select(0);
     }
     this._render();
   }
@@ -977,10 +1080,15 @@ export class WorkspacePanel
       this.content.node.querySelector(
         `[data-key="${CSS.escape(this._scrollTo)}"]`
       );
-    if (target) {
+    // the fold pins the list it opens: the new card is scrolled to once it ends
+    if (target && !this._harmonica.folding) {
       target.scrollIntoView?.({ block: 'nearest' });
       this._scrollTo = null;
     }
+    this.node.style.setProperty(
+      '--wm-gutter',
+      `${this._probe.offsetWidth - this._probe.clientWidth}px`
+    );
     // the selection lasts while its row is shown
     if (
       this._selected &&
@@ -1038,9 +1146,9 @@ export class WorkspacePanel
 
   /**
    * One section: the header carries the label, the count and its action button -
-   * Work spaces adds a workspace and cleans up, the three below shut down all; an open section shows
-   * its body, which scrolls on its own, and one of those three with nothing in it
-   * says so.
+   * Work spaces adds a workspace and cleans up, the three below shut down all; the open section shows
+   * its body, which scrolls, and one of those three with nothing in it says so; a folded
+   * section shows its body only while a pull or a fold moves it.
    */
   private _renderSection(
     key: string,
@@ -1049,7 +1157,8 @@ export class WorkspacePanel
     body: React.ReactNode,
     shutdown?: 'servers' | 'terminals' | 'kernels' | 'workspaces'
   ): React.ReactElement {
-    const open = !this._closedSections.has(key);
+    const i = (SECTION_KEYS as readonly string[]).indexOf(key);
+    const open = i === this._open;
     return (
       <div
         key={key}
@@ -1062,14 +1171,14 @@ export class WorkspacePanel
           tabIndex={0}
           aria-label={`${label} (${n})`}
           aria-expanded={open}
-          onClick={() => this._toggleSection(key)}
+          onClick={() => this._harmonica.select(i)}
           onKeyDown={e => {
             if (
               e.target === e.currentTarget &&
               (e.key === 'Enter' || e.key === ' ')
             ) {
               e.preventDefault();
-              this._toggleSection(key);
+              this._harmonica.select(i);
             }
           }}
         >
@@ -1120,7 +1229,7 @@ export class WorkspacePanel
                     true // pointerFocus
                   ))}
         </div>
-        {open && (
+        {(open || this._heights?.[i] !== undefined) && (
           <div className="jp-WorkspaceManager-sectionBody">
             {shutdown && shutdown !== 'workspaces' && !n ? (
               <div className="jp-WorkspaceManager-empty">
@@ -2453,8 +2562,13 @@ export class WorkspacePanel
   private _dragged: string | null = null;
   private _dropLine: { id: string; after: boolean } | null = null;
 
-  /** the sections the user closed; every other section is open */
-  private _closedSections = closedSections();
+  /** the open section, by its index in SECTION_KEYS, as the harmonica drew it last */
+  private _open = storedSection();
+  /** the lists a pull or a fold moves, by index, in px; null at rest */
+  private _heights: Record<number, number> | null = null;
+  private _harmonica: Harmonica;
+  /** a hidden element that always shows a classic scrollbar */
+  private _probe = document.createElement('div');
   /** the cards this page shows open; a card keeps its state while another opens (DQ-28) */
   private _openCards = new Set<string>();
   /** the selected row: its list and its key */

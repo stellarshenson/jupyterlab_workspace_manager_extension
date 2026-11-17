@@ -558,7 +558,7 @@ test('ACC-ACCORD-292-SHUTDOWN-MENU: the TERMINALS band power button opens Shut d
   }
 });
 
-test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES (3) opens by default; opening a section closes the open one; clicking the open header closes all four; a reload keeps the one open section', async ({
+test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE, overridden by ACC-PANEL-307-HARMONICA-LAYOUT and ACC-PANEL-312-HARMONICA-CLICK: WORKSPACES (3) opens by default; opening a section folds the open one; clicking the open header leaves it open; a reload keeps the one open section', async ({
   page
 }) => {
   // the terminals, kernels and language servers of other tests are listed too
@@ -619,7 +619,7 @@ test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES (3) opens
       );
     expect(await expanded()).toEqual(['true', 'false', 'false', 'false']);
 
-    // opening a section closes the open one; a closed section shows its band only
+    // opening a section folds the open one; at rest a folded section shows its band only
     const steps: [string, string, string][] = [
       ['kernels', kernelId, 'workspaces'],
       ['terminals', rowLabel(terminal), 'kernels'],
@@ -639,12 +639,14 @@ test('ACC-PANEL-182-SECTION-HEADS, ACC-PANEL-229-EXCLUSIVE: WORKSPACES (3) opens
       );
     }
 
-    // a click on the open header closes every section
+    // a click on the open header leaves it open: one section is always open
     await sectionHeader(page, 'servers').click();
-    expect(await expanded()).toEqual(['false', 'false', 'false', 'false']);
-    for (const name of ['workspaces', 'kernels', 'terminals', 'servers']) {
+    await page.waitForTimeout(500);
+    expect(await expanded()).toEqual(['false', 'false', 'false', 'true']);
+    for (const name of ['workspaces', 'kernels', 'terminals']) {
       await expect(sectionBody(page, name)).toHaveCount(0);
     }
+    await expect(sectionBody(page, 'servers')).toHaveCount(1);
 
     // WORKSPACES opens again; the one open section outlives the page
     await sectionHeader(page, 'workspaces').click();
