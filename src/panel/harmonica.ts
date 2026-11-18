@@ -1,18 +1,19 @@
 /**
  * The harmonica of the panel's sections (design system, Harmonica navigation): one
  * section is open and takes the panel; the wheel scrolls its list, and at the list's
- * end a fresh gesture folds it into its band while the neighbour opens; a list that
- * cannot scroll passes the wheel straight through.
+ * end, either end of a list that cannot scroll, each wheel event stretches the pull
+ * that eases the neighbour in; the event that stretches it to the give length folds
+ * the open section into its band while the neighbour opens. The wheel does nothing
+ * through the fold and acts on the new open section from the first event after it,
+ * so a swipe that ends inside the fold crosses one section.
  * The clock and the drawing come from outside, so a test drives it with a fake clock.
  */
 
 /** The values of the chapter. */
-export const GAP_MS = 220; // a pause before a wheel event that starts a fresh gesture
-export const PULL_STEP = 3; // px the neighbour eases in per wheel event
-export const PULL_MAX = 22; // the cap of the pull
-export const RELEASE_MS = 160; // wheel idle before the pull springs back
+export const PULL_STEP = 3; // the least px a wheel event eases the neighbour in; a quarter of its scroll distance when more
+export const GIVE = 44; // px of pull at which the open section gives, at most half its base height
+export const RELEASE_MS = 160; // wheel idle before a pull short of the give springs back
 export const FOLD_MS = 400; // the fold from one section to the next
-export const SETTLE_MS = 250; // the wheel ignored after a fold a wheel switch started ends
 /** The spring exp(-7t) cos(16t) ends at the second zero of cos(16t), 294.5 ms: settled under 300 ms. */
 export const SPRING_MS = (3 * Math.PI * 1000) / 32;
 
@@ -75,13 +76,10 @@ export class Harmonica {
    * Returns whether the panel cancels the event.
    */
   wheel(dy: number, native = false): boolean {
-    const now = this._clock.now();
-    // the fold, and the settle after a wheel switch's fold, swallow the carried momentum
-    if (this._folding || now < this._settled) {
+    // the fold swallows the wheel; the first event after it acts on the new open section
+    if (this._folding) {
       return true;
     }
-    const fresh = now - this._last >= GAP_MS;
-    this._last = now;
     const dir = Math.sign(dy);
     const i = this._open;
     const top = this._view.scrollTop(i);
@@ -89,7 +87,6 @@ export class Harmonica {
     const first = top <= 1;
     const last = top >= this._view.scrollHeight(i) - this._view.span() - 1;
     if (!(dir > 0 ? last : first)) {
-      this._hold = 0;
       this._release();
       if (native) {
         return false;
@@ -106,14 +103,7 @@ export class Harmonica {
       this._release();
       return true;
     }
-    // a list that cannot scroll passes the wheel straight through; at the end of one that
-    // scrolls, a fresh gesture after a pull switches, and a held pull or a momentum tail stops there
-    if ((first && last) || (this._hold === dir && fresh)) {
-      this._fold(to, dir);
-      return true;
-    }
-    this._hold = dir;
-    this._pullTo(to);
+    this._pullTo(to, dy);
     return true;
   }
 
@@ -123,16 +113,24 @@ export class Harmonica {
     this._clock.cancelFrame(this._frame);
   }
 
-  /** The neighbour eases in by a step, and springs back when the wheel stops. */
-  private _pullTo(to: number): void {
+  /** The neighbour eases in from the pull on screen by a quarter of the event's `dy` px, PULL_STEP at least; at the give length the open section folds into it, short of it the pull springs back when the wheel stops. */
+  private _pullTo(to: number, dy: number): void {
     this.stop();
+    // the pull draws the open list at its base height less the pull: below twice GIVE the
+    // give length is half the base height, so the leaving list stays as tall as the pull
+    const give = Math.min(GIVE, Math.floor(this._view.span() / 2));
     // a pull that turns to the other neighbour starts it from nothing
     this._pull = Math.min(
-      PULL_MAX,
-      (to === this._to ? this._pull : 0) + PULL_STEP
+      give,
+      (to === this._to ? this._pull : 0) + Math.max(PULL_STEP, Math.abs(dy) / 4)
     );
     this._to = to;
     this._drawPull();
+    if (this._pull >= give) {
+      // the fold starts from the give drawn on screen
+      this._fold(to, to - this._open);
+      return;
+    }
     if (to < this._open) {
       // upward the previous section shows its last rows
       this._view.scroll(to, this._view.scrollHeight(to));
@@ -179,7 +177,6 @@ export class Harmonica {
     this.stop();
     this._pull = 0;
     this._to = -1;
-    this._hold = 0;
     const from = this._open;
     const kept = this._view.scrollTop(from);
     this._open = to;
@@ -213,10 +210,6 @@ export class Harmonica {
         return;
       }
       this._folding = false;
-      // a select carries no momentum for a settle to swallow
-      if (dir) {
-        this._settled = this._clock.now() + SETTLE_MS;
-      }
       this._draw(to, null);
     };
     frame();
@@ -229,14 +222,8 @@ export class Harmonica {
   }
 
   private _folding = false;
-  /** the wheel is ignored until this time */
-  private _settled = -Infinity;
-  /** the time of the last wheel event */
-  private _last = -Infinity;
   /** the fraction of a px the last forwarded scroll could not write */
   private _carry = 0;
-  /** the direction of the pull at a list end, 0 for none */
-  private _hold = 0;
   /** the pull in px, and the section it shows, -1 for none */
   private _pull = 0;
   private _to = -1;

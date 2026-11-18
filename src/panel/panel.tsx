@@ -110,6 +110,10 @@ const EMPTY: ILoaded = {
 const CLOSED_SECTIONS =
   '@stellarshenson/jupyterlab-workspace-manager-extension:closed-sections';
 
+/** Where this browser keeps the open cards: the ids of the workspace cards open in the unfiltered view. */
+const OPEN_CARDS =
+  '@stellarshenson/jupyterlab-workspace-manager-extension:open-cards';
+
 /** The command that reopens a saved web page tab, by the namespace of its saved key; a move into this window runs it with the saved data. */
 const WEB_OPEN = new Map([
   ['server-proxy', 'server-proxy:open'],
@@ -266,6 +270,34 @@ function storedSection(): number {
       : 0;
   } catch {
     return 0;
+  }
+}
+
+/**
+ * The ids of the cards this browser keeps open: a missing or unreadable value,
+ * no localStorage, or one that throws loads no card.
+ */
+export function storedCards(): string[] {
+  try {
+    const ids = JSON.parse(window.localStorage.getItem(OPEN_CARDS) ?? 'null');
+    return Array.isArray(ids) && ids.every(id => typeof id === 'string')
+      ? ids
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Add or remove one card id on the value this browser stores, so two windows keep each other's changes. */
+export function keepCard(id: string, open: boolean): void {
+  try {
+    const ids = storedCards().filter(stored => stored !== id);
+    if (open) {
+      ids.push(id);
+    }
+    window.localStorage.setItem(OPEN_CARDS, JSON.stringify(ids));
+  } catch {
+    // not stored: the state lasts as long as this page
   }
 }
 
@@ -606,6 +638,7 @@ export class WorkspacePanel
       // the new card shows in WORKSPACES, opened with the fold
       this._harmonica.select(0);
       this._openCards.add(`w:${form.name}`);
+      keepCard(form.name, true);
       this._scrollTo = `w:${form.name}`;
       await this._store(form.name, {
         ...newRecord(form.purpose, colour),
@@ -704,6 +737,9 @@ export class WorkspacePanel
           if (data.records) {
             this._givePositions();
           }
+          if (!this._pruned && data.workspaces) {
+            this._pruneCards();
+          }
         })
         .catch(reason => {
           this._error = `Reload failed: ${reason?.message ?? reason}`;
@@ -783,6 +819,7 @@ export class WorkspacePanel
       return false;
     }
     this._openCards.add(keyOf(section));
+    keepCard(section.id, true);
     this._selected = `${keyOf(section)}/${tab.key}`;
     this._selectedTabs = [tab.key];
     this._app.shell.activateById(widget.id);
@@ -832,6 +869,19 @@ export class WorkspacePanel
       patchMeta(this._settings, id, { position: given[id] }).catch(
         () => undefined
       );
+    }
+  }
+
+  /** Drop the stored cards the first workspace list does not hold: hidden workspaces and this window's stay. */
+  private _pruneCards(): void {
+    this._pruned = true;
+    const ids = new Set((this._model()?.sections ?? []).map(s => s.id));
+    for (const key of Array.from(this._openCards)) {
+      const id = key.slice('w:'.length);
+      if (!ids.has(id)) {
+        this._openCards.delete(key);
+        keepCard(id, false);
+      }
     }
   }
 
@@ -959,8 +1009,12 @@ export class WorkspacePanel
       if (!this._closedInFilter.delete(key)) {
         this._closedInFilter.add(key);
       }
-    } else if (!this._openCards.delete(key)) {
-      this._openCards.add(key);
+    } else {
+      const open = !this._openCards.delete(key);
+      if (open) {
+        this._openCards.add(key);
+      }
+      keepCard(key.slice('w:'.length), open);
     }
     this._render();
   }
@@ -2359,6 +2413,7 @@ export class WorkspacePanel
       }
       await workspaces(this._settings).remove(id);
       this._openCards.delete(`w:${id}`);
+      keepCard(id, false);
     });
   }
 
@@ -2570,7 +2625,9 @@ export class WorkspacePanel
   /** a hidden element that always shows a classic scrollbar */
   private _probe = document.createElement('div');
   /** the cards this page shows open; a card keeps its state while another opens (DQ-28) */
-  private _openCards = new Set<string>();
+  private _openCards = new Set(storedCards().map(id => `w:${id}`));
+  /** the first workspace list has dropped the stored cards it does not hold */
+  private _pruned = false;
   /** the selected row: its list and its key */
   private _selected: string | null = null;
   /** the keys of the tabs that keep the selected row lit while one of them is current (DQ-32) */

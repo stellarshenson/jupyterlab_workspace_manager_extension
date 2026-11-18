@@ -2,6 +2,21 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.16] - 2026-11-18
+
+### Added
+
+- The open workspace cards are kept in this browser and come back after a reload, and a stored card of a workspace that no longer exists is dropped
+
+### Changed
+
+- At the end of an open list, each wheel event now stretches the pull by a quarter of its scroll distance, at least 3 px, so a 100 px mouse notch adds 25 px and the second notch gives within about 180 ms, while a slow touchpad scroll still takes about fifteen events
+- The two timing-sensitive browser tests send their wheel bursts inside the page, so a slow test runner no longer fails them
+
+### Fixed
+
+- A mouse wheel turned in finger strokes never reached the 44 px give (DEF-PANEL-109-SPRING-GIVE-1)
+
 ## [1.0.12] - 2026-11-17
 
 ### Added

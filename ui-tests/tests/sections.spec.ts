@@ -69,6 +69,17 @@ const workspaceCards = (page: Page) =>
 const openCards = (page: Page) =>
   page.locator(`${PANEL} .jp-WorkspaceManager-card.jp-mod-open`);
 
+/** Where this browser keeps the open cards (ACC-ACCORD-317-CARD-STORE). */
+const OPEN_CARDS =
+  '@stellarshenson/jupyterlab-workspace-manager-extension:open-cards';
+
+/** The ids the open-cards key holds, as this browser keeps them. */
+const storedCardIds = (page: Page): Promise<string[] | null> =>
+  page.evaluate(
+    key => JSON.parse(localStorage.getItem(key) ?? 'null'),
+    OPEN_CARDS
+  );
+
 const dialog = (page: Page) => page.locator('.jp-Dialog');
 
 /**
@@ -220,7 +231,7 @@ test('ACC-ACCORD-191-DRAG-ORDER: the third card dragged above the first stays th
   }
 });
 
-test("ACC-ACCORD-68-START-CLOSED: no card is open at load, this window's included", async ({
+test("ACC-ACCORD-68-START-CLOSED, overridden by ACC-ACCORD-317-CARD-STORE: with nothing stored no card is open at load, this window's included", async ({
   page
 }) => {
   const current = await setUp(page, 'closed', { a: {} });
@@ -323,6 +334,208 @@ test('ACC-ACCORD-241-MANY-OPEN: deleting a workspace closes its card and leaves 
     await expect(card(page, other)).not.toHaveClass(/jp-mod-open/);
   } finally {
     await deleteWorkspaces(page, ids(current, 'a'));
+  }
+});
+
+test('ACC-ACCORD-317-CARD-STORE: two open cards reload open and a closed one reloads closed; Create opens the new card and Delete drops its id; Move up and the filter change no stored state', async ({
+  page
+}) => {
+  const current = await setUp(page, 'store', { a: {}, b: {} });
+  const [a, b, d] = [`${current}-a`, `${current}-b`, `${current}-d`];
+  try {
+    // two cards open in turn: both open after a reload
+    await triangle(page, a).click();
+    await triangle(page, b).click();
+    await expect(openCards(page)).toHaveCount(2);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(2);
+    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+    await expect(card(page, b)).toHaveClass(/jp-mod-open/);
+
+    // one closes: the closed card stays closed after a reload
+    await triangle(page, b).click();
+    await expect(openCards(page)).toHaveCount(1);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(1);
+    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+    await expect(card(page, b)).not.toHaveClass(/jp-mod-open/);
+    expect(await storedCardIds(page)).toEqual([a]);
+
+    // Create opens the new card, and the reload restores both
+    await createWorkspace(page, d);
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(2);
+    expect(((await storedCardIds(page)) ?? []).sort()).toEqual([a, d].sort());
+
+    // Delete closes its card and drops its id from the stored value
+    await openCardMenu(page, a);
+    await menuItem(page, 'Delete workspace').click();
+    // the first click arms; the menu stays
+    await expect(menuItem(page, 'Confirm delete')).toBeVisible();
+    await page.waitForTimeout(700);
+    await menuItem(page, 'Confirm delete').click();
+    await expect(card(page, a)).toHaveCount(0, UNDER_LOAD);
+    await expect.poll(() => storedCardIds(page), UNDER_LOAD).toEqual([d]);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(1);
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+
+    // Move up keeps the card's state
+    await fromMenu(page, d, 'Move up');
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+
+    // a triangle inside a filter is not stored: closing D there, then clearing the filter and reloading, leaves D open
+    await headerButton(page, 'Filter').click();
+    const query = page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`);
+    await query.fill(current);
+    await expect(card(page, b)).toHaveClass(/jp-mod-open/);
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+    await triangle(page, d).click();
+    await expect(card(page, d)).not.toHaveClass(/jp-mod-open/);
+    await expect(card(page, b)).toHaveClass(/jp-mod-open/);
+    expect(await storedCardIds(page)).toEqual([d]);
+    await page.locator(`${PANEL} button[aria-label="Clear filter"]`).click();
+    await expect(query).toHaveValue('');
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(1);
+    await expect(card(page, d)).toHaveClass(/jp-mod-open/);
+  } finally {
+    await deleteWorkspaces(page, [current, b, d]);
+  }
+});
+
+test('ACC-ACCORD-317-CARD-STORE: two windows of one browser share the stored cards; each change adds or removes only its own id', async ({
+  page
+}) => {
+  const current = await setUp(page, 'twowin', { a: {}, b: {}, d: {} });
+  const [a, b, d] = [`${current}-a`, `${current}-b`, `${current}-d`];
+  let second: Page | null = null;
+  try {
+    await triangle(page, b).click();
+    await triangle(page, d).click();
+    await expect(openCards(page)).toHaveCount(2);
+    expect(((await storedCardIds(page)) ?? []).sort()).toEqual([b, d].sort());
+
+    // page 2 loads in another workspace of this test and closes D
+    second = await page.context().newPage();
+    await onlyWorkspaces(second, id => id.startsWith(current));
+    await second.goto(`/lab/workspaces/${a}`);
+    await expect(second.locator(PANEL_TAB)).toBeVisible({ timeout: 60000 });
+    await openPanel(second);
+    await refresh(second);
+    await expect(card(second, b)).toHaveClass(/jp-mod-open/);
+    await expect(card(second, d)).toHaveClass(/jp-mod-open/);
+    await triangle(second, d).click();
+    await expect.poll(() => storedCardIds(second)).toEqual([b]);
+
+    // page 1 reloads on the last change of each card: B open, D closed
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(1);
+    await expect(card(page, b)).toHaveClass(/jp-mod-open/);
+    await expect(card(page, d)).not.toHaveClass(/jp-mod-open/);
+  } finally {
+    await second?.close();
+    await deleteWorkspaces(page, [current, a, b, d]);
+  }
+});
+
+test('ACC-ACCORD-317-CARD-STORE: a stored id the first workspace list does not hold is dropped, and the ids it holds still open', async ({
+  page
+}) => {
+  const current = await setUp(page, 'ghost', { a: {} });
+  const a = `${current}-a`;
+  const ghost = `${current}-ghost`;
+  try {
+    await page.addInitScript(
+      ([key, value]) => localStorage.setItem(key, value),
+      [OPEN_CARDS, JSON.stringify([a, ghost])]
+    );
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect.poll(() => storedCardIds(page), UNDER_LOAD).toEqual([a]);
+    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+    await expect(card(page, current)).not.toHaveClass(/jp-mod-open/);
+  } finally {
+    await deleteWorkspaces(page, [current, a]);
+  }
+});
+
+test('ACC-ACCORD-317-CARD-STORE: an unreadable stored value and a localStorage that throws open no card at load, and the triangles still open one for this page', async ({
+  page
+}) => {
+  const current = await setUp(page, 'broken', { a: {} });
+  const a = `${current}-a`;
+  try {
+    for (const stored of ['{', '5', '[1]']) {
+      await page.evaluate(
+        ([key, value]) => localStorage.setItem(key, value),
+        [OPEN_CARDS, stored]
+      );
+      await page.reload();
+      await openPanel(page);
+      await refresh(page);
+      await expect(openCards(page)).toHaveCount(0);
+      await triangle(page, a).click();
+      await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+      await triangle(page, a).click();
+      await expect(card(page, a)).not.toHaveClass(/jp-mod-open/);
+    }
+
+    // a valid value opens its card: the contrast with the unreadable ones
+    await page.evaluate(
+      ([key, value]) => localStorage.setItem(key, value),
+      [OPEN_CARDS, JSON.stringify([a])]
+    );
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+
+    // a localStorage that throws on this key: no card at load, and the page still opens and closes them
+    await page.addInitScript(key => {
+      const [get, set] = [Storage.prototype.getItem, Storage.prototype.setItem];
+      Storage.prototype.getItem = function (k: string) {
+        if (k === key) {
+          throw new Error('denied');
+        }
+        return get.call(this, k);
+      };
+      Storage.prototype.setItem = function (k: string, v: string) {
+        if (k === key) {
+          throw new Error('denied');
+        }
+        return set.call(this, k, v);
+      };
+    }, OPEN_CARDS);
+    await page.reload();
+    await openPanel(page);
+    await refresh(page);
+    await expect(openCards(page)).toHaveCount(0);
+    await triangle(page, a).click();
+    await expect(card(page, a)).toHaveClass(/jp-mod-open/);
+    await triangle(page, a).click();
+    await expect(card(page, a)).not.toHaveClass(/jp-mod-open/);
+  } finally {
+    await deleteWorkspaces(page, [current, a]);
   }
 });
 

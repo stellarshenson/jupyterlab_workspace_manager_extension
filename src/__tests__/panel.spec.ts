@@ -31,7 +31,7 @@ import { Menu, Widget } from '@lumino/widgets';
 import { pageIcon } from '../icons';
 import { withoutTabs } from '../model/model';
 import { workspaceMenu } from '../panel/menus';
-import { WorkspacePanel } from '../panel/panel';
+import { keepCard, storedCards, WorkspacePanel } from '../panel/panel';
 
 const { setImmediate: realImmediate } = jest.requireActual('timers');
 /** Let every pending request and render finish; immune to fake timers. */
@@ -1234,6 +1234,48 @@ describe('panel', () => {
       sectionHeader(other, 'servers').click();
       expect(expanded(other)).toEqual(['false', 'false', 'false', 'true']);
     }
+  });
+
+  it('ACC-ACCORD-317-CARD-STORE: the stored-cards reader takes a JSON array of strings only; the writer adds or removes one id on the value it reads and leaves it as it was when the write throws', () => {
+    const key =
+      '@stellarshenson/jupyterlab-workspace-manager-extension:open-cards';
+    // a missing value, an unreadable one, and one that is not an array of strings: no id
+    expect(storedCards()).toEqual([]);
+    for (const stored of ['{', '5', '[1]']) {
+      localStorage.setItem(key, stored);
+      expect(storedCards()).toEqual([]);
+    }
+    localStorage.setItem(key, '["a","b"]');
+    expect(storedCards()).toEqual(['a', 'b']);
+
+    // the writer changes one id on the value it reads
+    keepCard('c', true);
+    expect(storedCards()).toEqual(['a', 'b', 'c']);
+    keepCard('a', false);
+    expect(storedCards()).toEqual(['b', 'c']);
+    keepCard('b', true);
+    expect(storedCards()).toEqual(['c', 'b']);
+
+    // a read that throws is no id, and the writer does not throw
+    const read = jest
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(() => {
+        throw new Error('denied');
+      });
+    expect(storedCards()).toEqual([]);
+    expect(() => keepCard('d', true)).not.toThrow();
+    read.mockRestore();
+
+    // a write that throws leaves the stored value as it was
+    localStorage.setItem(key, '["b"]');
+    const write = jest
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('denied');
+      });
+    expect(() => keepCard('d', true)).not.toThrow();
+    write.mockRestore();
+    expect(storedCards()).toEqual(['b']);
   });
 
   it('ACC-LISTS-194-ALL-TERMINALS, ACC-LISTS-195-ALL-KERNELS: TERMINALS and KERNELS list what a workspace holds too; such a row acts as in its card; the card counts stay', async () => {

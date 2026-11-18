@@ -1,5 +1,5 @@
 import { expect, test } from '@jupyterlab/galata';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import * as path from 'path';
 
 import {
@@ -129,6 +129,80 @@ async function wheelToEnd(
     .toBeLessThanOrEqual(1);
 }
 
+/**
+ * Up to `n` wheel events of `dy` px on `target`, sent inside the page 16 ms apart, so no
+ * browser round trip sits between two of them; the burst stops once section `until` is open.
+ */
+const wheelEvents = (target: Locator, n: number, dy = 10, until = '') =>
+  target.evaluate(
+    (node, [n, dy, until]) =>
+      new Promise<void>(done => {
+        let k = 0;
+        const timer = setInterval(() => {
+          node.dispatchEvent(
+            new WheelEvent('wheel', {
+              deltaY: dy,
+              bubbles: true,
+              cancelable: true
+            })
+          );
+          if (
+            ++k === n ||
+            document
+              .querySelector(
+                `#jp-running-sessions [data-section="${until}"] > .jp-WorkspaceManager-sectionHeader`
+              )
+              ?.getAttribute('aria-expanded') === 'true'
+          ) {
+            clearInterval(timer);
+            done();
+          }
+        }, 16);
+      }),
+    [n, dy, until] as const
+  );
+
+/** One wheel event as the panel took it: its time, whether the lists were at rest before it, the open sections after it. */
+interface IWheel {
+  t: number;
+  rest: boolean;
+  open: string[];
+}
+
+/** Record every wheel event from now on in window.__wheels. */
+const recordWheels = (page: Page) =>
+  page.evaluate(sections => {
+    const w = window as any;
+    const panel = document.querySelector('#jp-running-sessions')!;
+    w.__wheels = [];
+    window.addEventListener(
+      'wheel',
+      e => {
+        const bodies = panel.querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-sectionBody'
+        );
+        w.__wheels.push({
+          t: e.timeStamp,
+          rest: bodies.length === 1 && bodies[0].style.flex === ''
+        });
+      },
+      { capture: true }
+    );
+    window.addEventListener('wheel', () => {
+      w.__wheels[w.__wheels.length - 1].open = sections.filter(
+        name =>
+          panel
+            .querySelector(
+              `[data-section="${name}"] > .jp-WorkspaceManager-sectionHeader`
+            )
+            ?.getAttribute('aria-expanded') === 'true'
+      );
+    });
+  }, SECTIONS);
+
+const wheels = (page: Page): Promise<IWheel[]> =>
+  page.evaluate(() => (window as any).__wheels);
+
 test.describe('with kernels of its own', () => {
   // the kernels are started by REST; Galata would list only its page's own
   test.use({ kernels: null, sessions: null });
@@ -225,7 +299,7 @@ test.describe('with kernels of its own', () => {
     }
   });
 
-  test('ACC-PANEL-310-HARMONICA-PULL: under prefers-reduced-motion reduce, one wheel event past the WORKSPACES end eases the first KERNELS row in above the lower bands, and 500 ms later the bands are back in place', async ({
+  test('DEF-PANEL-109-SPRING-GIVE-1, ACC-PANEL-310-HARMONICA-PULL: under prefers-reduced-motion reduce, one 100 px wheel event past the WORKSPACES end eases the KERNELS list in by 25 px, its first row above the lower bands, and 500 ms later the bands are back in place', async ({
     page
   }) => {
     test.setTimeout(180000);
@@ -276,7 +350,7 @@ test.describe('with kernels of its own', () => {
         .poll(() => page.evaluate(() => (window as any).__pulled))
         .toBeTruthy();
       const pulled = await page.evaluate(() => (window as any).__pulled);
-      expect(pulled.body).toBe(3);
+      expect(pulled.body).toBe(25);
       // the first KERNELS row shows above the TERMINALS band
       expect(pulled.row).toBeGreaterThanOrEqual(pulled.bodyTop);
       expect(pulled.row).toBeLessThan(pulled.band);
@@ -421,7 +495,7 @@ test('ACC-PANEL-308-HARMONICA-WHEEL: over the open WORKSPACES list the browser s
   }
 });
 
-test('ACC-PANEL-309-HARMONICA-SWITCH: the wheel to the WORKSPACES end stops there; 300 ms later the next wheel opens KERNELS', async ({
+test('DEF-PANEL-109-SPRING-GIVE, ACC-PANEL-309-HARMONICA-SWITCH: with 30 workspaces and the WORKSPACES list at its end, a 10 px wheel every 16 ms leaves KERNELS folded after 14 events and opens it on the 15th; 10 more events that end inside the 400 ms fold change nothing, and 1000 ms later KERNELS is open and TERMINALS folded', async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -433,22 +507,28 @@ test('ACC-PANEL-309-HARMONICA-SWITCH: the wheel to the WORKSPACES end stops ther
     await expect(card(page, many[29])).toBeAttached();
     // every wheel event over the WORKSPACES band: the panel scrolls the list, pulls and switches
     await wheelToEnd(page, sectionHeader(page, 'workspaces'));
-    // the first event at the last entry pulls and does not switch
-    await page.mouse.wheel(0, 100);
-    expect(await expanded(page)).toEqual(['true', 'false', 'false', 'false']);
-    await page.waitForTimeout(300);
-    await page.mouse.wheel(0, 100);
-    await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    );
+    await recordWheels(page);
+    // 15 events, then 10 more that end inside the fold
+    await wheelEvents(sectionHeader(page, 'workspaces'), 25);
+    const seen = await wheels(page);
+    const times = `event times ${seen.map(e => Math.round(e.t)).join()}`;
+    expect(
+      seen.map(e => e.open.join()),
+      times
+    ).toEqual([...Array(14).fill('workspaces'), ...Array(11).fill('kernels')]);
+    // the 10 events after the give came inside the fold
+    expect(
+      seen.slice(15).map(e => e.rest),
+      times
+    ).toEqual(Array(10).fill(false));
+    await page.waitForTimeout(1000);
     expect(await expanded(page)).toEqual(['false', 'true', 'false', 'false']);
   } finally {
     await deleteWorkspaces(page, [current, ...many]);
   }
 });
 
-test('DEF-PANEL-108-WHEEL-STUCK, ACC-PANEL-309-HARMONICA-SWITCH: with 30 workspaces and KERNELS at (0), from the WORKSPACES end one wheel pulls, 300 ms later one wheel opens KERNELS, then a wheel every 16 ms with no pause opens TERMINALS within 1500 ms', async ({
+test('DEF-PANEL-108-WHEEL-STUCK, DEF-PANEL-109-SPRING-GIVE, ACC-PANEL-309-HARMONICA-SWITCH: with 30 workspaces and KERNELS at (0), a 10 px wheel every 16 ms from the WORKSPACES end opens KERNELS on the 15th event and goes on through the fold; from the first event after the fold ends TERMINALS stays folded for 14 events and opens on the 15th', async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -462,25 +542,22 @@ test('DEF-PANEL-108-WHEEL-STUCK, ACC-PANEL-309-HARMONICA-SWITCH: with 30 workspa
     await expect(card(page, many[29])).toBeAttached();
     await expect(sectionCount(page, 'kernels')).toHaveText('(0)', UNDER_LOAD);
     await wheelToEnd(page, sectionHeader(page, 'workspaces'));
-    await page.mouse.wheel(0, 100);
-    await page.waitForTimeout(300);
-    await page.mouse.wheel(0, 100);
-    await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    );
-    const start = Date.now();
-    while (
-      Date.now() - start < 1500 &&
-      (await sectionHeader(page, 'terminals').getAttribute('aria-expanded')) !==
-        'true'
-    ) {
-      await page.mouse.wheel(0, 100);
-      await page.waitForTimeout(16);
-    }
-    expect(
-      await sectionHeader(page, 'terminals').getAttribute('aria-expanded')
-    ).toBe('true');
+    await recordWheels(page);
+    await wheelEvents(sectionHeader(page, 'workspaces'), 100, 10, 'terminals');
+    const seen = await wheels(page);
+    const open = seen.map(e => e.open.join());
+    const times = `event times ${seen.map(e => Math.round(e.t)).join()}`;
+    expect(open.slice(0, 15), times).toEqual([
+      ...Array(14).fill('workspaces'),
+      'kernels'
+    ]);
+    // the first event after the KERNELS fold ends, with at least one event inside the fold
+    const after = seen.findIndex((e, i) => i > 14 && e.rest);
+    expect(after, times).toBeGreaterThan(15);
+    expect(open.slice(after), times).toEqual([
+      ...Array(14).fill('kernels'),
+      'terminals'
+    ]);
   } finally {
     await deleteWorkspaces(page, [current, ...many]);
   }
@@ -493,27 +570,25 @@ test('ACC-PANEL-311-HARMONICA-FOLD: under prefers-reduced-motion reduce a switch
   try {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await enterWorkspace(page, current);
-    const list = sectionBody(page, 'workspaces');
-    await list.hover();
-    // a list that does not overflow passes the wheel straight through: one event switches;
+    // a list that does not overflow is at its end both ways: the 15th event switches;
     // the KERNELS list 200 ms after that event, and after the fold
-    await page.evaluate(() =>
-      document.addEventListener(
-        'wheel',
-        () => {
-          const kernels = () =>
-            document
-              .querySelector(
-                '#jp-running-sessions [data-section="kernels"] > .jp-WorkspaceManager-sectionBody'
-              )
-              ?.getBoundingClientRect().height ?? 0;
-          setTimeout(() => ((window as any).__midway = kernels()), 200);
-          setTimeout(() => ((window as any).__full = kernels()), 900);
-        },
-        { once: true }
-      )
-    );
-    await page.mouse.wheel(0, 100);
+    await page.evaluate(() => {
+      let n = 0;
+      document.addEventListener('wheel', () => {
+        if (++n !== 15) {
+          return;
+        }
+        const kernels = () =>
+          document
+            .querySelector(
+              '#jp-running-sessions [data-section="kernels"] > .jp-WorkspaceManager-sectionBody'
+            )
+            ?.getBoundingClientRect().height ?? 0;
+        setTimeout(() => ((window as any).__midway = kernels()), 200);
+        setTimeout(() => ((window as any).__full = kernels()), 900);
+      });
+    });
+    await wheelEvents(sectionBody(page, 'workspaces'), 15);
     await expect
       .poll(() => page.evaluate(() => (window as any).__full))
       .toBeGreaterThan(0);
@@ -580,6 +655,86 @@ test('ACC-PANEL-311-HARMONICA-FOLD: no settle follows a band click: with TERMINA
     ]);
     // inside the 250 ms a settle would ignore
     expect(wheel - end).toBeLessThanOrEqual(200);
+  } finally {
+    await deleteWorkspaces(page, [current, ...many]);
+  }
+});
+
+test('ACC-PANEL-311-HARMONICA-FOLD: no settle follows a wheel switch: with 30 workspaces and KERNELS open at (0), a wheel of -10 px every 16 ms opens WORKSPACES at its bottom, and a wheel of -100 px over the WORKSPACES list at most 200 ms after its fold ends is not cancelled and scrolls it up', async ({
+  page
+}) => {
+  test.setTimeout(120000);
+  const current = fresh('hupfold');
+  const many = Array.from({ length: 30 }, (_, i) => `${current}-${i}`);
+  await Promise.all(many.map(id => putWorkspace(page, id)));
+  await only(page, /\/api\/kernels(\?.*)?$/, () => false);
+  await only(page, /\/api\/sessions(\?.*)?$/, () => false);
+  try {
+    await enterWorkspace(page, current);
+    await expect(card(page, many[29])).toBeAttached();
+    await expect(sectionCount(page, 'kernels')).toHaveText('(0)', UNDER_LOAD);
+    await openSection(page, 'kernels');
+    // the time the WORKSPACES list first has its full height, its scroll then, and each wheel event as the panel left it
+    await page.evaluate(() => {
+      const w = window as any;
+      w.__wheels = [];
+      window.addEventListener('wheel', e =>
+        w.__wheels.push({ t: e.timeStamp, cancelled: e.defaultPrevented })
+      );
+      const section = '#jp-running-sessions [data-section="workspaces"]';
+      const watch = () => {
+        const body = document.querySelector<HTMLElement>(
+          `${section} > .jp-WorkspaceManager-sectionBody`
+        );
+        if (
+          body &&
+          document
+            .querySelector(`${section} > .jp-WorkspaceManager-sectionHeader`)
+            ?.getAttribute('aria-expanded') === 'true' &&
+          body.style.flex === ''
+        ) {
+          w.__foldEnd = performance.now();
+          w.__fromBottom =
+            body.scrollHeight - body.clientHeight - body.scrollTop;
+          w.__top = body.scrollTop;
+        } else {
+          requestAnimationFrame(watch);
+        }
+      };
+      requestAnimationFrame(watch);
+    });
+    // the pointer over the KERNELS list, where the WORKSPACES list opens
+    const band = (await sectionHeader(page, 'kernels').boundingBox())!;
+    await page.mouse.move(band.x + band.width / 2, band.y + band.height + 100);
+    const workspaces = sectionHeader(page, 'workspaces');
+    for (
+      let n = 0;
+      n < 40 && (await workspaces.getAttribute('aria-expanded')) !== 'true';
+      n++
+    ) {
+      await page.mouse.wheel(0, -10);
+      await page.waitForTimeout(16);
+    }
+    await page.waitForFunction(() => (window as any).__foldEnd, null, {
+      polling: 'raf'
+    });
+    await page.mouse.wheel(0, -100);
+    const list = sectionBody(page, 'workspaces');
+    const [end, fromBottom, top, wheel] = await page.evaluate(() => {
+      const w = window as any;
+      return [
+        w.__foldEnd,
+        w.__fromBottom,
+        w.__top,
+        w.__wheels[w.__wheels.length - 1]
+      ];
+    });
+    expect(fromBottom).toBeLessThanOrEqual(1);
+    expect(top).toBeGreaterThan(0);
+    await expect.poll(() => list.evaluate(n => n.scrollTop)).toBeLessThan(top);
+    expect(wheel.cancelled).toBe(false);
+    // inside the 250 ms the removed settle ignored
+    expect(wheel.t - end).toBeLessThanOrEqual(200);
   } finally {
     await deleteWorkspaces(page, [current, ...many]);
   }
@@ -717,9 +872,8 @@ test('ACC-PANEL-316-HARMONICA-FOCUS: a WORKSPACES row focused with the keyboard,
     await rows.first().focus();
     await page.keyboard.press('ArrowDown');
     await expect(rows.nth(1)).toBeFocused();
-    // the WORKSPACES list does not overflow, so it passes the wheel straight through: one event switches
-    await sectionBody(page, 'workspaces').hover();
-    await page.mouse.wheel(0, 100);
+    // the WORKSPACES list does not overflow, so it is at its end both ways: the 2nd 100 px event switches
+    await wheelEvents(sectionBody(page, 'workspaces'), 2, 100);
     await expect(sectionHeader(page, 'kernels')).toHaveAttribute(
       'aria-expanded',
       'true'
@@ -731,11 +885,9 @@ test('ACC-PANEL-316-HARMONICA-FOCUS: a WORKSPACES row focused with the keyboard,
     const input = page.locator(`${PANEL} .jp-WorkspaceManager-filterInput`);
     await headerButton(page, 'Filter').click();
     await expect(input).toBeFocused();
-    // past the 250 ms settle; the fold left the KERNELS list at its top
-    await page.waitForTimeout(300);
-    // the KERNELS list does not overflow either: one event switches
-    await sectionBody(page, 'kernels').hover();
-    await page.mouse.wheel(0, -100);
+    // no settle follows the fold, which left the KERNELS list at its top; it does not
+    // overflow either: the 2nd 100 px event switches
+    await wheelEvents(sectionBody(page, 'kernels'), 2, -100);
     await expect(sectionHeader(page, 'workspaces')).toHaveAttribute(
       'aria-expanded',
       'true'
@@ -1085,7 +1237,7 @@ test.describe('in a 520 px window', () => {
     }
   });
 
-  test('HARMONICA-RENDER ACC-PANEL-307-HARMONICA-LAYOUT, ACC-PANEL-310-HARMONICA-PULL, ACC-PANEL-313-HARMONICA-EDGE: screenshots in Light, Dark and Steel of WORKSPACES open with several cards, KERNELS open between the bands at the top and the bottom edge, the pull preview held at 22 px and a list that draws a scrollbar', async ({
+  test('HARMONICA-RENDER ACC-PANEL-307-HARMONICA-LAYOUT, ACC-PANEL-310-HARMONICA-PULL, ACC-PANEL-313-HARMONICA-EDGE: screenshots in Light, Dark and Steel of WORKSPACES open with several cards, KERNELS open between the bands at the top and the bottom edge, the pull preview at 24 px and a list that draws a scrollbar', async ({
     page
   }, testInfo) => {
     test.setTimeout(300000);
@@ -1171,9 +1323,9 @@ test.describe('in a 520 px window', () => {
         await page.mouse.move(0, 0);
         await shot('scrollbar');
 
-        // the pull preview held at 22 px, on this list that overflows (a list that fits passes the
-        // wheel straight through): eight wheel events at the last entry, then one every 100 ms
-        // until 300 ms; a held pull never switches, and no spring starts before 460 ms
+        // the pull preview at 24 px, on this list that overflows: eight 10 px wheel events at the
+        // last entry, then one every 100 ms until 300 ms; 11 events stay short of the 44 px give
+        // length, so nothing switches, and no spring starts before 460 ms
         const pull = await page.locator(PANEL).evaluate(panel => {
           const list = panel.querySelector<HTMLElement>(
             '[data-section="workspaces"] > .jp-WorkspaceManager-sectionBody'
@@ -1182,7 +1334,7 @@ test.describe('in a 520 px window', () => {
           const wheel = () =>
             list.dispatchEvent(
               new WheelEvent('wheel', {
-                deltaY: 100,
+                deltaY: 10,
                 bubbles: true,
                 cancelable: true
               })
@@ -1203,7 +1355,7 @@ test.describe('in a 520 px window', () => {
             )!
             .getBoundingClientRect().height;
         });
-        expect(pull).toBe(22);
+        expect(pull).toBe(24);
         await shot('pull');
         await page.waitForTimeout(1200);
         await atRest(page);
