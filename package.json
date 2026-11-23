@@ -1,6 +1,6 @@
 {
     "name": "@stellarshenson/jupyterlab-workspace-manager-extension",
-    "version": "1.0.16",
+    "version": "1.0.17",
     "description": "Workspace-driven Running panel: workspaces as coloured accordion sections with their tabs, terminals and kernels",
     "keywords": [
         "jupyter",
@@ -63,9 +63,12 @@
         "@jupyterlab/docmanager": "^4.6.0",
         "@jupyterlab/running": "^4.6.0",
         "@jupyterlab/services": "^7.6.0",
+        "@jupyterlab/statedb": "^4.6.4",
+        "@jupyterlab/terminal": "^4.6.5",
         "@jupyterlab/ui-components": "^4.6.0",
         "@lumino/commands": "^2.3.0",
         "@lumino/coreutils": "^2.2.0",
+        "@lumino/dragdrop": "^2.1.0",
         "@lumino/messaging": "^2.0.0",
         "@lumino/signaling": "^2.1.0",
         "@lumino/widgets": "^2.8.0",
@@ -101,6 +104,8 @@
         "yjs": "^13.6.0"
     },
     "resolutions": {
+        "@jupyterlab/apputils": "4.7.6",
+        "@jupyterlab/ui-components": "4.6.6",
         "lib0": "0.2.111",
         "webpack": "5.106.0"
     },
