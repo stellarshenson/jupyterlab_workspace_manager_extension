@@ -542,6 +542,38 @@ describe('model', () => {
     ]);
   });
 
+  it('ACC-PANEL-332-TABNAMES-UPDATE: a live server title outranks the departure-saved title on a left card', () => {
+    const model = buildModel(
+      input({
+        current: 'default',
+        workspaces: [
+          ws('default', '2026-11-23T10:00:00Z'),
+          ws('left', '2026-11-23T10:00:00Z', ['terminal:3'], {
+            'terminal:3': { data: { name: '3', title: 'wm-saved-title' } }
+          })
+        ],
+        terminals: [{ name: '3', title: 'build 42' }]
+      })
+    );
+    expect(byId(model.sections, 'left').terminals.map(t => t.title)).toEqual([
+      'build 42'
+    ]);
+  });
+
+  it("ACC-PANEL-332-TABNAMES-UPDATE: this window's live widget title still outranks the server title on its own card", () => {
+    const model = buildModel(
+      input({
+        current: 'default',
+        workspaces: [ws('default', '2026-11-23T10:00:00Z', ['terminal:2'])],
+        terminals: [{ name: '2', title: 'server-title' }],
+        liveTabs: [{ key: 'terminal:2', title: 'vim notes.md' }]
+      })
+    );
+    expect(byId(model.sections, 'default').terminals.map(t => t.title)).toEqual(
+      ['vim notes.md']
+    );
+  });
+
   it("gives this window's workspace a card before its first save", () => {
     const sections = buildSections(
       input({

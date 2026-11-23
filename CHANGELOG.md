@@ -2,6 +2,16 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.19] - 2026-11-23
+
+### Added
+
+- A card of a workspace this window does not show keeps each terminal's title live: the OSC title the running process keeps rewriting is read from the terminal's output in the server and carried by the existing terminals route, so the card follows it on its usual reload (ACC-PANEL-332-TABNAMES-UPDATE)
+
+### Changed
+
+- The terminal row of a card this window does not show prefers the live server title, then the title saved when the window left the workspace, then the process name
+
 ## [1.0.18] - 2026-11-23
 
 ### Added

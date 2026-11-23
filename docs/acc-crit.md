@@ -1176,6 +1176,15 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-11-23T10:16:12Z @kj added; reason: owner constraint recorded verbatim
   - log: 2026-11-23T12:10:10Z @kj edited test "src/__tests__/panel.spec.ts: a render schedules no title scan or timer and the departure save reads each live terminal title once; ui-tests/tests/switch.spec.ts proves the title end to end" -> "src/__tests__/panel.spec.ts: a render sends no request and the departure save writes each live terminal title into its entry; ui-tests/tests/switch.spec.ts: the title appears on a left card with no timer added"
   - log: 2026-11-23T12:10:24Z @kj closed
+- [x] `ACC-PANEL-332-TABNAMES-UPDATE` **An inactive workspace shows live, updating tab titles** - HIGH; a card of a workspace this window does not show shows each tab's live title where one exists, updated while the workspace is left: for a terminal, the OSC title its process keeps writing, not the title saved at departure. The update is very lightweight: one batched read on the existing reload, no per-render work and no browser-side terminal
+  - evidence: tests/test_titles.py 11 parser tests and test_terminals.py 19 route tests incl test_live_title PASSED; Jest model.spec.ts PASSED in 262 tests/14 suites; Galata switch.spec.ts:1021 PASSED with tab 1795465299, saved 1795465299, row 1795465300; pytest 179 passed; full Galata 304 passed (w2-gate.json)
+  - mechanism: 2026-11-23T20:30:58Z @kj a per-pty read_buffer deque subclass parses OSC 0/2 titles while terminado forwards each chunk; the terminals route carries the newest title and the panel's existing reload picks it up, with no new timer, request or browser terminal
+  - related: ACC-PANEL-326-TABNAMES-LIVE
+  - related: DEF-PANEL-111-TABNAMES-LEFT
+  - test: unit: the pty tap keeps the newest OSC 0/2 title per terminal and the terminals route carries it; ui-tests/tests/switch.spec.ts: a loop in A's terminal rewrites its title, switch to B, and A's card shows the new title within one reload
+  - test-tags: UNIT, INTEGRATION, FUNCTIONAL
+  - log: 2026-11-23T18:38:37Z @kj added; reason: the owner's live-title requirement exceeds the departure-saved title shipped in 1.0.18; the criterion states the outcome before the mechanism is designed
+  - log: 2026-11-23T20:31:00Z @kj closed
 
 ## Workspace sections `ACCORD`
 

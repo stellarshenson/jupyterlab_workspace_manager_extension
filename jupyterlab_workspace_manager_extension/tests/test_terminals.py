@@ -1,4 +1,4 @@
-"""The terminals endpoint: each terminal's name, last activity, foreground process, its memory, its directory and its command."""
+"""The terminals endpoint: each terminal's name, last activity, foreground process, its memory, its directory, its command and its live title."""
 import asyncio
 import json
 import os
@@ -68,6 +68,16 @@ async def wait_for_command(jp_fetch, name, expected):
     return command
 
 
+async def wait_for_title(jp_fetch, name, expected):
+    """Poll until the terminal's OSC title is `expected`; return the last value read."""
+    for _ in range(100):
+        title = {t["name"]: t.get("title") for t in await get_terminals(jp_fetch)}[name]
+        if title == expected:
+            break
+        await asyncio.sleep(0.1)
+    return title
+
+
 async def test_two_terminals_with_their_fields(jp_fetch, jp_serverapp):
     """ACC-SERVER-62, ACC-TERM-200, ACC-TERM-280-MEMORY-ROUTE: both terminals with name, last_activity, process, memory, cwd and command; no fingerprint."""
     names = {await new_terminal(jp_fetch), await new_terminal(jp_fetch)}
@@ -78,9 +88,25 @@ async def test_two_terminals_with_their_fields(jp_fetch, jp_serverapp):
 
     assert {t["name"] for t in terminals} == names
     for terminal in terminals:
-        assert set(terminal) == {"name", "last_activity", "process", "memory", "cwd", "command"}
+        assert set(terminal) == {"name", "last_activity", "process", "memory", "cwd", "command", "title"}
         datetime.fromisoformat(terminal["last_activity"])
         assert terminal["process"] == "bash"
+
+
+async def test_live_title(jp_fetch, jp_serverapp):
+    """ACC-PANEL-332-TABNAMES-UPDATE: a title written after the route attached shows, a quiet terminal has none, and a newer title replaces it."""
+    named = await new_terminal(jp_fetch)
+    quiet = await new_terminal(jp_fetch)
+    # the route read attaches the tap to the pty's reconnect buffer
+    assert await wait_for_process(jp_fetch, named, "bash") == "bash"
+    assert await wait_for_process(jp_fetch, quiet, "bash") == "bash"
+
+    type_into(jp_serverapp, named, "printf '\\033]2;build 42\\007'\r")
+    assert await wait_for_title(jp_fetch, named, "build 42") == "build 42"
+    assert {t["name"]: t["title"] for t in await get_terminals(jp_fetch)}[quiet] is None
+
+    type_into(jp_serverapp, named, "printf '\\033]2;build 43\\007'\r")
+    assert await wait_for_title(jp_fetch, named, "build 43") == "build 43"
 
 
 async def test_ended_terminal_left_out(jp_fetch, jp_serverapp, tmp_path):

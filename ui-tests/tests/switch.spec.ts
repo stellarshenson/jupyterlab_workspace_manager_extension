@@ -1017,3 +1017,69 @@ test("DEF-PANEL-111-TABNAMES-LEFT, ACC-PANEL-326-TABNAMES-LIVE: a left workspace
     await deleteWorkspaces(page, [a, b]);
   }
 });
+
+test("ACC-PANEL-332-TABNAMES-UPDATE: a left workspace's card shows a newer terminal title while the workspace is left", async ({
+  page
+}) => {
+  const a = fresh('swtick');
+  const b = `${a}-b`;
+  let terminal: string | undefined;
+  // B exists before A is created, so the panel lists it beside the workspace entered
+  await putWorkspace(page, b);
+  /** the tick of a wm-tick title in a piece of text */
+  const tickOf = (text: string | null | undefined): string | undefined =>
+    /wm-tick-(\d+)/.exec(text ?? '')?.[1];
+  try {
+    await enterWorkspace(page, a);
+    terminal = await newTerminalTab(page);
+
+    // the process rewrites its title every second, as a build does
+    await sendToTerminal(
+      page,
+      terminal,
+      'while :; do printf \'\\033]2;wm-tick-%s\\007\' "$(date +%s)"; sleep 1; done\n'
+    );
+    const tab = page.locator('#jp-main-dock-panel .lm-TabBar-tab', {
+      hasText: 'wm-tick-'
+    });
+    await expect(tab).toHaveText(/wm-tick-\d+/, PROCESS_START);
+    const tick = tickOf(await tab.textContent())!;
+
+    // leave A through B's card header: the _openWorkspace path that saves A first
+    await cardHeader(page, b).click();
+    await switchedTo(page, b);
+
+    // A's saved layout holds the tick at departure, the only title this window has for A
+    const departure = async (): Promise<string | undefined> =>
+      tickOf((await saved(page, a))[`terminal:${terminal}`]?.data?.title);
+    await expect.poll(departure, UNDER_LOAD).toBeTruthy();
+    const departed = (await departure())!;
+
+    // a row drawing only A's save would stay at the departure tick forever
+    await openCard(page, a);
+    const row = card(page, a).locator(
+      `.jp-WorkspaceManager-row[data-row-key="terminal:${terminal}"]`
+    );
+    await expect(row).toBeVisible(NEXT_POLL);
+    await expect(row).toContainText(/wm-tick-\d+/, NEXT_POLL);
+    const first = tickOf(await row.textContent());
+    // within one reload the row shows a tick its save does not hold: only the route supplies it
+    await expect
+      .poll(async () => {
+        const shown = tickOf(await row.textContent());
+        return shown !== undefined && shown !== departed;
+      }, NEXT_POLL)
+      .toBe(true);
+    const last = tickOf(await row.textContent());
+    console.log(
+      `wm-tick: tab ${tick}, saved ${departed}, row ${first} -> ${last}`
+    );
+  } finally {
+    if (terminal !== undefined) {
+      // stop the loop, then the terminal it runs in
+      await sendToTerminal(page, terminal, '\u0003');
+      await page.request.delete(`/api/terminals/${terminal}`);
+    }
+    await deleteWorkspaces(page, [a, b]);
+  }
+});

@@ -27,6 +27,8 @@ export interface ITerminal {
   command?: string | null;
   /** the foreground process's resident bytes; null or absent when it cannot be read */
   memory?: number | null;
+  /** the newest OSC 0 or 2 title the terminal's process wrote; null or absent when it wrote none */
+  title?: string | null;
 }
 
 /**
@@ -64,7 +66,7 @@ export interface ITerminalRow {
   /** the foreground process's resident bytes; null when it cannot be read */
   memory: number | null;
   lastActivity?: string;
-  /** the tab title, when this window shows the terminal */
+  /** this window's live tab title, else the server's live title, else the departure-saved title */
   title?: string;
   /** the other workspaces that hold it; in the TERMINALS section, every one */
   alsoIn: string[];
@@ -303,8 +305,9 @@ export function buildModel(input: IModelInput): IModel {
     command: t.command ?? null,
     memory: t.memory ?? null,
     lastActivity: t.last_activity,
-    // a live tab's title is current; the saved one names a terminal this window left behind
-    title: titles.get(t.name) ?? savedTitle,
+    // this window's live tab title is current; the server's live title names a terminal the window
+    // left behind; the saved one is the departure title
+    title: titles.get(t.name) ?? t.title ?? savedTitle,
     alsoIn: holders.filter(h => h !== id)
   });
   const kernelRow = (

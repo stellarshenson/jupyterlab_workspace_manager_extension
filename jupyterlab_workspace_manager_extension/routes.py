@@ -14,6 +14,8 @@ import psutil
 import ptyprocess
 import tornado
 
+from .titles import title_of
+
 NAMESPACE = "jupyterlab-workspace-manager-extension"
 RECORDS_FILE = "workspace-manager.json"
 # Window id -> {workspace, reported}; on disk, so a restarted server knows the windows of the last 90 s
@@ -104,6 +106,7 @@ class TerminalsHandler(APIHandler):
             model["memory"] = process_memory(pty)
             model["cwd"] = process_cwd(pty)
             model["command"] = process_command(pty)
+            model["title"] = title_of(pty)
             live.append(model)
         self.finish(json.dumps(live))
 
