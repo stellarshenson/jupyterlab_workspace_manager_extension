@@ -581,4 +581,40 @@ describe('workspace-page:open', () => {
     second.dispose();
     other.dispose();
   });
+
+  it('ACC-PANEL-326-TABNAMES-LIVE: a page opened without a title takes its document title and saves it as documentTitle, while an open with title "First" keeps that label and saves no documentTitle', async () => {
+    const saved = new Map<string, any>();
+    const { app } = fakeApp(saved);
+    const widget = await app.commands.execute('workspace-page:open', {
+      url: URL,
+      id: 'p1'
+    });
+    const frame = frameOf(widget);
+    Object.defineProperty(frame, 'contentDocument', {
+      get: () => ({ title: 'Page title' })
+    });
+
+    frame.dispatchEvent(new Event('load'));
+    await settle();
+
+    expect(widget.title.label).toBe('Page title');
+    expect(frame.title).toBe('Page title');
+    expect(saved.get('workspace-page:p1').data.documentTitle).toBe(
+      'Page title'
+    );
+
+    // a title given at open is kept when the document loads, and the saved entry carries no documentTitle
+    const titled = await app.commands.execute('workspace-page:open', {
+      url: URL,
+      id: 'p1',
+      title: 'First'
+    });
+    expect(titled).toBe(widget);
+    frame.dispatchEvent(new Event('load'));
+    await settle();
+
+    expect(widget.title.label).toBe('First');
+    expect(frame.title).toBe('First');
+    expect(saved.get('workspace-page:p1').data.documentTitle).toBeUndefined();
+  });
 });

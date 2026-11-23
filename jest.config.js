@@ -6,6 +6,7 @@ const esModules = [
   '@jupyter/web-components',
   '@jupyter/ydoc',
   '@microsoft',
+  'color',
   'exenv-es6',
   '@jupyterlab/',
   'lib0',

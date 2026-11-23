@@ -966,6 +966,8 @@ test('SEC-05 ACC-PANEL-157-OTHERS-ACTIONS: on the section band an enabled power 
     );
     // keyboard focus shows the design system's rim 1 px outside (DQ-19)
     await sectionHeader(page, 'terminals').focus();
+    // the 'Clean up terminals' eraser is the band's first tab stop
+    await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     await expect(button('terminals')).toBeFocused();
     expect([
@@ -997,6 +999,10 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
   page
 }) => {
   const current = fresh('caret');
+  const erasers: Record<string, string[]> = {
+    kernels: ['Clean up kernels'],
+    terminals: ['Clean up terminals']
+  };
   try {
     await enterWorkspace(page, current);
     for (const name of ['workspaces', 'kernels', 'terminals', 'servers']) {
@@ -1022,7 +1028,7 @@ test('SEC-06 (skill design-system, no criterion): a section header is one button
         };
       });
       expect.soft(found, name).toEqual({
-        otherButtons: [],
+        otherButtons: erasers[name] ?? [],
         caretTag: 'span',
         caretHidden: 'true',
         caretWidth: 14,
@@ -2590,7 +2596,7 @@ test("KERN-03 ACC-KERNEL-49-STATE, ACC-LISTS-109-CONSOLE, ACC-KERNEL-156-DISPLAY
   }
 });
 
-test("MENU-03 ACC-ACCORD-32-DELETE-CURRENT, ACC-HIDDEN-87-NOT-CURRENT: on this window's card Open workspace, Open in new browser tab, Hide workspace and Delete workspace are disabled; on another card none of them is", async ({
+test("MENU-03 ACC-PANEL-329-DELETE-CURRENT, ACC-HIDDEN-87-NOT-CURRENT: on this window's card Open workspace, Open in new browser tab and Hide workspace are disabled and Delete workspace is enabled; on another card none of them is", async ({
   page
 }) => {
   const current = fresh('menucur');
@@ -2601,6 +2607,7 @@ test("MENU-03 ACC-ACCORD-32-DELETE-CURRENT, ACC-HIDDEN-87-NOT-CURRENT: on this w
     'Hide workspace',
     'Delete workspace'
   ];
+  const THREE = ['Open workspace', 'Open in new browser tab', 'Hide workspace'];
   const disabled = () =>
     page
       .locator(
@@ -2611,7 +2618,7 @@ test("MENU-03 ACC-ACCORD-32-DELETE-CURRENT, ACC-HIDDEN-87-NOT-CURRENT: on this w
     ids = await setUp(page, current, { a: {}, b: {} });
     await openCardMenu(page, current);
     expect((await disabled()).filter(l => FOUR.includes(l)).sort()).toEqual(
-      [...FOUR].sort()
+      [...THREE].sort()
     );
     await page.keyboard.press('Escape');
     await openCardMenu(page, ids[1]);

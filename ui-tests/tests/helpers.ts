@@ -48,6 +48,95 @@ export async function sidebarTo(page: Page, width: number): Promise<void> {
   await expect.poll(() => panelWidth(page)).toBeCloseTo(width, 0);
 }
 
+/** The path payload type the panel's row drag sets (src/panel/panel.tsx PATH_MIME); Galata cannot import it from the panel module. */
+export const PATH_MIME = 'application/x-jupyterlab-drag-and-drop-path';
+
+/** The pointer position at the centre of an element. */
+async function centre(l: Locator): Promise<{ x: number; y: number }> {
+  const box = (await l.boundingBox())!;
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/**
+ * Drag a panel row by its icon handle onto `target` with the mouse: past the
+ * panel's 4 px threshold, then onto the target and release. The panel starts a
+ * Lumino drag, so the target receives `lm-dragenter`, `lm-dragover` and `lm-drop`.
+ */
+export async function dragRowTo(
+  page: Page,
+  row: Locator,
+  target: Locator
+): Promise<void> {
+  const start = await centre(row.locator('.jp-WorkspaceManager-rowDrag'));
+  const end = await centre(target);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  // past the 4 px threshold, then onto the target
+  await page.mouse.move(start.x + 10, start.y + 10, { steps: 5 });
+  await page.mouse.move(end.x, end.y, { steps: 10 });
+  await page.mouse.up();
+}
+
+/**
+ * Put a node at the top right of the page that takes a Lumino drop and records
+ * its PATH_MIME payload on `window.__wmDropped`; the node is the drop target. It
+ * proves the payload without either the panel's terminal or the advanced file
+ * browser's targets.
+ */
+export async function dropRecorder(page: Page): Promise<Locator> {
+  await page.evaluate(mime => {
+    const node = document.createElement('div');
+    node.id = 'wm-drop-recorder';
+    node.style.cssText =
+      'position: fixed; top: 0; right: 0; width: 240px; height: 160px; z-index: 1000;';
+    node.addEventListener('lm-dragenter', (event: any) =>
+      event.preventDefault()
+    );
+    node.addEventListener('lm-dragover', (event: any) => {
+      event.preventDefault();
+      event.dropAction = event.proposedAction;
+    });
+    node.addEventListener('lm-drop', (event: any) => {
+      (window as any).__wmDropped = event.mimeData.getData(mime);
+      event.preventDefault();
+    });
+    document.body.appendChild(node);
+  }, PATH_MIME);
+  return page.locator('#wm-drop-recorder');
+}
+
+/** The PATH_MIME payload of the last drop the recorder took. */
+export const droppedPath = (page: Page): Promise<string[] | undefined> =>
+  page.evaluate(() => (window as any).__wmDropped);
+
+/** Remove the drop recorder. */
+export const removeRecorder = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    document.getElementById('wm-drop-recorder')?.remove();
+  });
+
+/**
+ * The line the cursor of the terminal tab `name` is on, read from its xterm
+ * buffer: xterm draws to a canvas, so the page carries no text.
+ */
+export function terminalLine(page: Page, name: string): Promise<string> {
+  return page.evaluate(name => {
+    for (const widget of Array.from<any>(
+      (window as any).jupyterapp.shell.widgets('main')
+    )) {
+      const session = widget.content?.hasClass?.('jp-Terminal')
+        ? widget.content.session
+        : undefined;
+      if (session?.name !== name) {
+        continue;
+      }
+      const buffer = widget.content._term.buffer.active;
+      return buffer.getLine(buffer.cursorY)!.translateToString(true);
+    }
+    throw new Error(`terminal not found: ${name}`);
+  }, name);
+}
+
 /** The texts of the elements under `selector` that are cut: scrollWidth over clientWidth. */
 export const cut = (scope: Locator, selector: string): Promise<string[]> =>
   scope

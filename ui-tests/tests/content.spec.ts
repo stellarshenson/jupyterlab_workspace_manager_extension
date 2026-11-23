@@ -10,6 +10,9 @@ import {
   cut,
   deleteWorkspaces,
   dialog,
+  dragRowTo,
+  dropRecorder,
+  droppedPath,
   enterWorkspace,
   expectRefused,
   fresh,
@@ -34,6 +37,7 @@ import {
   putNotebook,
   putWorkspace,
   refresh,
+  removeRecorder,
   rgb,
   rowLabel,
   rowOf,
@@ -757,6 +761,31 @@ test('ACC-LISTS-105-DOC-ICON: a card document row shows the file-type icon of th
       'ui-components:markdown'
     );
   } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-DRAG-319-FILE-PATH: a document row dragged with the mouse onto a Lumino drop target records its path as [path] under PATH_MIME', async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('dragfile');
+  const doc = `${tmpPath}/dragged.txt`;
+  await page.contents.uploadContent('text', 'text', doc);
+  try {
+    await enterWorkspace(page, current);
+    await openDocument(page, doc);
+    await cardHeader(page, current).click();
+    const row = rowOf(card(page, current), 'dragged.txt');
+    await expect(row.locator('.jp-WorkspaceManager-rowDrag')).toHaveCount(
+      1,
+      UNDER_LOAD
+    );
+    const target = await dropRecorder(page);
+    await dragRowTo(page, row, target);
+    await expect.poll(() => droppedPath(page), UNDER_LOAD).toEqual([doc]);
+  } finally {
+    await removeRecorder(page);
     await deleteWorkspaces(page, [current]);
   }
 });

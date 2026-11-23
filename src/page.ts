@@ -27,6 +27,8 @@ export interface IPagePolicy {
 export interface IPageArgs {
   url: string;
   title?: string;
+  /** The document title the page set at load; saved only for a tab opened without a `title`. */
+  documentTitle?: string;
   /** The id of the tab's content widget, as server-proxy:open sets it. */
   id?: string;
   /** Open the url in a new browser tab and no lab tab. */
@@ -48,6 +50,12 @@ const pages = new Map<MainAreaWidget<Widget>, IPageArgs>();
 
 /** The class of a page tab; the panel keys it `workspace-page:<content id>`, as the layout restorer saves it. */
 export const PAGE_CLASS = 'jp-WorkspaceManager-page';
+
+/** The address a page tab shows: the last arguments it was opened with; no entry once the tab is gone. */
+export function pageUrl(widget: Widget): string | undefined {
+  // the panel holds the tab as a base widget, though the map keys the main-area widget
+  return pages.get(widget as MainAreaWidget<Widget>)?.url;
+}
 
 /** The proxied port of a URL on the lab's own origin under /proxy/<port>/ or /proxy/absolute/<port>/. */
 function proxyPort(url: URL): string | undefined {
@@ -121,7 +129,10 @@ function policyAttributes(
 }
 
 /** A new page tab: a MainAreaWidget around a plain iframe, tracked until disposed. */
-function createPage(id?: string): MainAreaWidget<Widget> {
+function createPage(
+  tracker: WidgetTracker<MainAreaWidget<Widget>>,
+  id?: string
+): MainAreaWidget<Widget> {
   const frame = document.createElement('iframe');
   frame.style.width = '100%';
   frame.style.height = '100%';
@@ -135,9 +146,13 @@ function createPage(id?: string): MainAreaWidget<Widget> {
   frame.addEventListener('load', () => {
     // readable only while the page keeps the lab origin
     const title = frame.contentDocument?.title;
-    if (!pages.get(widget)?.title && title) {
+    const saved = pages.get(widget);
+    if (saved && !saved.title && title) {
       widget.title.label = title;
       frame.title = title;
+      // into the saved args and re-saved, so the workspace file carries the title
+      saved.documentTitle = title;
+      void tracker.save(widget);
     }
   });
   widget.disposed.connect(() => pages.delete(widget));
@@ -195,7 +210,7 @@ export function openPage(
         portOf(new URL(shown.url, document.baseURI)) === portOf(url)
     ) ??
     [];
-  const widget = open ?? createPage(args.id);
+  const widget = open ?? createPage(tracker, args.id);
   pages.set(widget, args);
   const frame = widget.content.node as HTMLIFrameElement;
   for (const name of ['sandbox', 'allow', 'referrerpolicy', 'csp']) {
@@ -282,10 +297,11 @@ export const pagePlugin: JupyterFrontEndPlugin<void> = {
     void restorer?.restore(tracker, {
       command: 'workspace-page:open',
       args: widget => {
-        const { url, title, icon, policy } = pages.get(widget)!;
+        const { url, title, documentTitle, icon, policy } = pages.get(widget)!;
         return {
           url,
           title,
+          documentTitle,
           id: widget.content.id,
           icon,
           policy

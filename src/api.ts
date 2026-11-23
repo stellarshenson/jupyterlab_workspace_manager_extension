@@ -191,3 +191,37 @@ export async function switches(
 
 export const workspaces = (settings: ServerConnection.ISettings) =>
   new WorkspaceManager({ serverSettings: settings });
+
+/**
+ * Rename a workspace as JupyterLab's Rename Workspace (workspace-ui:rename)
+ * does: read it, save it under the new id with its tabs, then remove the old id.
+ */
+export async function renameWorkspace(
+  settings: ServerConnection.ISettings,
+  from: string,
+  to: string
+): Promise<void> {
+  const manager = workspaces(settings);
+  const workspace = await manager.fetch(from);
+  workspace.metadata.id = to;
+  await manager.save(to, workspace);
+  // a workspace JupyterLab never saved has no file to remove
+  await removeWorkspace(settings, from);
+}
+
+/** Remove a workspace; a workspace JupyterLab never saved has no file, so removing it is already done. */
+export async function removeWorkspace(
+  settings: ServerConnection.ISettings,
+  id: string
+): Promise<void> {
+  try {
+    await workspaces(settings).remove(id);
+  } catch (reason) {
+    if (!(
+      reason instanceof ServerConnection.ResponseError &&
+      reason.response.status === 404
+    )) {
+      throw reason;
+    }
+  }
+}

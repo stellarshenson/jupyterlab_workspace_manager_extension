@@ -84,12 +84,12 @@ describe('palette', () => {
     expect(next.given).toEqual({ d: 'peach' });
   });
 
-  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its hue and the two tints mixed from it, and nothing else, for the card, the swatch and the number badge', () => {
+  it('ACC-ACCORD-86-OWN-PALETTE: each workspace colour rule sets its hue and the two tints mixed from it, and nothing else, for the card, the swatch, the number badge and the kernel icon', () => {
     const text = css();
     let rest = text;
     for (const colour of COLOURS) {
       const rule = new RegExp(
-        `\\.jp-WorkspaceManager-card\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-swatch\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-terminalBadge\\.jp-mod-${colour}\\s*\\{([^}]*)\\}`
+        `\\.jp-WorkspaceManager-card\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-swatch\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-terminalBadge\\.jp-mod-${colour},\\s*\\.jp-WorkspaceManager-kernelIcon\\.jp-mod-${colour}\\s*\\{([^}]*)\\}`
       );
       const body = text.match(rule)?.[1] ?? '';
       expect(body.trim().replace(/\s+/g, ' ')).toBe(SHADE_RULE(colour));

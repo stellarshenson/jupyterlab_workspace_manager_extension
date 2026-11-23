@@ -3,9 +3,10 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+import { WidgetTracker } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
 import { RunningSessionManagers } from '@jupyterlab/running';
-import { ServerConnection } from '@jupyterlab/services';
+import { ServerConnection, WorkspaceManager } from '@jupyterlab/services';
 import {
   dangerDialog,
   dismissDialog,
@@ -24,14 +25,27 @@ import {
   textEditorIcon
 } from '@jupyterlab/ui-components';
 import { CommandRegistry } from '@lumino/commands';
+import { MimeData } from '@lumino/coreutils';
+import { Drag } from '@lumino/dragdrop';
 import { MessageLoop } from '@lumino/messaging';
 import { Signal } from '@lumino/signaling';
 import { Menu, Widget } from '@lumino/widgets';
 
 import { pageIcon } from '../icons';
+import plugins from '../index';
 import { withoutTabs } from '../model/model';
+import { NAME_RULE } from '../model/new';
+import { openPage } from '../page';
+import * as dialogs from '../panel/dialogs';
 import { workspaceMenu } from '../panel/menus';
-import { keepCard, storedCards, WorkspacePanel } from '../panel/panel';
+import {
+  keepCard,
+  PATH_MIME,
+  storedCards,
+  TEXT_MIME,
+  WorkspacePanel
+} from '../panel/panel';
+import { forget, keep, recall } from '../panel/position';
 
 const { setImmediate: realImmediate } = jest.requireActual('timers');
 /** Let every pending request and render finish; immune to fake timers. */
@@ -42,6 +56,12 @@ const settle = async () => {
 };
 
 const NS = 'jupyterlab-workspace-manager-extension';
+/** Where the panel keeps the file positions; the position module keeps the key private. */
+const POSITIONS =
+  '@stellarshenson/jupyterlab-workspace-manager-extension:positions';
+/** Where the panel keeps the open cards; the panel module keeps the key private. */
+const OPEN_CARDS =
+  '@stellarshenson/jupyterlab-workspace-manager-extension:open-cards';
 const trans = nullTranslator.load(
   '@stellarshenson/jupyterlab-workspace-manager-extension'
 );
@@ -280,10 +300,13 @@ function fakeApp(settings: ServerConnection.ISettings, live: Widget[] = []) {
     shell: {
       widgets: (area: string) =>
         (area === 'main' ? live : [])[Symbol.iterator](),
+      add: jest.fn(),
       activateById: jest.fn(),
       currentWidget: null,
       currentChanged: new Signal<any, any>({})
     },
+    // the panel applies the stored positions once the app has restored
+    restored: Promise.resolve(),
     commands: new CommandRegistry(),
     docRegistry: { getFileTypesForPath: () => [] }
   } as any;
@@ -336,6 +359,8 @@ async function mount(
     cancelClose?: boolean;
     /** the layout restorer, with the name it saves each tracked tab under */
     restorer?: unknown;
+    /** the state database: the layout is read from it before a switch */
+    state?: unknown;
   } = {}
 ) {
   const fake = fakeServer(server);
@@ -367,12 +392,51 @@ async function mount(
     window: 'w1',
     managers: options.managers ?? null,
     restorer: options.restorer as any,
+    state: options.state as any,
     trans
   });
   panels.push(panel);
   Widget.attach(panel, document.body);
   await settle();
   return { panel, fake, app, ...fake };
+}
+
+/**
+ * A state database with the layout restorer that fills it as JupyterLab's do:
+ * shell.saveLayout() hands the live right sidebar over, and the restorer writes
+ * its open panel into the state database under the name it registered with.
+ */
+function rightSidebar() {
+  const entries: { [key: string]: any } = {};
+  const inspector = { id: 'jp-property-inspector' };
+  const debuggerPanel = { id: 'jp-debugger-sidebar' };
+  const names = new Map<any, string>([
+    [inspector, 'jp-property-inspector'],
+    [debuggerPanel, 'debugger-sidebar']
+  ]);
+  const layout = {
+    rightArea: {
+      collapsed: false,
+      visible: true,
+      currentWidget: inspector,
+      widgets: [inspector, debuggerPanel]
+    }
+  };
+  const restorer = {
+    save: jest.fn(async (saved: any) => {
+      const area = saved.rightArea;
+      entries['layout-restorer:data'] = {
+        right: {
+          collapsed: area.collapsed,
+          visible: area.visible,
+          current: names.get(area.currentWidget),
+          widgets: area.widgets.map((widget: any) => names.get(widget))
+        }
+      };
+    })
+  };
+  const state = { toJSON: jest.fn(async () => ({ ...entries })) };
+  return { restorer, state, layout };
 }
 
 /** Choose the item at `index` of the open menu by keyboard; Lumino reads keyCode. */
@@ -429,6 +493,106 @@ function liveTab(path: string, notebook = false) {
   const input = tab.node.appendChild(document.createElement('input'));
   Widget.attach(tab, document.body);
   return { tab, input };
+}
+
+/**
+ * A tab of this window showing an editor at `path`, its scroller at `scroll`
+ * and its cursor at `cursor`.
+ */
+function liveEditor(path: string, scroll = 0, cursor = { line: 2, column: 4 }) {
+  const { tab, input } = liveTab(path);
+  const scrollDOM = document.createElement('div');
+  scrollDOM.scrollTop = scroll;
+  const setCursorPosition = jest.fn();
+  (tab as any).content = {
+    editor: {
+      getCursorPosition: () => cursor,
+      setCursorPosition,
+      editor: { scrollDOM }
+    }
+  };
+  return { tab, input, scrollDOM, setCursorPosition };
+}
+
+/** A tab of this window showing a rendered markdown page at `path`, its scroller at `scroll`. */
+function liveMarkdown(path: string, scroll = 0) {
+  const { tab, input } = liveTab(path);
+  const content = new Widget();
+  content.addClass('jp-MarkdownViewer');
+  (tab as any).content = content;
+  const scrolled = document.createElement('div');
+  scrolled.className = 'jp-RenderedMarkdown';
+  scrolled.scrollTop = scroll;
+  tab.node.appendChild(scrolled);
+  return { tab, input, scrolled };
+}
+
+/**
+ * A native dragstart whose dataTransfer is a stub: the card header drag stays
+ * native (ACC-DRAG-323-TEXT-DROP), and jsdom has no DataTransfer or DragEvent,
+ * so the stub records every setData call and the MIME types the handler set.
+ */
+function dragStart(element: Element) {
+  const data = new Map<string, string>();
+  const transfer = {
+    effectAllowed: 'none',
+    calls: [] as [string, string][],
+    get types(): string[] {
+      return Array.from(data.keys());
+    },
+    setData(type: string, value: string) {
+      transfer.calls.push([type, value]);
+      data.set(type, value);
+    },
+    getData(type: string) {
+      return data.get(type) ?? '';
+    }
+  };
+  const event = new Event('dragstart', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', { value: transfer });
+  element.dispatchEvent(event);
+  return transfer;
+}
+
+/** The drag handle of the row keyed `key` under `root`. */
+const rowDrag = (root: ParentNode, key: string) =>
+  root.querySelector<HTMLElement>(
+    `[data-row-key="${key}"] .jp-WorkspaceManager-rowDrag`
+  );
+
+/**
+ * A row drag: a mousedown on the icon handle, a document mousemove past the
+ * 4 px threshold and the mouseup; returns the MimeData the Lumino Drag was
+ * built with, or null when no drag started (ACC-DRAG-319-FILE-PATH). jsdom
+ * cannot run Drag.start, so it is stubbed and the drag object read instead.
+ */
+function rowDragStart(handle: HTMLElement, dx = 8): MimeData | null {
+  let mimeData: MimeData | null = null;
+  const start = jest
+    .spyOn(Drag.prototype, 'start')
+    .mockImplementation(function (this: Drag) {
+      mimeData = this.mimeData;
+      return Promise.resolve('none' as const);
+    });
+  handle.dispatchEvent(
+    new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 10,
+      clientY: 10
+    })
+  );
+  document.dispatchEvent(
+    new MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: 10 + dx,
+      clientY: 10
+    })
+  );
+  document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  start.mockRestore();
+  return mimeData;
 }
 
 const dialogText = () => document.querySelector('.jp-Dialog')?.textContent;
@@ -488,6 +652,11 @@ const bandPower = (panel: Widget, key: string) =>
       b.getAttribute('aria-label') === 'Shut down' ||
       b.getAttribute('aria-label') === 'Shut down all'
   )!;
+/** The clean eraser of the TERMINALS or KERNELS band (ACC-PANEL-327-TERM-CLEAN, ACC-PANEL-328-KERNEL-CLEAN). */
+const bandEraser = (panel: Widget, key: 'terminals' | 'kernels') =>
+  Array.from(sectionHeader(panel, key).querySelectorAll('button')).find(
+    b => b.getAttribute('aria-label') === `Clean up ${key}`
+  )! as HTMLButtonElement;
 /** Shut a section down: KERNELS and TERMINALS open their menu, where Shut down all is the first entry; LANGUAGE SERVERS opens its dialog directly. */
 const shutDownAll = (panel: Widget, key: string) => {
   bandPower(panel, key).click();
@@ -511,6 +680,8 @@ afterEach(() => {
   jest.restoreAllMocks();
   // the open state of the sections is kept here
   localStorage.clear();
+  // so are the file positions across a switch
+  sessionStorage.clear();
 });
 
 describe('panel', () => {
@@ -1725,6 +1896,58 @@ describe('panel', () => {
     expect(menu?.isConnected).toBe(true);
   });
 
+  it("ACC-PANEL-326-TABNAMES-LIVE: the next 10 s reload shows a left workspace card's new documentTitle and renamed tab in one reload, a render sends no request, and a second reload while one is in flight sends none", async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    // another workspace's saved page title and open tab, as its own window left them
+    const left = (documentTitle: string, path: string) => {
+      const ws = workspace('auto-6', 60, [
+        'workspace-page:p1',
+        `editor:${path}`
+      ]);
+      ws.data['workspace-page:p1'] = {
+        data: { url: '/proxy/9/a.html', documentTitle }
+      };
+      ws.data[`editor:${path}`] = { data: { path, factory: 'Editor' } };
+      return ws;
+    };
+    server.workspaces[1] = left('Old page', 'docs/README.md');
+    const { panel, fake, reloads, hold, release } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    expect(rowLabels(card(panel, 'w:auto-6'))).toEqual([
+      'Old page',
+      'README.md'
+    ]);
+
+    // the workspace file changes while its card stays open in this window
+    server.workspaces[1] = left('Live page', 'docs/renamed.md');
+    jest.advanceTimersByTime(10000);
+    await settle();
+    // one poll is one reload
+    expect(reloads()).toBe(2);
+    expect(rowLabels(card(panel, 'w:auto-6'))).toEqual([
+      'Live page',
+      'renamed.md'
+    ]);
+
+    // a render reads the model and sends no request
+    const sent = fake.log.length;
+    (panel as any)._render();
+    await settle();
+    expect(fake.log.length).toBe(sent);
+
+    // one reload in flight: the next interval tick joins it and sends nothing
+    hold();
+    jest.advanceTimersByTime(10000);
+    await settle();
+    expect(reloads()).toBe(3);
+    jest.advanceTimersByTime(10000);
+    await settle();
+    expect(reloads()).toBe(3);
+    release();
+    await settle();
+  });
+
   it('ACC-CLI-220-SWITCH-TAB: a switch request activates the tab showing its path in this window and selects its row', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const live = new Widget();
@@ -1854,6 +2077,51 @@ describe('panel', () => {
     expect(document.querySelector('.jp-Dialog')).toBeNull();
   });
 
+  it('DEF-PANEL-110-RIGHT-PANEL: a card switch and a CLI switch write the open right sidebar panel into the workspace file before the page leaves', async () => {
+    const server = standard();
+    const { restorer, state, layout } = rightSidebar();
+    const { panel, app, fake, settings } = await mount(server, {
+      restorer,
+      state
+    });
+    app.shell.saveLayout = jest.fn(() => layout);
+    app.serviceManager.workspaces = new WorkspaceManager({
+      serverSettings: settings
+    });
+    // a hash keeps jsdom in the page: the test reads the save, not the navigation
+    let atUrl = -1;
+    const url = jest.spyOn(panel as any, '_url').mockImplementation(() => {
+      atUrl = fake.log.length;
+      return '#switched-auto-6';
+    });
+    const expectSaved = () => {
+      expect(url).toHaveBeenCalledWith('auto-6');
+      const put = fake.log.indexOf('PUT /lab/api/workspaces/default');
+      expect(put).toBeGreaterThanOrEqual(0);
+      // the write completed before the page could leave
+      expect(put).toBeLessThan(atUrl);
+      expect(
+        server.saved!['default'].data['layout-restorer:data'].right
+      ).toMatchObject({ current: 'jp-property-inspector', collapsed: false });
+    };
+
+    // the card header of another workspace
+    header(panel, 'w:auto-6').click();
+    await settle();
+    expectSaved();
+
+    // the CLI's switch request, on the same panel
+    fake.log.length = 0;
+    atUrl = -1;
+    await (panel as any)._apply({ workspace: 'auto-6', tab: null });
+    await settle();
+    expectSaved();
+    // both departures flushed the live layout through the restorer
+    expect(app.shell.saveLayout).toHaveBeenCalledTimes(2);
+    expect(restorer.save).toHaveBeenCalledWith(layout);
+    expect(restorer.save).toHaveBeenCalledTimes(2);
+  });
+
   it('ACC-HIDDEN-53-UNHIDE: a reload that started before Show workspace again does not hide the card again', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();
@@ -1898,6 +2166,31 @@ describe('panel', () => {
     panel.show();
     await settle();
     expect(reloads()).toBe(1);
+  });
+
+  it('a reload saves the layout only when the names its live tabs save under differ from the workspace keys', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const server = standard();
+    server.workspaces[0] = workspace('default', 1, ['editor:docs/README.md']);
+    const editor = liveEditor('docs/README.md');
+    // the restorer's own map of the names it saves, as LayoutRestorer.add fills it
+    const restorer = {
+      _widgets: new Map([['editor:docs/README.md', editor.tab]])
+    };
+    const { app } = await mount(server, { live: [editor.tab], restorer });
+    const saveLayout = jest.fn(() => ({ main: {} }));
+    app.shell.saveLayout = saveLayout;
+
+    // the live editor saves under the workspace's key, whatever its live key reads
+    jest.advanceTimersByTime(10000);
+    await settle();
+    expect(saveLayout).not.toHaveBeenCalled();
+
+    // the workspace no longer holds the key: the next reload saves
+    server.workspaces[0].data['layout-restorer:data'].main.dock.widgets = [];
+    jest.advanceTimersByTime(10000);
+    await settle();
+    expect(saveLayout).toHaveBeenCalledTimes(1);
   });
 
   it('ACC-PANEL-95-SERVER-ABSENT: without the server extension the cards list workspaces, terminals by name and kernels', async () => {
@@ -2513,6 +2806,83 @@ describe('panel', () => {
     }
   });
 
+  it('ACC-KERNEL-318-ICON-TINT: a listed kernel held by two workspaces tints its icon with the first holder’s colour at the 45 % ink, an unheld kernel and a card row keep the plain icon, and the stylesheet rules every colour', async () => {
+    const server = standard();
+    server.kernels.push({
+      id: 'k2',
+      name: 'python3',
+      last_activity: iso(5),
+      execution_state: 'idle',
+      connections: 0
+    });
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[1]
+    });
+    // auto-5 sorts first by position and is sky; auto-6 holds k2 too and is peach
+    server.workspaces[1] = workspace('auto-6', 60 * 24 * 3, [
+      'terminal:1',
+      'notebook:a.ipynb'
+    ]);
+    server.workspaces.push(workspace('auto-5', 60, ['notebook:a.ipynb']));
+    server.records['auto-6'].position = 1;
+    server.records['auto-5'] = { colour: 'sky', position: 0 };
+    const { panel } = await mount(server);
+    const body = openSection(panel, 'kernels');
+    const icon = (root: HTMLElement, id: string) =>
+      root.querySelector<HTMLElement>(
+        `[data-row-key="kernel:${id}"] .jp-WorkspaceManager-rowIcon`
+      )!;
+    // k2 takes the first holder's colour, not the second's
+    expect(Array.from(icon(body, 'k2').classList)).toEqual([
+      'jp-WorkspaceManager-rowIcon',
+      'jp-WorkspaceManager-kernelIcon',
+      'jp-mod-sky',
+      'jp-mod-coloured'
+    ]);
+    // k1 is in no workspace: the plain glyph, no colour class
+    expect(Array.from(icon(body, 'k1').classList)).toEqual([
+      'jp-WorkspaceManager-rowIcon'
+    ]);
+    // a card row shows the kernel as the second glyph of its tab row's icon wrapper, never a tinted icon
+    openSection(panel, 'workspaces');
+    triangle(panel, 'w:auto-6').click();
+    const tabIcon = card(panel, 'w:auto-6').querySelector<HTMLElement>(
+      '[data-row-key="notebook:a.ipynb"] .jp-WorkspaceManager-rowIcon'
+    )!;
+    expect(Array.from(tabIcon.classList)).toEqual([
+      'jp-WorkspaceManager-rowIcon',
+      'jp-WorkspaceManager-rowIcons'
+    ]);
+    expect(Array.from(tabIcon.lastElementChild!.classList)).toEqual([]);
+    // every colour has a kernel-icon rule; the ink is the terminal badge's 45 % mix over the inverse layout colour 1, and the glyph's own fill takes it
+    const sheet = readFileSync(
+      join(__dirname, '..', '..', 'style', 'base.css'),
+      'utf8'
+    );
+    for (const colour of [
+      'rose',
+      'peach',
+      'lemon',
+      'mint',
+      'sky',
+      'lavender'
+    ]) {
+      expect(sheet).toContain(
+        `.jp-WorkspaceManager-kernelIcon.jp-mod-${colour}`
+      );
+    }
+    expect(sheet).toMatch(
+      /\.jp-WorkspaceManager-kernelIcon\.jp-mod-coloured\s*\{\s*color: color-mix\(in srgb, var\(--wm-hue\) 45%, var\(--jp-inverse-layout-color1\)\);\s*\}/
+    );
+    expect(sheet).toMatch(
+      /\.jp-WorkspaceManager-kernelIcon\.jp-mod-coloured svg \[fill\]\s*\{\s*fill: currentcolor;\s*\}/
+    );
+  });
+
   it('ACC-TERM-291-ATTACH-TOOLTIP: a TERMINALS row always states its attachment, naming every holder or reading none, and a card row names its own workspace', async () => {
     const server = standard();
     server.terminals.push({
@@ -2626,6 +2996,119 @@ describe('panel', () => {
     await dismissDialog();
     await settle();
     expect(shutdownAll).not.toHaveBeenCalled();
+  });
+
+  it('ACC-PANEL-327-TERM-CLEAN: the TERMINALS band carries the clean eraser beside the power button, disables it while every terminal is held, and a click shuts down only what is still unattached when the confirmation returns', async () => {
+    const server = standard();
+    const { panel, app } = await mount(server);
+    // terminal 1 is auto-6's: every terminal is held, so the eraser does nothing
+    const headerButtons = () =>
+      Array.from(sectionHeader(panel, 'terminals').querySelectorAll('button'));
+    expect(headerButtons().map(b => b.getAttribute('aria-label'))).toEqual([
+      'Clean up terminals',
+      'Shut down'
+    ]);
+    expect(
+      headerButtons().map(b =>
+        b.querySelector('svg')!.getAttribute('data-icon')
+      )
+    ).toEqual([
+      '@stellarshenson/jupyterlab-workspace-manager-extension:eraser',
+      '@stellarshenson/jupyterlab-workspace-manager-extension:power'
+    ]);
+    expect(bandEraser(panel, 'terminals').disabled).toBe(true);
+
+    // terminal 9 is in no workspace: the eraser enables
+    server.terminals.push({
+      name: '9',
+      last_activity: iso(0),
+      process: 'htop'
+    });
+    await panel.refresh();
+    expect(bandEraser(panel, 'terminals').disabled).toBe(false);
+
+    // the confirmation Shut down detached asks, held open while the world changes
+    let release!: (value: boolean) => void;
+    const ask = jest
+      .spyOn(dialogs, 'confirm')
+      .mockReturnValue(new Promise<boolean>(resolve => (release = resolve)));
+    bandEraser(panel, 'terminals').click();
+    expect(ask).toHaveBeenCalledWith(
+      'Shut down detached?',
+      'Shut down 1 detached terminal.',
+      'Shut down detached'
+    );
+    // while the dialog is open, terminal 9 is attached to auto-6 and terminal 8 starts detached
+    server.workspaces[1] = workspace('auto-6', 60 * 24 * 3, [
+      'terminal:1',
+      'terminal:9'
+    ]);
+    server.terminals.push({
+      name: '8',
+      last_activity: iso(0),
+      process: 'fish'
+    });
+    release(true);
+    await settle();
+
+    // the fresh read leaves 9 and 1 alone and shuts down 8 alone
+    expect(app.serviceManager.terminals.shutdown.mock.calls).toEqual([['8']]);
+    expect(app.serviceManager.kernels.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('ACC-PANEL-328-KERNEL-CLEAN: the KERNELS eraser is disabled while no detached kernel is idle, and a click shuts down the idle detached kernel only, leaving a busy detached kernel and a held one, with the power menu unchanged', async () => {
+    const server = standard();
+    // k1 serves auto-6's notebook and is held; k2 is detached and busy
+    server.workspaces[1] = workspace('auto-6', 60 * 24 * 3, [
+      'notebook:a.ipynb',
+      'terminal:1'
+    ]);
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.kernels.push({
+      id: 'k2',
+      name: 'python3',
+      last_activity: iso(2),
+      execution_state: 'busy',
+      connections: 0
+    });
+    const { panel, app } = await mount(server);
+    // k1 is held and k2 is busy: no detached idle kernel, so the eraser does nothing
+    expect(bandEraser(panel, 'kernels').disabled).toBe(true);
+
+    // k3 is idle and in no workspace: the eraser enables
+    server.kernels.push({
+      id: 'k3',
+      name: 'python3',
+      last_activity: iso(2),
+      execution_state: 'idle',
+      connections: 0
+    });
+    await panel.refresh();
+    expect(bandEraser(panel, 'kernels').disabled).toBe(false);
+
+    const ask = jest.spyOn(dialogs, 'confirm').mockResolvedValue(true);
+    bandEraser(panel, 'kernels').click();
+    await settle();
+    expect(ask).toHaveBeenCalledWith(
+      'Shut down detached?',
+      'Shut down 1 detached kernel.',
+      'Shut down detached'
+    );
+    expect(app.serviceManager.kernels.shutdown.mock.calls).toEqual([['k3']]);
+    expect(app.serviceManager.terminals.shutdown).not.toHaveBeenCalled();
+
+    // the power button keeps its menu
+    bandPower(panel, 'kernels').click();
+    await settle();
+    expect(menuLabels()).toEqual(['Shut down all', 'Shut down detached']);
+    pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 27);
+    await settle();
   });
 
   it('ACC-TERM-272-TOOLTIP-NUMBER: a numbered terminal tooltip starts with terminal 7 and its label is the 7 badge, a named one starts with terminal build', async () => {
@@ -3443,6 +3926,317 @@ describe('panel', () => {
         m => m.isConnected
       )
     ).toHaveLength(0);
+  });
+
+  it('ACC-DRAG-319-FILE-PATH: a saved notebook row and an image row carry their path as [path] under PATH_MIME in MimeData, a press below the threshold starts no drag, and a row with no path renders no handle', async () => {
+    const server = standard();
+    const keys = [
+      'notebook:a.ipynb',
+      'editor:docs/diagram.png',
+      'setting-editor:setting-editor'
+    ];
+    server.workspaces[1] = workspace('auto-6', 60, keys);
+    // the Settings Editor saves no path
+    server.workspaces[1].data['setting-editor:setting-editor'] = { data: {} };
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const cardOf = card(panel, 'w:auto-6');
+
+    // a press that moves less than 4 px is the row's click, not a drag
+    expect(rowDragStart(rowDrag(cardOf, 'notebook:a.ipynb')!, 2)).toBeNull();
+
+    const notebook = rowDragStart(rowDrag(cardOf, 'notebook:a.ipynb')!)!;
+    expect(notebook.types()).toEqual([PATH_MIME]);
+    expect(notebook.getData(PATH_MIME)).toEqual(['a.ipynb']);
+
+    const image = rowDragStart(rowDrag(cardOf, 'editor:docs/diagram.png')!)!;
+    expect(image.types()).toEqual([PATH_MIME]);
+    expect(image.getData(PATH_MIME)).toEqual(['docs/diagram.png']);
+
+    // no path: no handle, and neither the row nor the handle starts a native drag
+    const settings = cardOf.querySelector<HTMLElement>(
+      '[data-row-key="setting-editor:setting-editor"]'
+    )!;
+    expect(rowDrag(cardOf, 'setting-editor:setting-editor')).toBeNull();
+    expect(settings.hasAttribute('draggable')).toBe(false);
+    expect(rowDrag(cardOf, 'notebook:a.ipynb')!.hasAttribute('draggable')).toBe(
+      false
+    );
+  });
+
+  it('ACC-DRAG-320-PAGE-URL: a saved server-proxy, Help and workspace-page row carries its URL under the raw-text MIME in MimeData, never its label, and a live workspace-page tab carries the URL it was opened with', async () => {
+    const entries: Record<string, { data: Record<string, string> }> = {
+      'server-proxy:sp-1': {
+        data: { url: '/proxy/9000/', title: 'Proxy page', id: 'sp-1' }
+      },
+      'help-doc:https://jupyter.org/documentation': {
+        data: {
+          url: 'https://jupyter.org/documentation',
+          text: 'Jupyter Reference'
+        }
+      },
+      'workspace-page:page-1': {
+        data: { url: '/proxy/9001/a.html', title: 'Lab page', id: 'page-1' }
+      }
+    };
+    const server = standard();
+    server.workspaces[1] = workspace('auto-6', 60, Object.keys(entries));
+    Object.assign(server.workspaces[1].data, entries);
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const cardOf = card(panel, 'w:auto-6');
+    // the rows show their labels; the payloads are the URLs
+    expect(rowLabels(cardOf)).toEqual([
+      'Proxy page',
+      'Jupyter Reference',
+      'Lab page'
+    ]);
+    for (const [key, entry] of Object.entries(entries)) {
+      const drag = rowDragStart(rowDrag(cardOf, key)!)!;
+      expect(drag.types()).toEqual([TEXT_MIME]);
+      expect(drag.getData(TEXT_MIME)).toBe(entry.data.url);
+    }
+
+    // a live page tab opened through workspace-page:open carries its arguments' URL
+    const fetchSpy = jest
+      .spyOn(window, 'fetch')
+      .mockImplementation(async () => new Response(''));
+    const page = openPage(
+      { shell: { add: jest.fn(), activateById: jest.fn() } } as any,
+      { url: '/proxy/9001/a.html', id: 'p1' },
+      new WidgetTracker<any>({ namespace: 'workspace-page' })
+    )!;
+    const { panel: live } = await mount(standard(), { live: [page] });
+    triangle(live, 'w:default').click();
+    const drag = rowDragStart(
+      rowDrag(card(live, 'w:default'), 'workspace-page:p1')!
+    )!;
+    expect(drag.types()).toEqual([TEXT_MIME]);
+    expect(drag.getData(TEXT_MIME)).toBe('/proxy/9001/a.html');
+    page.dispose();
+    fetchSpy.mockRestore();
+  });
+
+  it('ACC-DRAG-321-TERM-CWD: a card and a TERMINALS row carry the working directory under the raw-text MIME in MimeData, never the name, process or tab name, and a terminal with no cwd renders no handle', async () => {
+    const server = standard();
+    server.terminals = [
+      {
+        name: '1',
+        last_activity: iso(0),
+        process: 'claude',
+        cwd: '/home/lab/work'
+      },
+      { name: '2', last_activity: iso(0), process: 'vim' }
+    ];
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'terminal:1',
+      'terminal:2',
+      'editor:docs/README.md'
+    ]);
+    const { panel } = await mount(server);
+    triangle(panel, 'w:auto-6').click();
+    const cardOf = card(panel, 'w:auto-6');
+    const inCard = rowDragStart(rowDrag(cardOf, 'terminal:1')!)!;
+    expect(inCard.types()).toEqual([TEXT_MIME]);
+    expect(inCard.getData(TEXT_MIME)).toBe('/home/lab/work');
+    expect(['1', 't1', 'claude']).not.toContain(inCard.getData(TEXT_MIME));
+
+    const listed = openSection(panel, 'terminals');
+    const inList = rowDragStart(rowDrag(listed, 'terminal:1')!)!;
+    expect(inList.types()).toEqual([TEXT_MIME]);
+    expect(inList.getData(TEXT_MIME)).toBe('/home/lab/work');
+
+    // a terminal with no working directory has no handle in either place
+    expect(rowDrag(cardOf, 'terminal:2')).toBeNull();
+    expect(rowDrag(listed, 'terminal:2')).toBeNull();
+  });
+
+  it('ACC-DRAG-322-KERNEL-PATH: a notebook kernel row carries its session path as [path] under PATH_MIME in MimeData, a console kernel row its console path, and a kernel with no path renders no handle', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.kernels.push({
+      id: 'k2',
+      name: 'python3',
+      last_activity: iso(5),
+      execution_state: 'idle',
+      connections: 0
+    });
+    server.sessions.push({
+      id: 's2',
+      name: 'Console 1',
+      path: 'console-1',
+      type: 'console',
+      kernel: server.kernels[1]
+    });
+    server.kernels.push({
+      id: 'k3',
+      name: 'python3',
+      last_activity: iso(5),
+      execution_state: 'idle',
+      connections: 0
+    });
+    const { panel } = await mount(server);
+    const body = openSection(panel, 'kernels');
+
+    const notebook = rowDragStart(rowDrag(body, 'kernel:k1')!)!;
+    expect(notebook.types()).toEqual([PATH_MIME]);
+    expect(notebook.getData(PATH_MIME)).toEqual(['a.ipynb']);
+
+    const console = rowDragStart(rowDrag(body, 'kernel:k2')!)!;
+    expect(console.types()).toEqual([PATH_MIME]);
+    expect(console.getData(PATH_MIME)).toEqual(['console-1']);
+
+    // no session: no path, no handle
+    expect(rowDrag(body, 'kernel:k3')).toBeNull();
+  });
+
+  it('ACC-DRAG-323-TEXT-DROP: the card header drag sets text/plain to the workspace id with effectAllowed move', async () => {
+    const { panel } = await mount(standard());
+    const headerDrag = dragStart(header(panel, 'w:auto-6'));
+    expect(headerDrag.effectAllowed).toBe('move');
+    expect(headerDrag.calls).toEqual([['text/plain', 'auto-6']]);
+    expect(headerDrag.types).toEqual(['text/plain']);
+  });
+
+  it('ACC-DRAG-323-TEXT-DROP: the panel terminal target takes only the raw-text MIME, activates the tab and pastes the text once unexecuted, and declines PATH_MIME', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const tracker = (widgets: any[]) => {
+      const widgetAdded = new Signal<any, any>({});
+      return {
+        widgetAdded,
+        forEach: (fn: (widget: any) => void) => widgets.forEach(fn),
+        emit: (widget: any) => widgetAdded.emit(widget)
+      };
+    };
+    // the holder catches a drop the terminal target did not stop from bubbling
+    const terminal = (id: string) => {
+      const node = document.createElement('div');
+      const holder = document.createElement('div');
+      holder.appendChild(node);
+      const bubbled = jest.fn();
+      holder.addEventListener('lm-drop', bubbled);
+      return { id, bubbled, content: { node, paste: jest.fn() } };
+    };
+    const activate = (terminalTracker: any) => {
+      const fake = fakeServer(standard());
+      const app = fakeApp(fake.settings);
+      const docManager = {
+        contextForWidget: () => undefined,
+        closeAll: async () => undefined
+      };
+      const panel = (plugins[0].activate as any)(
+        app,
+        new RunningSessionManagers(),
+        docManager,
+        null,
+        null,
+        null,
+        terminalTracker
+      ) as WorkspacePanel;
+      panels.push(panel);
+      return { app, panel };
+    };
+    const mime = (type: string, data: string | string[]) => {
+      const mimeData = new MimeData();
+      mimeData.setData(type, data);
+      return mimeData;
+    };
+    const fire = (node: HTMLElement, type: string, mimeData: MimeData) => {
+      const event: any = new Event(type, {
+        bubbles: true,
+        cancelable: true
+      });
+      Object.defineProperties(event, {
+        mimeData: { value: mimeData },
+        proposedAction: { value: 'copy' },
+        dropAction: { value: 'none', writable: true },
+        supportedActions: { value: 'copy' }
+      });
+      node.dispatchEvent(event);
+      return event;
+    };
+    const dropOn = (widget: any, text: string) => {
+      const data = mime(TEXT_MIME, text);
+      expect(
+        fire(widget.content.node, 'lm-dragenter', data).defaultPrevented
+      ).toBe(true);
+      const over = fire(widget.content.node, 'lm-dragover', data);
+      expect(over.defaultPrevented).toBe(true);
+      expect(over.dropAction).toBe('copy');
+      expect(fire(widget.content.node, 'lm-drop', data).defaultPrevented).toBe(
+        true
+      );
+      // the target stopped the drop from reaching an ancestor's listener
+      expect(widget.bubbled).not.toHaveBeenCalled();
+      expect(widget.content.paste).toHaveBeenCalledTimes(1);
+      expect(widget.content.paste).toHaveBeenCalledWith(text);
+    };
+
+    const open = terminal('t1');
+    const tracked = tracker([open]);
+    const { app } = activate(tracked);
+    await settle();
+    // present when the panel activated
+    dropOn(open, 'docs/README.md');
+    expect(app.shell.activateById).toHaveBeenCalledWith('t1');
+    // opened after activation
+    const later = terminal('t2');
+    tracked.emit(later);
+    dropOn(later, '/home/lab/work');
+    expect(app.shell.activateById).toHaveBeenLastCalledWith('t2');
+
+    // a PATH_MIME drag is declined and reaches no paste: the advanced file browser's target owns it
+    const paths = mime(PATH_MIME, ['a.ipynb']);
+    expect(
+      fire(later.content.node, 'lm-dragenter', paths).defaultPrevented
+    ).toBe(false);
+    expect(fire(later.content.node, 'lm-drop', paths).defaultPrevented).toBe(
+      false
+    );
+    expect(later.bubbled).toHaveBeenCalledTimes(1);
+    expect(later.content.paste).toHaveBeenCalledTimes(1);
+
+    // no tracker: activation still returns the panel and touches no terminal
+    expect(activate(null).panel).toBeInstanceOf(WorkspacePanel);
+  });
+
+  it('ACC-PANEL-324-HEADER-END: the caret is the first control in the header line and the eye is the sole and last control of the card actions, with no menu button', async () => {
+    const { panel } = await mount(standard());
+    for (const key of ['w:default', 'w:auto-6']) {
+      const headerLine = header(panel, key).querySelector<HTMLElement>(
+        '.jp-WorkspaceManager-headerLine'
+      )!;
+      const caret = headerLine.firstElementChild as HTMLButtonElement;
+      expect(Array.from(caret.classList)).toContain(
+        'jp-WorkspaceManager-caret'
+      );
+      expect(caret.getAttribute('aria-label')).toBe('Expand');
+      const actions = headerLine.querySelector<HTMLElement>(
+        '.jp-WorkspaceManager-cardActions'
+      )!;
+      expect(actions.children).toHaveLength(1);
+      const eye = actions.firstElementChild as HTMLButtonElement;
+      expect(eye.tagName).toBe('BUTTON');
+      expect(eye.getAttribute('aria-label')).toBe('Hide workspace');
+      expect(actions.lastElementChild).toBe(eye);
+      // the header's controls are the caret and the eye, in that order
+      const buttons = Array.from(header(panel, key).querySelectorAll('button'));
+      expect(buttons).toHaveLength(2);
+      expect(buttons[0]).toBe(caret);
+      expect(buttons[1]).toBe(eye);
+      // no ... menu button anywhere in the header
+      expect(
+        header(panel, key).querySelector(
+          'button[aria-label="Workspace menu"], .jp-WorkspaceManager-menuButton'
+        )
+      ).toBeNull();
+    }
   });
 
   it('ACC-KERNEL-281-ROW-MEMORY: an unselected KERNELS row with memory 536870912 reads 512 MB, selected or not', async () => {
@@ -5155,6 +5949,219 @@ describe('panel', () => {
     expect(menu.isAttached).toBe(false);
   });
 
+  it("ACC-PANEL-329-DELETE-CURRENT: another live window's workspace is still refused", async () => {
+    const server = { ...standard(), presence: ['auto-6'] };
+    const { panel, log } = await mount(server);
+    log.length = 0;
+    openMenu(panel, 'w:auto-6');
+    // Open workspace, Open in new browser tab, Clear workspace, Set description...,
+    // Colour, Hide workspace, Move down, Delete workspace
+    chooseMenuItem(7);
+    MessageLoop.flush();
+    expect(menuLabels()).toContain('Confirm delete');
+    pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 13);
+    await settle();
+
+    expect(log.filter(l => l.startsWith('DELETE '))).toEqual([]);
+    await waitForDialog();
+    expect(dialogText()).toContain(
+      'Delete workspace is refused: workspace auto-6 is open in another browser window.'
+    );
+    await dismissDialog();
+    await settle();
+    expect(card(panel, 'w:auto-6')).toBeTruthy();
+  });
+
+  describe('the current workspace: delete and rename', () => {
+    /** An open dialog's Name field, Short description box, rule line and accept button. */
+    const formName = () =>
+      document.querySelector<HTMLInputElement>(
+        '.jp-Dialog .jp-WorkspaceManager-name'
+      )!;
+    const formArea = () =>
+      document.querySelector<HTMLTextAreaElement>(
+        '.jp-Dialog .jp-WorkspaceManager-area'
+      )!;
+    const formRule = () =>
+      document.querySelector<HTMLElement>(
+        '.jp-Dialog .jp-WorkspaceManager-rule'
+      )!;
+    const formAccept = () =>
+      document.querySelector<HTMLButtonElement>('.jp-Dialog .jp-mod-accept')!;
+    /** Type into a dialog field: set the value, then fire the input event its listener reads. */
+    const typeInto = (
+      field: HTMLInputElement | HTMLTextAreaElement,
+      value: string
+    ) => {
+      field.value = value;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    it("ACC-PANEL-329-DELETE-CURRENT: the current card's menu offers Delete workspace; confirming removes it through the workspace manager and the panel reloads onto the fallback", async () => {
+      const server = standard();
+      // a prior page of this tab leaves a stale record of this window's workspace
+      server.presence = ['default'];
+      window.localStorage.setItem(
+        OPEN_CARDS,
+        JSON.stringify(['default', 'auto-6'])
+      );
+      const { panel, fake } = await mount(server);
+      // a hash keeps jsdom in the page: the test reads the fallback, not the navigation
+      const url = jest
+        .spyOn(panel as any, '_url')
+        .mockImplementation((id: unknown) => '#' + String(id));
+      fake.log.length = 0;
+
+      openMenu(panel, 'w:default');
+      const item = Array.from(
+        document.querySelectorAll('.jp-WorkspaceManager-menu .lm-Menu-item')
+      ).find(li => li.textContent === 'Delete workspace')!;
+      expect(item.classList).not.toContain('lm-mod-disabled');
+      // Clear workspace, Set description..., Colour, Move up, Delete workspace
+      chooseMenuItem(4);
+      MessageLoop.flush();
+      expect(menuLabels()).toContain('Confirm delete');
+      // the first Enter armed it; the second confirms
+      pressKey(document.querySelector('.jp-WorkspaceManager-menu')!, 13);
+      await settle();
+
+      expect(fake.log.filter(l => l.startsWith('DELETE '))).toEqual([
+        'DELETE /lab/api/workspaces/default'
+      ]);
+      expect(url).toHaveBeenCalledWith('default');
+      expect(document.location.hash).toBe('#default');
+      // the card was open and the delete closed it
+      expect(storedCards()).toEqual(['auto-6']);
+    });
+
+    it('ACC-PANEL-330-RENAME: the dialog validates the name with nameProblem; an unchanged name saves only the description', async () => {
+      const server = standard();
+      const { panel, fake } = await mount(server);
+      fake.log.length = 0;
+
+      openMenu(panel, 'w:auto-6');
+      chooseMenuItem(3); // Set description...
+      await waitForDialog();
+      expect(dialogText()).toContain('Set description of auto-6');
+      expect(formName().value).toBe('auto-6');
+      expect(formArea().value).toBe('Firmware upload tests');
+      expect(formRule().textContent).toBe(NAME_RULE);
+      expect(formAccept().disabled).toBe(false);
+
+      // another workspace's id is a problem
+      typeInto(formName(), 'default');
+      expect(formRule().textContent).toBe('A workspace named default exists');
+      expect(formAccept().disabled).toBe(true);
+      // a name outside the rule is a problem
+      typeInto(formName(), 'auto 6');
+      expect(formRule().textContent).toBe(NAME_RULE);
+      expect(formAccept().disabled).toBe(true);
+      // the unchanged name is valid
+      typeInto(formName(), 'auto-6');
+      expect(formAccept().disabled).toBe(false);
+
+      typeInto(formArea(), 'Only the description');
+      formAccept().click();
+      await settle();
+
+      expect(server.records['auto-6']).toMatchObject({
+        colour: 'peach',
+        purpose: 'Only the description'
+      });
+      expect(fake.log.filter(l => l.startsWith('PUT '))).toEqual([]);
+      expect(fake.log.filter(l => l.startsWith('DELETE '))).toEqual([]);
+      expect(fake.log).toContain(`PATCH /${NS}/meta/auto-6`);
+    });
+
+    it('ACC-PANEL-330-RENAME: a changed name runs the rename path and moves the whole meta record to the new id', async () => {
+      const server = standard();
+      server.records['auto-6'] = {
+        colour: 'peach',
+        purpose: 'Firmware upload tests',
+        hidden: true
+      };
+      window.localStorage.setItem(OPEN_CARDS, JSON.stringify(['auto-6']));
+      const { panel, fake } = await mount(server);
+      fake.log.length = 0;
+
+      // a hidden card opens no menu; the dialog is the one its menu entry opens
+      const section = (panel as any)._sections.find(
+        (s: any) => s.id === 'auto-6'
+      );
+      void (panel as any)._describe(section);
+      await waitForDialog();
+      typeInto(formName(), 'renamed-6');
+      typeInto(formArea(), 'Renamed purpose');
+      formAccept().click();
+      await settle();
+      await settle();
+
+      expect(fake.log).toContain('PUT /lab/api/workspaces/renamed-6');
+      expect(fake.log).toContain('DELETE /lab/api/workspaces/auto-6');
+      // the workspace file is written under the new id with its tabs
+      expect(server.saved!['renamed-6'].metadata.id).toBe('renamed-6');
+      expect(
+        server.saved!['renamed-6'].data['layout-restorer:data'].main.dock
+          .widgets
+      ).toEqual(['terminal:1', 'editor:docs/README.md']);
+      // purpose, colour and hidden move with the record; the dialog's purpose wins
+      expect(server.records['renamed-6']).toEqual({
+        colour: 'peach',
+        purpose: 'Renamed purpose',
+        hidden: true
+      });
+      // the open card moved with the workspace
+      expect(storedCards()).toEqual(['renamed-6']);
+    });
+
+    it('a rename of a workspace another window shows is refused before any workspace file changes', async () => {
+      const server = { ...standard(), presence: ['auto-6'] };
+      const { panel, fake } = await mount(server);
+      fake.log.length = 0;
+
+      const section = (panel as any)._sections.find(
+        (s: any) => s.id === 'auto-6'
+      );
+      void (panel as any)._describe(section);
+      await waitForDialog();
+      typeInto(formName(), 'renamed-6');
+      formAccept().click();
+      await settle();
+      await settle();
+
+      expect(fake.log.filter(l => l.startsWith('PUT '))).toEqual([]);
+      expect(fake.log.filter(l => l.startsWith('DELETE '))).toEqual([]);
+      expect(dialogBody()).toContain(
+        'Rename workspace is refused: workspace auto-6 is open in another browser window.'
+      );
+      await dismissDialog();
+    });
+
+    it("ACC-PANEL-330-RENAME: renaming this window's workspace updates its workspace parameter", async () => {
+      const server = standard();
+      const { panel, fake } = await mount(server);
+      // a hash keeps jsdom in the page: the test reads the parameter, not the navigation
+      const url = jest
+        .spyOn(panel as any, '_url')
+        .mockImplementation((id: unknown) => '#' + String(id));
+      fake.log.length = 0;
+
+      openMenu(panel, 'w:default');
+      chooseMenuItem(1); // Set description..., after Clear workspace
+      await waitForDialog();
+      expect(formName().value).toBe('default');
+      typeInto(formName(), 'renamed-current');
+      formAccept().click();
+      await settle();
+      await settle();
+
+      expect(fake.log).toContain('PUT /lab/api/workspaces/renamed-current');
+      expect(fake.log).toContain('DELETE /lab/api/workspaces/default');
+      expect(url).toHaveBeenCalledWith('renamed-current');
+      expect(document.location.hash).toBe('#renamed-current');
+    });
+  });
+
   it('withoutTabs removes the tab keys from the layout and from data, and keeps the rest', () => {
     const ws = workspace('auto-6', 0, ['terminal:7', 'editor:a.md']);
     (ws.data as any)['file-browser-filebrowser:cwd'] = { path: 'x' };
@@ -5170,5 +6177,270 @@ describe('panel', () => {
     expect(none.metadata).toEqual({ id: 'auto-6' });
     // the input is untouched
     expect((ws.data as any)['terminal:7']).toBeDefined();
+  });
+
+  it('ACC-PANEL-325-FILE-POSITION: a visible tab remembers its place, a hidden one keeps its last, and a disposed panel writes nothing', async () => {
+    const editor = liveEditor('notes.md', 40);
+    const markdown = liveMarkdown('readme.md', 70);
+    // a tab the shell leaves while it still shows, with no scroll event of its own
+    const outgoing = liveEditor('scrolled.md', 10);
+    keep('auto-6', { 'document:other.md': { kind: 'editor', scroll: 5 } });
+    // the map lasts as long as the page, so a test starts it empty
+    forget('default');
+    const { panel, app } = await mount(standard(), {
+      live: [editor.tab, markdown.tab, outgoing.tab]
+    });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem');
+
+    // the shell leaves a tab that still shows: the change stores its place before Lumino hides it
+    outgoing.scrollDOM.scrollTop = 15;
+    app.shell.currentWidget = editor.tab;
+    app.shell.currentChanged.emit({
+      oldValue: outgoing.tab,
+      newValue: editor.tab
+    });
+    expect(recall('default')['document:scrolled.md']).toEqual({
+      kind: 'editor',
+      scroll: 15,
+      cursor: { line: 2, column: 4 }
+    });
+    // Lumino hides it, where the browser reads no scroll
+    outgoing.tab.hide();
+    outgoing.scrollDOM.scrollTop = 0;
+
+    // the editor is scrolled while it shows; its scroll box reports the place
+    editor.scrollDOM.dispatchEvent(new Event('scroll'));
+    expect(recall('default')['document:notes.md']).toEqual({
+      kind: 'editor',
+      scroll: 40,
+      cursor: { line: 2, column: 4 }
+    });
+    // Lumino hides the tab it leaves, where the browser reads no scroll
+    editor.tab.hide();
+    editor.scrollDOM.scrollTop = 0;
+    app.shell.currentWidget = markdown.tab;
+    app.shell.currentChanged.emit({
+      oldValue: editor.tab,
+      newValue: markdown.tab
+    });
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    // one write for every place, not one per tab
+    expect(
+      setItem.mock.calls.filter(([key]) => key === POSITIONS)
+    ).toHaveLength(1);
+    const store = JSON.parse(sessionStorage.getItem(POSITIONS)!);
+    expect(store.default).toEqual({
+      'document:notes.md': {
+        kind: 'editor',
+        scroll: 40,
+        cursor: { line: 2, column: 4 }
+      },
+      'document:readme.md': { kind: 'markdown', scroll: 70 },
+      'document:scrolled.md': {
+        kind: 'editor',
+        scroll: 15,
+        cursor: { line: 2, column: 4 }
+      }
+    });
+    // the other workspace's entry is kept as it was
+    expect(store['auto-6']).toEqual({
+      'document:other.md': { kind: 'editor', scroll: 5 }
+    });
+
+    // the listeners go with the panel: no snapshot after dispose
+    panel.dispose();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(
+      setItem.mock.calls.filter(([key]) => key === POSITIONS)
+    ).toHaveLength(1);
+  });
+
+  it('ACC-PANEL-325-FILE-POSITION: restore applies a visible tab at once and a hidden tab when it first shows, once', async () => {
+    keep('default', {
+      'document:notes.md': {
+        kind: 'editor',
+        scroll: 120,
+        cursor: { line: 3, column: 5 }
+      },
+      'document:readme.md': { kind: 'markdown', scroll: 70 }
+    });
+    keep('auto-6', {
+      'document:notes.md': {
+        kind: 'editor',
+        scroll: 999,
+        cursor: { line: 99, column: 99 }
+      }
+    });
+    forget('default');
+    const editor = liveEditor('notes.md', 0);
+    const markdown = liveMarkdown('readme.md', 0);
+    // Lumino hides every tab but the one the layout restores as current
+    editor.tab.hide();
+    const { app } = await mount(standard(), {
+      live: [editor.tab, markdown.tab]
+    });
+
+    // the visible tab took its place at once; the hidden one waits
+    expect(markdown.scrolled.scrollTop).toBe(70);
+    expect(editor.scrollDOM.scrollTop).toBe(0);
+    expect(editor.setCursorPosition).not.toHaveBeenCalled();
+
+    // the first time the hidden tab shows, it takes its place, once
+    editor.tab.show();
+    app.shell.currentWidget = editor.tab;
+    app.shell.currentChanged.emit({
+      oldValue: markdown.tab,
+      newValue: editor.tab
+    });
+    expect(editor.scrollDOM.scrollTop).toBe(120);
+    expect(editor.setCursorPosition).toHaveBeenCalledTimes(1);
+    expect(editor.setCursorPosition).toHaveBeenCalledWith(
+      { line: 3, column: 5 },
+      { scroll: false }
+    );
+
+    // a later change to the same tab applies nothing again
+    app.shell.currentChanged.emit({
+      oldValue: editor.tab,
+      newValue: editor.tab
+    });
+    expect(editor.setCursorPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACC-PANEL-325-FILE-POSITION: a restored tab whose document model loads after app.restored takes its place once the model is ready and holds it after a frame, once', async () => {
+    keep('default', {
+      'document:notes.md': {
+        kind: 'editor',
+        scroll: 120,
+        cursor: { line: 3, column: 5 }
+      }
+    });
+    forget('default');
+    const { tab } = liveTab('notes.md');
+    let model!: () => void;
+    (tab as any).context.ready = new Promise<void>(resolve => {
+      model = resolve;
+    });
+    const { app } = await mount(standard(), { live: [tab] });
+    // the model still loads: there is no editor to take the place yet
+    expect((tab as any).content).toBeUndefined();
+
+    // the frame is held, so the place can be read before and after it
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const order: string[] = [];
+    const setCursorPosition = jest.fn(() => order.push('cursor'));
+    let scrollTop = 0;
+    const scrollDOM = document.createElement('div');
+    Object.defineProperty(scrollDOM, 'scrollTop', {
+      get: () => scrollTop,
+      set: value => {
+        scrollTop = value;
+        order.push('scroll');
+      }
+    });
+    model();
+    await settle();
+
+    // the model is ready while the editor is still landing: nothing to write, one frame queued
+    expect(setCursorPosition).not.toHaveBeenCalled();
+    expect(scrollDOM.scrollTop).toBe(0);
+    expect(frames).toHaveLength(1);
+
+    // the editor arrives; the next frame writes the cursor first, then the scroll, once
+    (tab as any).content = {
+      editor: {
+        getCursorPosition: () => ({ line: 0, column: 0 }),
+        setCursorPosition,
+        editor: { scrollDOM }
+      }
+    };
+    frames[0](0);
+    expect(setCursorPosition).toHaveBeenCalledTimes(1);
+    expect(setCursorPosition).toHaveBeenCalledWith(
+      { line: 3, column: 5 },
+      { scroll: false }
+    );
+    expect(order).toEqual(['cursor', 'scroll']);
+    expect(scrollDOM.scrollTop).toBe(120);
+
+    // a tab change after the frame applies nothing again
+    app.shell.currentChanged.emit({ oldValue: null, newValue: tab });
+    expect(setCursorPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACC-PANEL-325-FILE-POSITION: an editor whose model is still loading takes its place once the model is ready', async () => {
+    keep('default', {
+      'document:notes.md': {
+        kind: 'editor',
+        scroll: 120,
+        cursor: { line: 3, column: 5 }
+      }
+    });
+    forget('default');
+    const { tab } = liveTab('notes.md');
+    let model!: () => void;
+    (tab as any).context = {
+      path: 'notes.md',
+      // the document context exists, but its model has not loaded yet
+      isReady: false,
+      ready: new Promise<void>(resolve => {
+        model = resolve;
+      })
+    };
+    // the editor exists on the empty model: a cursor past its last line throws
+    const setCursorPosition = jest.fn((): void => {
+      throw new RangeError('Invalid line number');
+    });
+    let scrollTop = 0;
+    const scrollDOM = document.createElement('div');
+    Object.defineProperty(scrollDOM, 'scrollTop', {
+      get: () => scrollTop,
+      set: value => {
+        scrollTop = value;
+      }
+    });
+    (tab as any).content = {
+      editor: {
+        getCursorPosition: () => ({ line: 0, column: 0 }),
+        setCursorPosition,
+        editor: { scrollDOM }
+      }
+    };
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.push(callback);
+      return frames.length;
+    });
+
+    const { app } = await mount(standard(), { live: [tab] });
+    // the unloaded model wrote nothing and threw nothing: the ready write owns the place
+    expect(setCursorPosition).not.toHaveBeenCalled();
+    expect(scrollDOM.scrollTop).toBe(0);
+
+    // the model loads: the ready write places the cursor and the scroll, then one frame repeats it
+    (tab as any).context.isReady = true;
+    setCursorPosition.mockImplementation(() => undefined);
+    model();
+    await settle();
+    expect(setCursorPosition).toHaveBeenCalledWith(
+      { line: 3, column: 5 },
+      { scroll: false }
+    );
+    expect(scrollDOM.scrollTop).toBe(120);
+    expect(frames).toHaveLength(1);
+
+    frames[0](0);
+    expect(setCursorPosition).toHaveBeenCalledTimes(2);
+    expect(scrollDOM.scrollTop).toBe(120);
+
+    // a tab change after the frame applies nothing again
+    app.shell.currentChanged.emit({ oldValue: null, newValue: tab });
+    expect(setCursorPosition).toHaveBeenCalledTimes(2);
   });
 });

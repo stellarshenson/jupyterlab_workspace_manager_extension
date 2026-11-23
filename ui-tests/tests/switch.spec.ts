@@ -15,8 +15,11 @@ import {
   expectCurrent,
   expectRefused,
   fresh,
+  gotoWorkspace,
+  HEAVY_LOAD,
   layout,
   newTerminalTab,
+  NEXT_POLL,
   openCard,
   openDocument,
   openPanel,
@@ -25,6 +28,7 @@ import {
   refresh,
   rowOf,
   saved,
+  savedTabs,
   secondWindow,
   startTerminal,
   UNDER_LOAD
@@ -42,6 +46,10 @@ test.describe.configure({ timeout: 180000 });
  */
 
 const ROOT = path.resolve(__dirname, '../..');
+
+/** The mockup page served beside the lab on WM_PAGE_PORT: its document title is TITLE. */
+const PAGE_URL = `/proxy/${process.env.WM_PAGE_PORT}/workbench-card-mockup.html`;
+const TITLE = 'WORKBENCH Card Mockup';
 
 /** The URL of a workspace in this lab. */
 const workspaceURL = (id: string) =>
@@ -92,7 +100,10 @@ async function cli(
 }
 
 /** Wait for the application of the document a switch navigated this window to. */
-async function appStarted(page: IJupyterLabPageFixture): Promise<void> {
+async function appStarted(
+  page: IJupyterLabPageFixture,
+  timeout = 30000
+): Promise<void> {
   await page.waitForCondition(
     () =>
       page.evaluate(async () => {
@@ -102,13 +113,173 @@ async function appStarted(page: IJupyterLabPageFixture): Promise<void> {
         }
         return false;
       }),
-    30000
+    timeout
   );
+}
+
+/** Wait until the shell applied the workspace's saved layout, the left sidebar included. */
+async function layoutRestored(
+  page: IJupyterLabPageFixture,
+  timeout = 30000
+): Promise<void> {
+  await page.waitForCondition(
+    () =>
+      page.evaluate(async () => {
+        if (typeof (window as any).jupyterapp === 'object') {
+          await (window as any).jupyterapp.restored;
+          return true;
+        }
+        return false;
+      }),
+    timeout
+  );
+}
+
+/** The right sidebar a workspace's file saves: its open panel's saved name and whether it is collapsed. */
+const savedRight = async (
+  page: IJupyterLabPageFixture,
+  id: string
+): Promise<{ current?: string; collapsed?: boolean }> =>
+  (await saved(page, id))['layout-restorer:data']?.right ?? {};
+
+/** The right sidebar panel this window shows. */
+const liveRight = (
+  page: IJupyterLabPageFixture
+): Promise<{ current: string | null; collapsed: boolean }> =>
+  page.evaluate(() => {
+    const right = (window as any).jupyterapp.shell.saveLayout().rightArea;
+    return {
+      current: right.currentWidget?.id ?? null,
+      collapsed: right.collapsed
+    };
+  });
+
+/** Open a right sidebar panel through the command its tab and the palette run. */
+const showRightPanel = (page: Page, command: string): Promise<void> =>
+  page.evaluate(async command => {
+    await (window as any).jupyterapp.commands.execute(command);
+  }, command);
+
+/** Wait out a switch: the page starts, restores its layout and shows the panel. */
+async function switchedTo(
+  page: IJupyterLabPageFixture,
+  id: string
+): Promise<void> {
+  await page.waitForURL(workspaceURL(id), {
+    timeout: HEAVY_LOAD.timeout,
+    waitUntil: 'commit'
+  });
+  await appStarted(page, HEAVY_LOAD.timeout);
+  await layoutRestored(page, HEAVY_LOAD.timeout);
+  await openPanel(page);
+  await expect(cardHeader(page, id)).toBeVisible({
+    timeout: HEAVY_LOAD.timeout
+  });
+  await refresh(page);
 }
 
 /** The id the panel uses for this window: window.name, which survives a reload. */
 const windowId = (page: IJupyterLabPageFixture): Promise<string> =>
   page.evaluate(() => window.name);
+
+/** Run workspace-page:open with `args` in this window. */
+const openPage = (page: Page, args: Record<string, unknown>) =>
+  page.evaluate(async (openArgs: Record<string, unknown>) => {
+    await (window as any).jupyterapp.commands.execute(
+      'workspace-page:open',
+      openArgs
+    );
+  }, args);
+
+/** Open a file of the server in an Editor tab of this window. */
+const openEditor = (page: Page, path: string) =>
+  page.evaluate(async file => {
+    await (window as any).jupyterapp.commands.execute('docmanager:open', {
+      path: file,
+      factory: 'Editor'
+    });
+  }, path);
+
+/** A notebook of `cells` code cells on the server; opening it executes nothing. */
+async function putManyCellNotebook(
+  page: IJupyterLabPageFixture,
+  path: string,
+  cells: number
+): Promise<void> {
+  const content = {
+    cells: Array.from({ length: cells }, (_, i) => ({
+      cell_type: 'code',
+      execution_count: null,
+      metadata: {},
+      outputs: [],
+      source: [`print(${i})`]
+    })),
+    metadata: {
+      kernelspec: {
+        name: 'python3',
+        display_name: 'Python 3',
+        language: 'python'
+      }
+    },
+    nbformat: 4,
+    nbformat_minor: 5
+  };
+  const response = await page.request.put(`/api/contents/${path}`, {
+    data: { type: 'notebook', format: 'json', content }
+  });
+  expect(response.ok()).toBe(true);
+}
+
+/** The notebook tab of this window: its window scroll, active cell and that cell's scroll. */
+const notebookState = (page: IJupyterLabPageFixture) =>
+  page.evaluate(() => {
+    for (const w of Array.from<any>(
+      (window as any).jupyterapp.shell.widgets('main')
+    )) {
+      if (w.hasClass('jp-NotebookPanel')) {
+        return {
+          scroll: w.content.outerNode.scrollTop,
+          cell: w.content.activeCellIndex,
+          cellScroll:
+            w.content.activeCell?.editor?.editor?.scrollDOM?.scrollTop ?? 0
+        };
+      }
+    }
+    return null;
+  });
+
+/** The editor tab of this window: its scroller scroll and its cursor. */
+const editorState = (page: IJupyterLabPageFixture) =>
+  page.evaluate(() => {
+    for (const w of Array.from<any>(
+      (window as any).jupyterapp.shell.widgets('main')
+    )) {
+      if (w.content?.editor?.getCursorPosition) {
+        return {
+          scroll: w.content.editor.editor.scrollDOM.scrollTop,
+          cursor: w.content.editor.getCursorPosition()
+        };
+      }
+    }
+    return null;
+  });
+
+/** Set the editor tab's cursor, then its scroller scroll, as a reader leaves it. */
+const setEditor = (
+  page: IJupyterLabPageFixture,
+  scroll: number,
+  cursor: { line: number; column: number }
+) =>
+  page.evaluate(
+    ({ scroll, cursor }) => {
+      const w = Array.from<any>(
+        (window as any).jupyterapp.shell.widgets('main')
+      ).find(w => w.content?.editor?.getCursorPosition);
+      w.content.editor.setCursorPosition(cursor, { scroll: false });
+      w.content.editor.editor.scrollDOM.scrollTop = scroll;
+    },
+    { scroll, cursor }
+  );
 
 /**
  * Wait until no switch request is live. A read marks a request delivered to
@@ -517,5 +688,282 @@ test("ACC-ACCORD-300-NO-LAUNCHER: this window's card with a Launcher, a notebook
       await page.request.delete(`/api/terminals/${mine}`);
     }
     await deleteWorkspaces(page, [current, other]);
+  }
+});
+
+test('ACC-PANEL-325-FILE-POSITION: a workspace returns to its own notebook scroll, active cell, editor scroll and cursor after a switch, and each workspace keeps its own', async ({
+  page,
+  tmpPath
+}) => {
+  const a = fresh('swpos');
+  const b = `${a}-b`;
+  const notebook = `${tmpPath}/many.ipynb`;
+  const markdown = `${tmpPath}/long.md`;
+  // the notebook's window at 600 px with cell 20 active; the editor at 300 px, cursor line 60
+  const CELL = 20;
+  const SCROLL = 600;
+  const EDIT_SCROLL = 300;
+  const CURSOR = { line: 60, column: 4 };
+  // B's editor, on the same file, at another place
+  const B_SCROLL = 500;
+  const B_CURSOR = { line: 120, column: 2 };
+  await putManyCellNotebook(page, notebook, 80);
+  await page.contents.uploadContent(
+    Array.from(
+      { length: 400 },
+      (_, i) => `line ${i} of the long markdown document`
+    ).join('\n'),
+    'text',
+    markdown
+  );
+  await putWorkspace(
+    page,
+    a,
+    layout([`notebook:${notebook}`, `editor:${markdown}`])
+  );
+  await putWorkspace(page, b, layout([`editor:${markdown}`]));
+
+  // the enter helper PUTs an empty workspace; this opens the layout already saved
+  const open = async (id: string): Promise<void> => {
+    // Galata's page.goto waits 15 s for an active Launcher tab after the app
+    // starts, and a saved notebook-and-editor layout has none; the raw
+    // navigation skips that wait and the explicit waits below replace it
+    const raw = page as unknown as { page: Page };
+    await raw.page.goto(`${page.appPath}/workspaces/${id}`, {
+      waitUntil: 'commit',
+      timeout: HEAVY_LOAD.timeout
+    });
+    await page.waitForURL(workspaceURL(id), {
+      timeout: HEAVY_LOAD.timeout,
+      waitUntil: 'commit'
+    });
+    await appStarted(page, HEAVY_LOAD.timeout);
+    await layoutRestored(page, HEAVY_LOAD.timeout);
+    await openPanel(page);
+    await expect(cardHeader(page, id)).toBeVisible({
+      timeout: HEAVY_LOAD.timeout
+    });
+    await refresh(page);
+  };
+
+  // a card-header switch is a full page load: wait for this workspace itself,
+  // not Galata's 15 s app wait
+  const switchTo = async (id: string): Promise<void> => {
+    await cardHeader(page, id).click();
+    await page.waitForURL(workspaceURL(id), {
+      timeout: HEAVY_LOAD.timeout,
+      waitUntil: 'commit'
+    });
+    await appStarted(page, HEAVY_LOAD.timeout);
+    await layoutRestored(page, HEAVY_LOAD.timeout);
+    await openPanel(page);
+    await expect(cardHeader(page, id)).toBeVisible({
+      timeout: HEAVY_LOAD.timeout
+    });
+    await refresh(page);
+  };
+
+  try {
+    await open(a);
+    await page.waitForSelector('.jp-Notebook .jp-Cell');
+    await page.evaluate(
+      ({ cell, scroll }) => {
+        const notebook = Array.from<any>(
+          (window as any).jupyterapp.shell.widgets('main')
+        ).find(w => w.hasClass('jp-NotebookPanel'));
+        notebook.content.activeCellIndex = cell;
+        notebook.content.outerNode.scrollTop = scroll;
+      },
+      { cell: CELL, scroll: SCROLL }
+    );
+    await expect
+      .poll(() => notebookState(page), UNDER_LOAD)
+      .toMatchObject({ cell: CELL, scroll: SCROLL });
+
+    // the editor tab must be shown before its scroller takes a scroll
+    await page.getByRole('tab', { name: /long\.md/ }).click();
+    await page.waitForSelector('.jp-FileEditor .cm-content', {
+      state: 'visible'
+    });
+    await setEditor(page, EDIT_SCROLL, CURSOR);
+    await expect
+      .poll(() => editorState(page), UNDER_LOAD)
+      .toEqual({ scroll: EDIT_SCROLL, cursor: CURSOR });
+
+    // away to B: a full page load, which stores A's positions and applies B's (none yet)
+    await switchTo(b);
+    await page.waitForSelector('.jp-FileEditor .cm-content', {
+      state: 'visible'
+    });
+    await setEditor(page, B_SCROLL, B_CURSOR);
+    await expect
+      .poll(() => editorState(page), UNDER_LOAD)
+      .toEqual({ scroll: B_SCROLL, cursor: B_CURSOR });
+
+    // back to A: its own notebook scroll, active cell, editor scroll and cursor;
+    // a tab hidden at the restore takes its place when it first shows
+    await switchTo(a);
+    await page.getByRole('tab', { name: /many\.ipynb/ }).click();
+    await expect
+      .poll(() => notebookState(page), HEAVY_LOAD)
+      .toMatchObject({ scroll: SCROLL, cell: CELL });
+    await page.getByRole('tab', { name: /long\.md/ }).click();
+    await expect
+      .poll(() => editorState(page), HEAVY_LOAD)
+      .toEqual({ scroll: EDIT_SCROLL, cursor: CURSOR });
+
+    // back to B: its own editor offset, not A's
+    await switchTo(b);
+    await expect
+      .poll(() => editorState(page), HEAVY_LOAD)
+      .toEqual({ scroll: B_SCROLL, cursor: B_CURSOR });
+  } finally {
+    await deleteWorkspaces(page, [a, b]);
+  }
+});
+
+test('DEF-PANEL-110-RIGHT-PANEL: each workspace returns to its own right sidebar panel after a switch, while the other keeps its own', async ({
+  page
+}) => {
+  const a = fresh('swright');
+  const b = `${a}-b`;
+  await putWorkspace(page, a);
+  await putWorkspace(page, b);
+  try {
+    await enterWorkspace(page, a);
+
+    // open the property inspector and leave at once, inside JupyterLab's 500 ms save window
+    await showRightPanel(page, 'property-inspector:show-panel');
+    await cardHeader(page, b).click();
+    await switchedTo(page, b);
+
+    // A's file carries the panel it had open
+    await expect
+      .poll(async () => savedRight(page, a), UNDER_LOAD)
+      .toMatchObject({ current: 'jp-property-inspector', collapsed: false });
+
+    // back to A: its own panel
+    await cardHeader(page, a).click();
+    await switchedTo(page, a);
+    await expect
+      .poll(() => liveRight(page), UNDER_LOAD)
+      .toMatchObject({ current: 'jp-property-inspector', collapsed: false });
+
+    // B gets its own, the debugger, and the departure at once saves it
+    await cardHeader(page, b).click();
+    await switchedTo(page, b);
+    await showRightPanel(page, 'debugger:show-panel');
+    await cardHeader(page, a).click();
+    await switchedTo(page, a);
+    await expect
+      .poll(async () => savedRight(page, b), UNDER_LOAD)
+      .toMatchObject({ current: 'debugger-sidebar', collapsed: false });
+
+    // A still shows its own panel, not B's debugger
+    await expect
+      .poll(() => liveRight(page), UNDER_LOAD)
+      .toMatchObject({ current: 'jp-property-inspector', collapsed: false });
+
+    // B returns to the debugger it had
+    await cardHeader(page, b).click();
+    await switchedTo(page, b);
+    await expect
+      .poll(() => liveRight(page), UNDER_LOAD)
+      .toMatchObject({ current: 'jp-debugger-sidebar', collapsed: false });
+  } finally {
+    await deleteWorkspaces(page, [a, b]);
+  }
+});
+
+test("ACC-PANEL-326-TABNAMES-LIVE: a left workspace's card shows a page tab's saved document title and a renamed document's new name without switching back", async ({
+  page
+}) => {
+  const a = fresh('swlive');
+  const b = `${a}-b`;
+  const doc = 'docs/README.md';
+  const renamed = 'docs/README-live.md';
+  // a retried or repeated run starts from no file of either name
+  await page.contents.deleteFile(doc);
+  await page.contents.deleteFile(renamed);
+  expect(await page.contents.uploadContent('# readme\n', 'text', doc)).toBe(
+    true
+  );
+  try {
+    // this window on A; B is listed so the window can leave and come back
+    await putWorkspace(page, b);
+    await enterWorkspace(page, a);
+
+    // a page opened with no title takes its document title, and A's file saves it
+    await openPage(page, { url: PAGE_URL, id: 'wm-live' });
+    await expect(
+      page.locator('#jp-main-dock-panel .lm-TabBar-tab', { hasText: TITLE })
+    ).toHaveCount(1, UNDER_LOAD);
+    await expect
+      .poll(
+        async () =>
+          (await saved(page, a))['workspace-page:wm-live']?.data?.documentTitle,
+        NEXT_POLL
+      )
+      .toBe(TITLE);
+
+    // a document open in A, named in A's saved layout
+    await openEditor(page, doc);
+    await expect
+      .poll(() => savedTabs(page, a), NEXT_POLL)
+      .toContain(`editor:${doc}`);
+
+    // leave A: its card shows the page tab's saved document title
+    await gotoWorkspace(page, b);
+    await openPanel(page);
+    await refresh(page);
+    await expect(cardHeader(page, a)).toBeVisible({
+      timeout: HEAVY_LOAD.timeout
+    });
+    await openCard(page, a);
+    await expect(rowOf(card(page, a), TITLE)).toBeVisible(NEXT_POLL);
+
+    // back on A, rename the document: the panel repoints A's saved layout
+    await cardHeader(page, a).click();
+    await page.waitForURL(workspaceURL(a), {
+      timeout: HEAVY_LOAD.timeout,
+      waitUntil: 'commit'
+    });
+    await appStarted(page, HEAVY_LOAD.timeout);
+    await layoutRestored(page, HEAVY_LOAD.timeout);
+    await openPanel(page);
+    await refresh(page);
+    // the rename goes through this window's own contents service, which moves
+    // the open tab: Galata's in-page helper still holds the pre-navigation app
+    await page.evaluate(
+      async ([oldPath, newPath]) => {
+        await (window as any).jupyterapp.serviceManager.contents.rename(
+          oldPath,
+          newPath
+        );
+      },
+      [doc, renamed]
+    );
+    await expect
+      .poll(() => savedTabs(page, a), NEXT_POLL)
+      .toContain(`editor:${renamed}`);
+
+    // back on B: A's card shows the renamed tab
+    await cardHeader(page, b).click();
+    await page.waitForURL(workspaceURL(b), {
+      timeout: HEAVY_LOAD.timeout,
+      waitUntil: 'commit'
+    });
+    await appStarted(page, HEAVY_LOAD.timeout);
+    await layoutRestored(page, HEAVY_LOAD.timeout);
+    await openPanel(page);
+    await expect(cardHeader(page, a)).toBeVisible({
+      timeout: HEAVY_LOAD.timeout
+    });
+    await openCard(page, a);
+    await expect(rowOf(card(page, a), 'README-live.md')).toBeVisible(NEXT_POLL);
+  } finally {
+    await deleteWorkspaces(page, [a, b]);
+    await page.contents.deleteFile(doc);
+    await page.contents.deleteFile(renamed);
   }
 });

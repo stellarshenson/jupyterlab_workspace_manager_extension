@@ -7,6 +7,7 @@ import type {
   IRunningSessions,
   IRunningSessionSidebar
 } from '@jupyterlab/running';
+import type { IStateDB } from '@jupyterlab/statedb';
 import type { TranslationBundle } from '@jupyterlab/translation';
 import type { ISectionEntry } from '@jupyterlab/apputils';
 import {
@@ -25,6 +26,8 @@ import {
   textEditorIcon,
   Toolbar
 } from '@jupyterlab/ui-components';
+import { MimeData } from '@lumino/coreutils';
+import { Drag } from '@lumino/dragdrop';
 import type { Message } from '@lumino/messaging';
 import { Signal } from '@lumino/signaling';
 import type { Menu } from '@lumino/widgets';
@@ -40,6 +43,8 @@ import {
   type ISwitch,
   load,
   patchMeta,
+  removeWorkspace,
+  renameWorkspace,
   switches,
   workspaces
 } from '../api';
@@ -75,7 +80,7 @@ import {
 import { newRecord } from '../model/new';
 import { givePositions, moved } from '../model/order';
 import { assignColours, type Colour, nextColour } from '../model/palette';
-import { imageIcon, PAGE_CLASS } from '../page';
+import { imageIcon, pageUrl, PAGE_CLASS } from '../page';
 import {
   confirm,
   cleanUpDialog,
@@ -84,6 +89,16 @@ import {
 } from './dialogs';
 import { Harmonica } from './harmonica';
 import { actionMenu, type IRowAction, workspaceMenu } from './menus';
+import {
+  applyWhenReady,
+  capture,
+  keep,
+  load as loadPositions,
+  recall,
+  remember,
+  scrollNode,
+  type IPosition
+} from './position';
 
 /** The section of the panel that lists the running language servers. */
 const LANGUAGE_SERVERS = 'Language servers';
@@ -91,6 +106,12 @@ const POLL_MS = 10000;
 /** The CLI switch channel is read every second: a workspace request must switch the window within 2 s. */
 const SWITCH_MS = 1000;
 const SPIN_MS = 500;
+/** The MIME the advanced file browser's targets read a dragged item path from, relative to the server root. */
+export const PATH_MIME = 'application/x-jupyterlab-drag-and-drop-path';
+/** The MIME this panel's terminal target reads a dragged row's raw text from. */
+export const TEXT_MIME = 'application/x-jupyterlab-workspace-manager-drag-text';
+/** How far the pointer moves before a press on a row's icon starts a drag, in pixels. */
+const DRAG_THRESHOLD = 4;
 /** A tab to activate after the reload a workspace switch makes; the server keeps its request 90 s too. */
 const PENDING_TAB =
   '@stellarshenson/jupyterlab-workspace-manager-extension:pending-tab';
@@ -355,6 +376,8 @@ export namespace WorkspacePanel {
     managers?: IRunningSessionManagers | null;
     /** the layout restorer: a tab it tracks takes the name it saves the tab under */
     restorer?: ILayoutRestorer | null;
+    /** the lab's state database: the layout is written through it before a switch */
+    state?: IStateDB | null;
     /** the translation bundle of this extension */
     trans: TranslationBundle;
   }
@@ -383,6 +406,7 @@ export class WorkspacePanel
     this._window = options.window;
     this._managers = options.managers ?? null;
     this._restorer = options.restorer ?? null;
+    this._state = options.state ?? null;
     this._translation = options.trans;
     this.addClass('jp-WorkspaceManager');
     this.content.addClass('jp-WorkspaceManager-content');
@@ -525,10 +549,12 @@ export class WorkspacePanel
     );
 
     this._root = createRoot(this.content.node);
-    this._app.shell.currentChanged?.connect(() => {
-      this._markCurrent();
-      this._releaseRow();
-    }, this);
+    this._app.shell.currentChanged?.connect(this._currentChanged, this);
+    // a switch is a full page navigation: the pagehide this page gets stores each live tab's file position
+    window.addEventListener('pagehide', this._pagehide);
+    void this._app.restored
+      .then(() => this._restorePositions())
+      .catch(() => undefined);
     this.content.node.addEventListener('focusout', e => this._releaseRow(e));
     // the lit row's detail lines stay for the press: removed, they pull what is below from under the pointer and lose its click
     this.content.node.addEventListener(
@@ -577,6 +603,10 @@ export class WorkspacePanel
     if (this.isDisposed) {
       return;
     }
+    window.removeEventListener('pagehide', this._pagehide);
+    this._app.shell.currentChanged?.disconnect(this._currentChanged, this);
+    // every scroll listener of the live tabs goes with the panel
+    this._scrolls.abort();
     this._stopPolling();
     this._stopSwitch();
     this._harmonica.stop();
@@ -740,6 +770,9 @@ export class WorkspacePanel
           if (!this._pruned && data.workspaces) {
             this._pruneCards();
           }
+          if (data.workspaces) {
+            this._syncLayout(data.workspaces);
+          }
         })
         .catch(reason => {
           this._error = `Reload failed: ${reason?.message ?? reason}`;
@@ -750,6 +783,62 @@ export class WorkspacePanel
         });
     }
     return this._loading;
+  }
+
+  /**
+   * Save the layout once when the names this window's live tabs save under
+   * differ from the current workspace's saved keys: JupyterLab writes the
+   * saved layout only on a layout change, so a renamed notebook's moved key
+   * stays stale there until one; the save repoints the layout at the new key.
+   */
+  private _syncLayout(workspaces: ILoaded['workspaces']): void {
+    const current = workspaces.find(w => w.metadata.id === this._current);
+    if (!current) {
+      return;
+    }
+    const saved = new Set(tabsOf(current.data).map(tab => tab.key));
+    const live = new Set(
+      this._liveTabs()
+        .map(tab => tab.savedKey)
+        .filter((key): key is string => !!key)
+    );
+    if (live.size === saved.size && [...live].every(key => saved.has(key))) {
+      return;
+    }
+    const layout = (this._app.shell as any).saveLayout?.();
+    if (layout) {
+      // shortcut: LayoutRestorer.save is not on ILayoutRestorer, as its _widgets map is not; replace both when JupyterLab adds them
+      Promise.resolve((this._restorer as any)?.save?.(layout)).catch(
+        () => undefined
+      );
+    }
+  }
+
+  /**
+   * Write this window's state - the live layout included - into its workspace
+   * file; JupyterLab otherwise writes it 500 ms lazily and a navigation
+   * cancels that write (DEF-PANEL-110-RIGHT-PANEL).
+   */
+  private async _saveState(id = this._current): Promise<void> {
+    const layout = (this._app.shell as any).saveLayout?.();
+    if (layout) {
+      // shortcut: LayoutRestorer.save is not on ILayoutRestorer, as its _widgets map is not; replace both when JupyterLab adds them
+      await Promise.resolve((this._restorer as any)?.save?.(layout)).catch(
+        () => undefined
+      );
+    }
+    if (!this._state) {
+      return;
+    }
+    try {
+      const data = await this._state.toJSON();
+      await this._app.serviceManager.workspaces.save(id, {
+        data,
+        metadata: { id }
+      });
+    } catch {
+      // a failed save must not block the switch
+    }
   }
 
   /**
@@ -787,6 +876,7 @@ export class WorkspacePanel
       }
       // the tab path must survive the reload the switch makes
       keepPendingTab(tab ? { workspace, path: tab } : null);
+      await this._saveState();
       document.location.href = this._url(workspace);
       return;
     }
@@ -955,13 +1045,133 @@ export class WorkspacePanel
         this._live.set(own, widget);
         tabs.push({
           key: own,
+          savedKey: names.get(widget),
           path,
+          // a live page tab drags the address it shows, never its title (ACC-DRAG-320-PAGE-URL)
+          url: widget.hasClass(PAGE_CLASS)
+            ? pageUrl(widget)
+            : widget.hasClass('jp-ServerProxy') || widget.hasClass('jp-Help')
+              ? w.content.url
+              : undefined,
           title: widget.title.label,
           name: console ? widget.title.label : undefined
         });
       }
     }
+    this._watchScrolls();
     return tabs;
+  }
+
+  /** Watch each live tab's scroll box, so its place is kept while the tab is visible. */
+  private _watchScrolls(): void {
+    for (const [key, widget] of this._live) {
+      const node = scrollNode(widget);
+      if (node && !this._scrolled.has(node)) {
+        this._scrolled.add(node);
+        node.addEventListener('scroll', () => this._remember(key, widget), {
+          passive: true,
+          signal: this._scrolls.signal
+        });
+      }
+    }
+  }
+
+  /** A tab of this window changed: keep the outgoing tab's place and show the incoming tab's, once. */
+  private _currentChanged = (
+    _: unknown,
+    change: { oldValue: Widget | null; newValue: Widget | null }
+  ): void => {
+    if (this.isDisposed) {
+      return;
+    }
+    this._liveTabs();
+    if (change.oldValue) {
+      const key = this._keyOf(change.oldValue);
+      if (key) {
+        this._remember(key, change.oldValue);
+      }
+    }
+    this._markCurrent();
+    this._releaseRow();
+    if (change.newValue) {
+      this._applyPendingPosition(change.newValue);
+    }
+  };
+
+  /** Remember a tab's place, while the tab is visible: a hidden tab reads scrollTop 0. */
+  private _remember(key: string, widget: Widget): void {
+    if (widget.isDisposed || !widget.isVisible) {
+      return;
+    }
+    const position = capture(widget);
+    if (position) {
+      remember(this._current, key, position);
+    }
+  }
+
+  /** The key of the live tab drawing `widget`; undefined while the tab is not live. */
+  private _keyOf(widget: Widget): string | undefined {
+    for (const [key, live] of this._live) {
+      if (live === widget) {
+        return key;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Snapshot the tab still visible and every place the map kept, before the
+   * page goes: a hidden tab reads no scroll and drops a write, so its place
+   * comes from the map the visible-time listeners filled.
+   */
+  private _storePositions(): void {
+    if (this.isDisposed) {
+      return;
+    }
+    this._liveTabs();
+    const positions = recall(this._current);
+    for (const [key, widget] of this._live) {
+      if (widget.isVisible || widget === this._app.shell.currentWidget) {
+        const position = capture(widget);
+        if (position) {
+          positions[key] = position;
+        }
+      }
+    }
+    keep(this._current, positions);
+  }
+
+  /** Apply this workspace's stored places: at once to a tab that shows, on its first show to a hidden one. */
+  private _restorePositions(): void {
+    if (this.isDisposed) {
+      return;
+    }
+    this._liveTabs();
+    const current = this._app.shell.currentWidget;
+    const stored = loadPositions(this._current);
+    for (const [key, position] of Object.entries(stored)) {
+      const widget = this._live.get(key);
+      if (!widget) {
+        continue;
+      }
+      if (widget === current || widget.isVisible) {
+        // the document model may still load after app.restored: write now and
+        // retry once it is ready, so the place is not lost on an empty widget
+        applyWhenReady(widget, position);
+      } else {
+        this._pending.set(key, position);
+      }
+    }
+  }
+
+  /** Apply a place kept for a tab hidden when the workspace restored, once. */
+  private _applyPendingPosition(widget: Widget): void {
+    const key = this._keyOf(widget);
+    const position = key ? this._pending.get(key) : undefined;
+    if (key && position) {
+      this._pending.delete(key);
+      applyWhenReady(widget, position);
+    }
   }
 
   private _watch(manager: IRunningSessions.IManager): void {
@@ -1199,10 +1409,11 @@ export class WorkspacePanel
   }
 
   /**
-   * One section: the header carries the label, the count and its action button -
-   * Work spaces adds a workspace and cleans up, the three below shut down all; the open section shows
-   * its body, which scrolls, and one of those three with nothing in it says so; a folded
-   * section shows its body only while a pull or a fold moves it.
+   * One section: the header carries the label, the count and its action buttons -
+   * WORKSPACES adds a workspace and cleans up, TERMINALS and KERNELS clean up and shut
+   * down, LANGUAGE SERVERS shuts down all; the open section shows its body, which
+   * scrolls, and one of those three with nothing in it says so; a folded section shows
+   * its body only while a pull or a fold moves it.
    */
   private _renderSection(
     key: string,
@@ -1253,35 +1464,50 @@ export class WorkspacePanel
               true // pointerFocus
             )}
           {shutdown &&
-            (shutdown === 'workspaces'
-              ? iconButton(
+            (shutdown === 'workspaces' ? (
+              iconButton(
+                eraserIcon,
+                'Clean up workspaces',
+                () => void this._cleanUp(),
+                this._nothingToClean(),
+                undefined,
+                undefined,
+                true // pointerFocus
+              )
+            ) : shutdown === 'servers' ? (
+              iconButton(
+                powerIcon,
+                this._translation.__('Shut down all'),
+                () => void this._shutDownSection(shutdown),
+                !n,
+                undefined,
+                undefined,
+                true // pointerFocus
+              )
+            ) : (
+              <>
+                {iconButton(
                   eraserIcon,
-                  'Clean up workspaces',
-                  () => void this._cleanUp(),
-                  this._nothingToClean(),
+                  shutdown === 'terminals'
+                    ? 'Clean up terminals'
+                    : 'Clean up kernels',
+                  () => void this._shutDownDetached(shutdown, true),
+                  this._nothingToCleanBand(shutdown),
                   undefined,
                   undefined,
                   true // pointerFocus
-                )
-              : shutdown === 'servers'
-                ? iconButton(
-                    powerIcon,
-                    this._translation.__('Shut down all'),
-                    () => void this._shutDownSection(shutdown),
-                    !n,
-                    undefined,
-                    undefined,
-                    true // pointerFocus
-                  )
-                : iconButton(
-                    powerIcon,
-                    this._translation.__('Shut down'),
-                    e => this._bandMenu(shutdown, e),
-                    !n,
-                    undefined,
-                    undefined,
-                    true // pointerFocus
-                  ))}
+                )}
+                {iconButton(
+                  powerIcon,
+                  this._translation.__('Shut down'),
+                  e => this._bandMenu(shutdown, e),
+                  !n,
+                  undefined,
+                  undefined,
+                  true // pointerFocus
+                )}
+              </>
+            ))}
         </div>
         {(open || this._heights?.[i] !== undefined) && (
           <div className="jp-WorkspaceManager-sectionBody">
@@ -1591,6 +1817,12 @@ export class WorkspacePanel
       label: tab.label,
       detail: [[[dirname(tab.path), CODE]]],
       title: tab.path ?? '',
+      // a file drags its path for the advanced file browser's targets, a page its exact URL for this panel's terminal (ACC-DRAG-319-FILE-PATH, ACC-DRAG-320-PAGE-URL)
+      drag: tab.path
+        ? { mime: PATH_MIME, data: [tab.path] }
+        : tab.url
+          ? { mime: TEXT_MIME, data: tab.url }
+          : undefined,
       when,
       state: kernel
         ? { word: kernel.state ?? 'unknown', dot: kernel.dotClass }
@@ -1657,6 +1889,8 @@ export class WorkspacePanel
       code: listed,
       process: tab ?? t.process,
       path: t.cwd,
+      // a terminal drags its working directory as raw text (ACC-DRAG-321-TERM-CWD)
+      drag: t.cwd ? { mime: TEXT_MIME, data: t.cwd } : undefined,
       title: lines(
         `terminal ${t.name}`,
         field(trans.__('Tab'), tab),
@@ -1720,13 +1954,29 @@ export class WorkspacePanel
     const figures = this._data?.resources[k.id];
     const key = `kernel:${k.id}`;
     const tabs = [`notebook:${k.path}`, `console:${k.path}`];
+    // a listed row's first holder in the model's order gives the icon its colour, as the terminal badge does (ACC-KERNEL-318-ICON-TINT)
+    const held = listed
+      ? this._sections.filter(s => k.alsoIn.includes(s.id))
+      : null;
+    const colour = held?.[0]?.colour ?? null;
     return row({
       key,
       ...this._selection(listed ? 'kernels' : keyOf(section!), key, tabs),
-      icon: kernelIcon,
+      icon:
+        listed && k.alsoIn.length > 0 ? (
+          <span
+            className={`jp-WorkspaceManager-rowIcon jp-WorkspaceManager-kernelIcon${colour ? ` jp-mod-${colour} jp-mod-coloured` : ''}`}
+          >
+            <kernelIcon.react tag="span" />
+          </span>
+        ) : (
+          kernelIcon
+        ),
       // the file name of its notebook or console, the id with no session
       label: k.detail || k.id,
       code: !k.detail,
+      // a kernel drags its session path as a path list (ACC-DRAG-322-KERNEL-PATH)
+      drag: k.path ? { mime: PATH_MIME, data: [k.path] } : undefined,
       // the memory stands in the line, selected or not (ACC-KERNEL-281-ROW-MEMORY)
       memory: formatMemory(figures?.memory),
       state: { word: k.state ?? 'unknown', dot: k.dotClass },
@@ -1844,13 +2094,22 @@ export class WorkspacePanel
     ]).open(rect.left, rect.bottom);
   }
 
-  /** Shut down every terminal or kernel of a section that no workspace holds, asking once (ACC-ACCORD-292-SHUTDOWN-MENU). */
+  /**
+   * Shut down every terminal or kernel of a section that no workspace holds, asking once
+   * (ACC-ACCORD-292-SHUTDOWN-MENU); clean keeps the busy and starting kernels, whose work
+   * would be lost (ACC-PANEL-327-TERM-CLEAN, ACC-PANEL-328-KERNEL-CLEAN).
+   */
   private async _shutDownDetached(
-    kind: 'terminals' | 'kernels'
+    kind: 'terminals' | 'kernels',
+    clean = false
   ): Promise<void> {
-    const n = (this._model()?.[kind] ?? []).filter(
-      x => x.alsoIn.length === 0
-    ).length;
+    const rows = this._model();
+    const n =
+      kind === 'terminals'
+        ? (rows?.terminals ?? []).filter(t => t.alsoIn.length === 0).length
+        : (rows?.kernels ?? []).filter(
+            k => k.alsoIn.length === 0 && (!clean || k.state === 'idle')
+          ).length;
     if (!n) {
       return;
     }
@@ -1882,11 +2141,23 @@ export class WorkspacePanel
       } else {
         await Promise.all(
           model.kernels
-            .filter(x => x.alsoIn.length === 0)
+            .filter(
+              x => x.alsoIn.length === 0 && (!clean || x.state === 'idle')
+            )
             .map(x => this._app.serviceManager.kernels.shutdown(x.id))
         );
       }
     });
+  }
+
+  /** Whether a clean-up of a band would stop nothing: no detached terminal, no detached idle kernel (ACC-PANEL-327-TERM-CLEAN, ACC-PANEL-328-KERNEL-CLEAN). */
+  private _nothingToCleanBand(kind: 'terminals' | 'kernels'): boolean {
+    const rows = this._model();
+    return kind === 'terminals'
+      ? !(rows?.terminals ?? []).some(t => t.alsoIn.length === 0)
+      : !(rows?.kernels ?? []).some(
+          k => k.alsoIn.length === 0 && k.state === 'idle'
+        );
   }
 
   /** Shut down every item of one of the sections below WORKSPACES, asking once. */
@@ -2103,6 +2374,7 @@ export class WorkspacePanel
       if (newTab) {
         window.open(this._url(id), '_blank');
       } else {
+        await this._saveState();
         document.location.href = this._url(id);
       }
     });
@@ -2405,27 +2677,68 @@ export class WorkspacePanel
   private async _delete(section: ISection): Promise<void> {
     const id = section.id;
     await this._act(async () => {
+      // this window closes its own workspace: a stale record of it - a prior page
+      // of this tab stays listed until its heartbeat expires - cannot refuse it
       if (
-        section.current ||
+        !section.current &&
         (await this._refused(id, 'Delete workspace', true))
       ) {
         return;
       }
-      await workspaces(this._settings).remove(id);
+      await removeWorkspace(this._settings, id);
       this._openCards.delete(`w:${id}`);
       keepCard(id, false);
+      // this window's own workspace goes too: it falls back to the default one,
+      // which JupyterLab recreates on the next request when its file is gone
+      if (section.current) {
+        document.location.href = this._url('default');
+      }
     });
   }
 
   private async _describe(section: ISection): Promise<void> {
-    const purpose = await descriptionDialog(
+    // shortcut: the ids are the last reload's, so a workspace created elsewhere
+    // since is overwritten by the rename; take a fresh list if that matters
+    const form = await descriptionDialog(
       section.id,
       section.purpose,
+      (this._model()?.sections ?? []).map(s => s.id),
       this._translation
     );
-    if (purpose !== null) {
-      await this._store(section.id, { purpose: purpose.trim() });
+    if (form === null) {
+      return;
     }
+    const purpose = form.purpose.trim();
+    if (form.name === section.id) {
+      await this._store(section.id, { purpose });
+      return;
+    }
+    const to = form.name;
+    await this._act(async () => {
+      // this window's own workspace is present under this window, so it renames here
+      if (
+        !section.current &&
+        (await this._refused(section.id, 'Rename workspace', true))
+      ) {
+        return;
+      }
+      await renameWorkspace(this._settings, section.id, to);
+      // the whole record moves with the workspace; the server drops the old id's
+      // record once its file is gone
+      const record = this._data?.records[section.id] ?? {};
+      await patchMeta(this._settings, to, { ...record, purpose });
+      if (this._openCards.delete(`w:${section.id}`)) {
+        this._openCards.add(`w:${to}`);
+        keepCard(to, true);
+      }
+      keepCard(section.id, false);
+      // this window's workspace parameter must name the new id, or its next
+      // layout save writes the old workspace back
+      if (section.current) {
+        await this._saveState(to);
+        document.location.href = this._url(to);
+      }
+    });
   }
 
   private async _shutDownTerminal(
@@ -2580,6 +2893,7 @@ export class WorkspacePanel
   private _window: string;
   private _managers: IRunningSessionManagers | null;
   private _restorer: ILayoutRestorer | null;
+  private _state: IStateDB | null;
   private _translation: TranslationBundle;
   private _root: Root;
   private _filterButton: Widget;
@@ -2601,6 +2915,14 @@ export class WorkspacePanel
   private _tabsTimer = 0;
   /** the open tab of each key of this window */
   private _live = new Map<string, Widget>();
+  /** the pagehide that stores the file positions: one reference to remove it in dispose */
+  private _pagehide = (): void => this._storePositions();
+  /** the scroll listeners of the live tabs, all removed in dispose */
+  private _scrolls = new AbortController();
+  /** the scroll boxes already listening, so a later render attaches nothing */
+  private _scrolled = new WeakSet<Element>();
+  /** places of tabs hidden when the workspace restored, applied when each first shows */
+  private _pending = new Map<string, IPosition>();
   /** the tab a terminal row opened or activated, by terminal name */
   private _terminalTab = new Map<string, Widget>();
   /** the terminal row calls in flight, by terminal name */
@@ -2830,6 +3152,57 @@ const SHRINK = 'jp-mod-shrink';
 const TYPE = `${SHRINK} jp-WorkspaceManager-type`;
 const FOLDER = `${CODE} ${SHRINK} jp-WorkspaceManager-folder`;
 
+/** What a row's icon handle drags: a path list under PATH_MIME, or raw text under TEXT_MIME. */
+interface IRowDrag {
+  mime: string;
+  data: string | string[];
+}
+
+/**
+ * Start a Lumino drag when a press on a row's icon handle moves past the
+ * threshold, so a still press stays the row's click (ACC-DRAG-319-FILE-PATH).
+ */
+function dragFrom(event: React.MouseEvent<HTMLElement>, drag: IRowDrag): void {
+  if (event.button !== 0) {
+    return;
+  }
+  // the handle carries an icon; no text selection starts on it
+  event.preventDefault();
+  const handle = event.currentTarget;
+  const pressX = event.clientX;
+  const pressY = event.clientY;
+  const gesture = new AbortController();
+  const stop = (): void => gesture.abort();
+  const onMove = (move: MouseEvent): void => {
+    if (
+      Math.abs(move.clientX - pressX) < DRAG_THRESHOLD &&
+      Math.abs(move.clientY - pressY) < DRAG_THRESHOLD
+    ) {
+      return;
+    }
+    stop();
+    const mimeData = new MimeData();
+    mimeData.setData(drag.mime, drag.data);
+    const lumino = new Drag({
+      mimeData,
+      dragImage: handle.cloneNode(true) as HTMLElement,
+      supportedActions: 'copy',
+      proposedAction: 'copy',
+      source: handle
+    });
+    // a drag disposes itself when it ends
+    void lumino.start(move.clientX, move.clientY).then(() => lumino.dispose());
+  };
+  document.addEventListener('mousemove', onMove, {
+    capture: true,
+    signal: gesture.signal
+  });
+  document.addEventListener('mouseup', stop, {
+    capture: true,
+    signal: gesture.signal
+  });
+}
+
 /**
  * A row: its type icon, its name, a terminal's tab name or process (DQ-24, DQ-31) and path (DQ-30), a kernel's state
  * dot and word, its time; selected, the lines of its details under them (DQ-17). Its focus, by a
@@ -2843,6 +3216,8 @@ function row(props: {
   current?: boolean;
   select: () => void;
   icon: LabIcon | React.ReactElement;
+  /** what the row's icon handle drags; no handle when absent */
+  drag?: IRowDrag;
   label: React.ReactNode;
   /** the label is an identifier: the code font */
   code?: boolean;
@@ -2866,7 +3241,13 @@ function row(props: {
   open: () => void;
   menu?: IRowAction[];
 }): React.ReactElement {
-  const { icon, menu, shutdown, state, when } = props;
+  const { drag, icon, menu, shutdown, state, when } = props;
+  const iconElement =
+    icon instanceof LabIcon ? (
+      <icon.react tag="span" className="jp-WorkspaceManager-rowIcon" />
+    ) : (
+      icon
+    );
   const detail = props.selected
     ? (props.detail ?? [])
         .map(line => line.filter(([text]) => text))
@@ -2918,10 +3299,16 @@ function row(props: {
         }
       }}
     >
-      {icon instanceof LabIcon ? (
-        <icon.react tag="span" className="jp-WorkspaceManager-rowIcon" />
+      {drag ? (
+        // the icon alone is the handle, so dragging never takes the row's text selection (ACC-DRAG-319-FILE-PATH)
+        <span
+          className="jp-WorkspaceManager-rowDrag"
+          onMouseDown={e => dragFrom(e, drag)}
+        >
+          {iconElement}
+        </span>
       ) : (
-        icon
+        iconElement
       )}
       {/* an empty label renders no span, which would take a second column gap after the icon (ACC-TERM-302-ICON-GAP) */}
       {props.label !== '' && (

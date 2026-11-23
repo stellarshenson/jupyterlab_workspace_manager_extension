@@ -8,16 +8,19 @@ import {
   colourOf,
   COLOURS,
   deleteWorkspaces,
+  expectCurrent,
   fresh,
   fromMenu,
   gotoWorkspace,
   headerButton,
+  HEAVY_LOAD,
   listed,
   openCardMenu,
   menuItem,
   onlyWorkspaces,
   openCard,
   openPanel,
+  PANEL_TAB,
   patchMeta,
   putWorkspace,
   refresh,
@@ -469,31 +472,142 @@ test('ACC-ACCORD-155-ARMED-COLOUR: Delete workspace and, armed, Confirm delete d
   }
 });
 
-test("ACC-ACCORD-32-DELETE-CURRENT: Delete workspace and Open in new browser tab are disabled on this window's workspace", async ({
+test("ACC-PANEL-329-DELETE-CURRENT: this window's own workspace can be deleted; after the confirmation the window lands on another one", async ({
   page
 }) => {
-  const { current, other } = await setUp(page, 'delcur');
+  const current = fresh('delcur');
+  // the default workspace is the fallback, so the panel keeps it in its list
+  await onlyWorkspaces(page, id => id === 'default' || id.startsWith(current));
+  await gotoWorkspace(page, current);
+  await openPanel(page);
+  await refresh(page);
   try {
     await openCardMenu(page, current);
-    for (const label of ['Delete workspace', 'Open in new browser tab']) {
-      await expect(menuItem(page, label)).toHaveClass(/lm-mod-disabled/);
-      await expect(menuItem(page, label)).toHaveAttribute(
-        'aria-disabled',
-        'true'
-      );
-    }
-    // a click on the disabled item arms nothing and deletes nothing
-    await menuItem(page, 'Delete workspace').click({ force: true });
-    await menuItem(page, 'Delete workspace').click({ force: true });
-    await page.keyboard.press('Escape');
-    expect(await listed(page)).toContain(current);
-    // the others' menus have both
-    await openCardMenu(page, other);
     await expect(menuItem(page, 'Delete workspace')).not.toHaveClass(
       /lm-mod-disabled/
     );
+    await menuItem(page, 'Delete workspace').click();
+    await expect(menuItem(page, 'Confirm delete')).toBeVisible();
+    await page.waitForTimeout(700);
+    await menuItem(page, 'Confirm delete').click();
+    // the window loads the default workspace: its URL carries no workspace segment
+    await page.waitForURL(
+      url => !url.pathname.includes('/workspaces/'),
+      UNDER_LOAD
+    );
+    await expect.poll(() => listed(page), UNDER_LOAD).not.toContain(current);
+    await expect(page.locator(PANEL_TAB)).toBeVisible({
+      timeout: HEAVY_LOAD.timeout
+    });
+    await openPanel(page);
+    await refresh(page);
+    // this window is on the default workspace now
+    await expectCurrent(page, 'default');
   } finally {
-    await deleteWorkspaces(page, [current, other]);
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-PANEL-329-DELETE-CURRENT: the default workspace can be deleted; JupyterLab recreates it on the next request', async ({
+  page
+}) => {
+  // this window is on the default workspace, so deleting it takes the same fallback
+  await gotoWorkspace(page, 'default');
+  await openPanel(page);
+  await refresh(page);
+  await openCardMenu(page, 'default');
+  await menuItem(page, 'Delete workspace').click();
+  await expect(menuItem(page, 'Confirm delete')).toBeVisible();
+  await page.waitForTimeout(700);
+  const before = await page.request.get('/lab/api/workspaces/default');
+  const beforeModified = (await before.json()).metadata.last_modified;
+  expect(typeof beforeModified).toBe('string');
+  await menuItem(page, 'Confirm delete').click();
+  // the window loads the default workspace: its URL carries no workspace segment
+  await page.waitForURL(
+    url => !url.pathname.includes('/workspaces/'),
+    UNDER_LOAD
+  );
+  await page.waitForCondition(
+    () =>
+      page.evaluate(async () => {
+        if (typeof (window as any).jupyterapp === 'object') {
+          await (window as any).jupyterapp.started;
+          return true;
+        }
+        return false;
+      }),
+    HEAVY_LOAD.timeout
+  );
+  // the old default is gone and the lab wrote a new one: a 2xx default with a new last_modified
+  await expect
+    .poll(async () => {
+      const response = await page.request.get('/lab/api/workspaces/default');
+      if (!response.ok()) {
+        return false;
+      }
+      const { last_modified } = (await response.json()).metadata;
+      return (
+        typeof last_modified === 'string' && last_modified !== beforeModified
+      );
+    }, UNDER_LOAD)
+    .toBe(true);
+  await expect(page.locator(PANEL_TAB)).toBeVisible({
+    timeout: HEAVY_LOAD.timeout
+  });
+  await openPanel(page);
+  await refresh(page);
+  await expect(card(page, 'default')).toBeVisible();
+  await expectCurrent(page, 'default');
+  // the lab keeps a default workspace: the test created none to remove
+});
+
+test('ACC-PANEL-330-RENAME: a changed name renames the workspace file and its record; the new name keeps the purpose and the colour', async ({
+  page
+}) => {
+  const { current, other } = await setUp(page, 'rename', 'mint');
+  const renamed = `${other}-renamed`;
+  await patchMeta(page, other, { purpose: 'First purpose' });
+  try {
+    await refresh(page);
+    await fromMenu(page, other, 'Set description...');
+    const name = dialog(page).getByLabel('Name');
+    const area = dialog(page).getByLabel('Short description (optional)');
+    await expect(name).toHaveValue(other);
+    await expect(area).toHaveValue('First purpose');
+    await name.fill(renamed);
+    await area.fill('Renamed purpose');
+    await dialog(page)
+      .locator('.jp-Dialog-button', { hasText: 'Save' })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+
+    // the workspace file moved to the new name; the old one is gone
+    await expect.poll(() => listed(page), UNDER_LOAD).not.toContain(other);
+    await expect.poll(() => listed(page), UNDER_LOAD).toContain(renamed);
+    // the record moved with it, and the server drops the old id's record
+    await expect
+      .poll(async () => {
+        const meta = await (
+          await page.request.get('/jupyterlab-workspace-manager-extension/meta')
+        ).json();
+        return meta[renamed];
+      }, UNDER_LOAD)
+      .toMatchObject({ colour: 'mint', purpose: 'Renamed purpose' });
+    const meta = await (
+      await page.request.get('/jupyterlab-workspace-manager-extension/meta')
+    ).json();
+    expect(meta[other]).toBeUndefined();
+
+    // the card carries the new name, its colour and its purpose
+    await refresh(page);
+    await openCard(page, renamed);
+    await expect(card(page, renamed)).toHaveClass(/jp-mod-mint/);
+    await expect(
+      card(page, renamed).locator('.jp-WorkspaceManager-purpose')
+    ).toHaveText('Renamed purpose');
+  } finally {
+    await deleteWorkspaces(page, [current, other, renamed]);
   }
 });
 

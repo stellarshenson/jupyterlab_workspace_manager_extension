@@ -1,14 +1,18 @@
 import { expect, test } from '@jupyterlab/galata';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   activeTab,
   card,
   cardHeader,
+  COLOURS,
   countOf,
   deleteWorkspaces,
   dialog,
   displayName,
+  dragRowTo,
+  dropRecorder,
+  droppedPath,
   enterWorkspace,
   fresh,
   fromRowMenu,
@@ -25,9 +29,12 @@ import {
   putNotebook,
   putWorkspace,
   refresh,
+  removeRecorder,
+  rgba,
   rowOf,
   sectionBody,
   sectionCount,
+  sectionHeader,
   serverList,
   setSetting,
   shows,
@@ -53,6 +60,17 @@ async function sessionOf(page: Page, path: string): Promise<any> {
     .toBe(true);
   return session;
 }
+
+/** A computed style of an element. */
+const css = (l: Locator, property: string): Promise<string> =>
+  l.evaluate(
+    (n, property) => (getComputedStyle(n) as any)[property] as string,
+    property
+  );
+
+/** The glyph ink of a kernel held by a workspace of `colour`: the hue at 45 % over inverse layout colour 1 (ACC-KERNEL-318-ICON-TINT). */
+const holderInk = (colour: string): string =>
+  `color-mix(in srgb, var(--wm-${colour}) 45%, var(--jp-inverse-layout-color1))`;
 
 for (const kernelShutdown of [true, false]) {
   test(`ACC-LISTS-266-DETACH, ACC-PANEL-245-ROW-MENU: with kernelShutdown ${kernelShutdown} the menu of a notebook row with a kernel lists its four entries and Detach from workspace closes the notebook's tab; its kernel keeps running and shows in KERNELS`, async ({
@@ -577,6 +595,35 @@ test.describe('kernels and sessions of the server', () => {
     }
   });
 
+  test('ACC-DRAG-322-KERNEL-PATH: a KERNELS row dragged with the mouse onto a Lumino drop target records its session path as [path] under PATH_MIME', async ({
+    page,
+    tmpPath
+  }) => {
+    const current = fresh('dragkernel');
+    const notebook = `${tmpPath}/dragged.ipynb`;
+    await putNotebook(page, notebook);
+    const session = await startSession(page, notebook);
+    try {
+      await enterWorkspace(page, current);
+      await openSection(page, 'kernels');
+      const row = rowOf(sectionBody(page, 'kernels'), 'dragged.ipynb');
+      await expect(row.locator('.jp-WorkspaceManager-rowDrag')).toHaveCount(
+        1,
+        UNDER_LOAD
+      );
+      const target = await dropRecorder(page);
+      await dragRowTo(page, row, target);
+      await expect
+        .poll(() => droppedPath(page), UNDER_LOAD)
+        .toEqual([notebook]);
+    } finally {
+      await removeRecorder(page);
+      await page.request.delete(`/api/sessions/${session.id}`);
+      await page.request.delete(`/api/kernels/${session.kernel.id}`);
+      await deleteWorkspaces(page, [current]);
+    }
+  });
+
   test('ACC-KERNEL-199-SHUTDOWN-SHARED: shutting down a kernel that another workspace holds asks first and names that workspace', async ({
     page,
     tmpPath
@@ -628,6 +675,145 @@ test.describe('kernels and sessions of the server', () => {
       await page.request.delete(`/api/sessions/${session.id}`);
       await page.request.delete(`/api/kernels/${session.kernel.id}`);
       await deleteWorkspaces(page, [current, a, b]);
+    }
+  });
+
+  test('ACC-PANEL-328-KERNEL-CLEAN: the clean eraser of the KERNELS band shuts down an idle kernel no workspace holds, leaving a busy kernel no workspace holds and a held kernel running', async ({
+    page,
+    tmpPath
+  }) => {
+    const current = fresh('kclean');
+    const holder = `${current}-held`;
+    const notebook = `${tmpPath}/clean-held.ipynb`;
+    await putNotebook(page, notebook);
+    // the held kernel serves a notebook a saved workspace holds; the other two have no session
+    const session = await startSession(page, notebook);
+    const startKernel = async (): Promise<string> => {
+      const response = await page.request.post('/api/kernels', {
+        data: { name: 'python3' }
+      });
+      expect(response.ok()).toBe(true);
+      return (await response.json()).id;
+    };
+    const idle = await startKernel();
+    const busy = await startKernel();
+    const ids = [session.kernel.id, idle, busy];
+    try {
+      await putWorkspace(page, holder, layout([`notebook:${notebook}`]));
+      // the kernels and sessions other tests run at the same time are not this test's
+      await only(page, /\/api\/sessions(\?.*)?$/, (s: any) =>
+        ids.includes(s.kernel?.id)
+      );
+      // as the stale kernel test routes the list: only this test's kernels, and the busy one reads busy
+      await page.route(/\/api\/kernels(\?.*)?$/, async route => {
+        if (route.request().method() !== 'GET') {
+          return route.fallback();
+        }
+        const response = await route.fetch();
+        const json = response.ok() ? await response.json() : undefined;
+        await route.fulfill({
+          response,
+          json: Array.isArray(json)
+            ? json
+                .filter((k: any) => ids.includes(k.id))
+                .map((k: any) =>
+                  k.id === busy
+                    ? { ...k, execution_state: 'busy' }
+                    : k.id === idle
+                      ? { ...k, execution_state: 'idle' }
+                      : k
+                )
+            : json
+        });
+      });
+
+      await enterWorkspace(page, current);
+      const eraser = sectionHeader(page, 'kernels').getByRole('button', {
+        name: 'Clean up kernels',
+        exact: true
+      });
+      await expect(eraser).toBeEnabled();
+      await eraser.click();
+      await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+        'Shut down detached?'
+      );
+      await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
+        'Shut down 1 detached kernel.'
+      );
+      await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
+      // the idle detached kernel alone goes: the busy one and the held one stay
+      await expect.poll(() => kernelIds(page), UNDER_LOAD).not.toContain(idle);
+      await expect
+        .poll(() => kernelIds(page), UNDER_LOAD)
+        .toEqual(expect.arrayContaining([busy, session.kernel.id]));
+    } finally {
+      await page.request.delete(`/api/sessions/${session.id}`);
+      for (const id of ids) {
+        await page.request.delete(`/api/kernels/${id}`);
+      }
+      await page.request.delete(`/api/contents/${notebook}`);
+      await deleteWorkspaces(page, [current, holder]);
+    }
+  });
+
+  test("ACC-KERNEL-318-ICON-TINT: a KERNELS row of a kernel held by two workspaces draws its glyph in the first holder's colour at 45 % over inverse layout colour 1, while a kernel no workspace holds keeps the theme ink", async ({
+    page,
+    tmpPath
+  }) => {
+    const current = fresh('tint');
+    const [first, second] = [`${current}-first`, `${current}-second`];
+    const held = `${tmpPath}/${current}-held.ipynb`;
+    const unheld = `${tmpPath}/${current}-unheld.ipynb`;
+    const sessions: any[] = [];
+    try {
+      await putNotebook(page, held);
+      await putNotebook(page, unheld);
+      // the fixed model order: first at position 0 in sky, second at position 1 in peach
+      await putWorkspace(page, first, layout([`notebook:${held}`]));
+      await patchMeta(page, first, { position: 0, colour: 'sky' });
+      await putWorkspace(page, second, layout([`notebook:${held}`]));
+      await patchMeta(page, second, { position: 1, colour: 'peach' });
+      // one kernel for the notebook both workspaces hold, one whose notebook no workspace lists
+      sessions.push(await startSession(page, held));
+      sessions.push(await startSession(page, unheld));
+
+      await enterWorkspace(page, current);
+      await openSection(page, 'kernels');
+      const body = sectionBody(page, 'kernels');
+      const icon = rowOf(body, `${current}-held.ipynb`).locator(
+        '.jp-WorkspaceManager-kernelIcon'
+      );
+      // the first holder's colour, not the second's
+      await expect(icon).toHaveClass(
+        /^jp-WorkspaceManager-rowIcon jp-WorkspaceManager-kernelIcon jp-mod-sky jp-mod-coloured$/
+      );
+      // the glyph itself is painted that ink, from the tokens
+      const glyph = icon.locator('svg [fill]');
+      await expect(glyph).toHaveCount(1);
+      expect(await rgba(page, await css(glyph, 'fill'))).toEqual(
+        await rgba(page, holderInk('sky'))
+      );
+
+      // a kernel no workspace holds: no colour class and the theme ink
+      const bare = rowOf(body, `${current}-unheld.ipynb`).locator(
+        '.jp-WorkspaceManager-rowIcon'
+      );
+      await expect(bare).toBeVisible();
+      await expect(bare).not.toHaveClass(/jp-mod-coloured/);
+      await expect(bare).not.toHaveClass(
+        new RegExp(`jp-mod-(${COLOURS.join('|')})`)
+      );
+      const plain = bare.locator('svg [fill]');
+      await expect(plain).toHaveCount(1);
+      expect(await rgba(page, await css(plain, 'fill'))).toEqual(
+        await rgba(page, 'var(--jp-inverse-layout-color2)')
+      );
+    } finally {
+      for (const s of sessions) {
+        await page.request.delete(`/api/sessions/${s.id}`);
+        await page.request.delete(`/api/kernels/${s.kernel.id}`);
+      }
+      await deleteWorkspaces(page, [current, first, second]);
     }
   });
 });

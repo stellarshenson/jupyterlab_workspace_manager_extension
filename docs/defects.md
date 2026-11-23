@@ -792,6 +792,12 @@ the sidebar panel, its header and its loads
   - log: 2026-11-17T22:14:03Z @kj edited test-tags added "UNIT, FUNCTIONAL"
   - log: 2026-11-17T22:26:58Z @kj root cause confirmed in src/panel/harmonica.ts: wheel() calls _pullTo(to) at :106 without the event's dy, _pullTo adds PULL_STEP 3 px at :123 whatever the deltaY, and :135 starts the spring after RELEASE_MS 160 ms; the staged build chunk 163.4106654322804f70.js holds the same +3
   - log: 2026-11-18T00:12:41Z @kj closed: fixed: each wheel event stretches the pull by max(3 px, a quarter of |deltaY|), so a 100 px notch adds 25 px and the 2nd gives; reason: the evidence names the tests as run, the red run on the pre-change code and the t-prove Galata count with its log
+- [x] `DEF-PANEL-110-RIGHT-PANEL` **A workspace forgets which right panel was open** - MEDIUM; a workspace does not reliably remember which right sidebar panel was open in it - for example the AI panel: after switching away and returning later, or after the workspace has been idle, the right sidebar shows another panel or none where that workspace had one open; the saved workspace layout must carry the open right panel and the switch must restore it
+  - evidence: Root cause: the 500 ms state debounce raced the switch navigation; fix: _saveState awaited before every departure; Jest panel.spec.ts:2080 passed (w6-make-test.log 256/256); Galata switch.spec.ts:825 passed (w6-focused-galata.log 11/11; k3-final-galata.log 302/302).
+  - repro: open the AI panel (or another right sidebar panel) in workspace A, switch to workspace B, wait a while, switch back to A: the right sidebar shows the other panel or nothing, not the one A had open
+  - test-tags: UNIT, FUNCTIONAL
+  - log: 2026-11-22T22:47:01Z @kj added; reason: the report names the symptom, the right-panel context and the restore expectation in one line
+  - log: 2026-11-23T05:51:42Z @kj closed
 
 ## Functional tests `GALATA`
 

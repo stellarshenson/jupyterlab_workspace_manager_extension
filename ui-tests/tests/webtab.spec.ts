@@ -2,19 +2,23 @@ import { expect, test } from '@jupyterlab/galata';
 import type { Page } from '@playwright/test';
 
 import {
+  activeTab,
   card,
   deleteWorkspaces,
   dialog,
+  dragRowTo,
   enterWorkspace,
   fresh,
   HEAVY_LOAD,
   moveTo,
+  newTerminalTab,
   openCard,
   openPanel,
   putWorkspace,
   rowOf,
   saved,
   savedTabs,
+  terminalLine,
   triangle,
   UNDER_LOAD
 } from './helpers';
@@ -136,6 +140,42 @@ for (const kind of KINDS) {
     }
   });
 }
+
+test('ACC-DRAG-320-PAGE-URL, ACC-DRAG-323-TEXT-DROP: a page row dragged with the mouse onto a terminal pastes its URL at the prompt, with no Enter', async ({
+  page
+}) => {
+  const current = fresh('webdrag');
+  try {
+    await enterWorkspace(page, current);
+    const { id } = await openWeb(page, 'workspace-page:open', {
+      url,
+      title: 'Dragged page'
+    });
+    const key = `workspace-page:${id}`;
+    await expect
+      .poll(() => savedTabs(page, current), UNDER_LOAD)
+      .toContain(key);
+    await openCard(page, current);
+    const row = card(page, current).locator(
+      `.jp-WorkspaceManager-row[data-row-key="${key}"]`
+    );
+    await expect(row).toHaveCount(1, UNDER_LOAD);
+    const name = await newTerminalTab(page);
+    await dragRowTo(
+      page,
+      row,
+      page.locator('#jp-main-dock-panel .jp-Terminal:visible')
+    );
+    // the drop activates the terminal's tab and leaves the URL at the prompt:
+    // with no Enter the cursor stays on the line holding the pasted URL
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(name);
+    await expect
+      .poll(async () => terminalLine(page, name), UNDER_LOAD)
+      .toMatch(new RegExp(`${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
 
 /**
  * The tabs without a path whose own icon and name a card draws from the saved

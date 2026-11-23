@@ -2,6 +2,27 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.17] - 2026-11-23
+
+### Added
+
+- Dragging a row into a terminal inserts its text: a file or kernel row its path, a terminal row its working directory, a page row its URL with proxy URLs included
+- The TERMINALS and KERNELS bands carry a clean eraser that removes their detached items, kernels only when idle
+- This window's own workspace can be deleted, the default recreated as usual, and Set description renames the workspace through JupyterLab's own rename, moving the purpose, colour and hidden state
+- A workspace remembers each file's scroll, selected cell and cursor, tabs hidden at the switch included, and returns to them
+- A workspace this window is not showing keeps its tab names current, page titles and renamed documents included
+- The KERNELS section colours a kernel's icon with the workspace that holds it
+
+### Changed
+
+- The card header's last control ends at its 6 px right inset, with no empty band where the three-dots menu stood
+- Every workspace switch saves the window's state before navigating, so the right sidebar panel open in a workspace comes back with it
+- The layout refresh compares the restorer's own tab names, so the workspace file is no longer written on every poll
+
+### Fixed
+
+- A workspace forgot which right sidebar panel was open after switching away (DEF-PANEL-110-RIGHT-PANEL)
+
 ## [1.0.16] - 2026-11-18
 
 ### Added

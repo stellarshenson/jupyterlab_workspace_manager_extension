@@ -13,6 +13,7 @@ import {
   cwdOf,
   deleteWorkspaces,
   dialog,
+  dragRowTo,
   enterWorkspace,
   expectRefused,
   fresh,
@@ -21,6 +22,7 @@ import {
   layout,
   menuItem,
   newTerminalTab,
+  only,
   openCard,
   openDocument,
   openSection,
@@ -47,6 +49,7 @@ import {
   sleepInTerminal,
   startSession,
   startTerminal,
+  terminalLine,
   terminalNames,
   triangle,
   UNDER_LOAD
@@ -251,6 +254,33 @@ test('ACC-TERM-42-PROCESS, ACC-TERM-46-NAME, ACC-TERM-113-PROCESS-LIVE: a termin
     await refresh(page);
     await expect(listed).toHaveText(rowText(name, shell));
     await expect(listed).toHaveClass(SELECTED);
+  } finally {
+    await deleteWorkspaces(page, [current]);
+  }
+});
+
+test('ACC-DRAG-321-TERM-CWD, ACC-DRAG-323-TEXT-DROP: a terminal row dragged with the mouse onto its terminal pastes the working directory at the prompt, with no Enter', async ({
+  page
+}) => {
+  const current = fresh('dragterm');
+  try {
+    const { name } = await terminalHere(page, current);
+    // a short cwd, so the pasted text stays on the cursor's line
+    await sendToTerminal(page, name, 'cd /tmp\n');
+    await expect.poll(() => cwdOf(page, name), PROCESS_START).toBe('/tmp');
+    await refresh(page);
+    const row = rowOf(card(page, current), rowLabel(name));
+    await expect(row.locator('.jp-WorkspaceManager-rowDrag')).toHaveCount(
+      1,
+      UNDER_LOAD
+    );
+    await dragRowTo(page, row, terminalTab(page));
+    // the drop activates the terminal's tab and leaves the text at the prompt:
+    // with no Enter the cursor stays on the line holding the pasted cwd
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(name);
+    await expect
+      .poll(async () => terminalLine(page, name), UNDER_LOAD)
+      .toMatch(/\/tmp$/);
   } finally {
     await deleteWorkspaces(page, [current]);
   }
@@ -1388,6 +1418,47 @@ test('ACC-TERM-112-SHUTDOWN-SHARED: shutting down a terminal that another worksp
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, a, b]);
+  }
+});
+
+test('ACC-PANEL-327-TERM-CLEAN: the clean eraser of the TERMINALS band stops a terminal no workspace holds while a terminal another workspace holds stays', async ({
+  page
+}) => {
+  const detached = await startTerminal(page);
+  const held = await startTerminal(page);
+  const current = fresh('termclean');
+  const holder = `${current}-held`;
+  // the terminals other tests run at the same time are not this test's
+  await only(
+    page,
+    /\/jupyterlab-workspace-manager-extension\/terminals(\?.*)?$/,
+    (t: any) => [detached, held].includes(t.name)
+  );
+  await putWorkspace(page, holder, layout([`terminal:${held}`]));
+  try {
+    await enterWorkspace(page, current);
+    const eraser = sectionHeader(page, 'terminals').getByRole('button', {
+      name: 'Clean up terminals',
+      exact: true
+    });
+    await expect(eraser).toBeEnabled();
+    await eraser.click();
+    await expect(dialog(page).locator('.jp-Dialog-header')).toHaveText(
+      'Shut down detached?'
+    );
+    await expect(dialog(page).locator('.jp-Dialog-body')).toHaveText(
+      'Shut down 1 detached terminal.'
+    );
+    await dialog(page).locator('.jp-Dialog-button.jp-mod-accept').click();
+    await expect
+      .poll(() => terminalNames(page), UNDER_LOAD)
+      .not.toContain(detached);
+    await expect.poll(() => terminalNames(page), UNDER_LOAD).toContain(held);
+  } finally {
+    for (const name of [detached, held]) {
+      await page.request.delete(`/api/terminals/${name}`);
+    }
+    await deleteWorkspaces(page, [current, holder]);
   }
 });
 

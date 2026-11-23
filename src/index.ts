@@ -4,20 +4,24 @@ import {
   JupyterFrontEnd,
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
+import type { MainAreaWidget } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
 import { IDocumentManager } from '@jupyterlab/docmanager';
 import {
   IRunningSessionManagers,
   IRunningSessionSidebar
 } from '@jupyterlab/running';
+import { IStateDB } from '@jupyterlab/statedb';
+import { ITerminalTracker, type ITerminal } from '@jupyterlab/terminal';
 import { ITranslator, nullTranslator } from '@jupyterlab/translation';
 import { UUID } from '@lumino/coreutils';
+import type { Drag } from '@lumino/dragdrop';
 
 import { report } from './api';
 import { panelIcon } from './icons';
 import { pagePlugin } from './page';
 // eslint-disable-next-line jupyter/prefer-lazy-imports -- activate builds the sidebar synchronously, so the panel class cannot wait for a later import
-import { WorkspacePanel } from './panel/panel';
+import { TEXT_MIME, WorkspacePanel } from './panel/panel';
 
 const PRESENCE_MS = 30000;
 const WINDOW_PREFIX = 'jupyterlab-workspace-manager:';
@@ -46,14 +50,22 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
   autoStart: true,
   provides: IRunningSessionSidebar,
   requires: [IRunningSessionManagers, IDocumentManager],
-  optional: [ILayoutRestorer, ILabShell, ITranslator],
+  optional: [
+    ILayoutRestorer,
+    ILabShell,
+    ITranslator,
+    ITerminalTracker,
+    IStateDB
+  ],
   activate: (
     app: JupyterFrontEnd,
     managers: IRunningSessionManagers,
     docManager: IDocumentManager,
     restorer: ILayoutRestorer | null,
     labShell: ILabShell | null,
-    translator: ITranslator | null
+    translator: ITranslator | null,
+    terminalTracker: ITerminalTracker | null,
+    state: IStateDB | null
   ): IRunningSessionSidebar => {
     const trans = (translator ?? nullTranslator).load(
       '@stellarshenson/jupyterlab-workspace-manager-extension'
@@ -67,6 +79,7 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
       window: id,
       managers,
       restorer,
+      state,
       trans
     });
     panel.id = 'jp-running-sessions';
@@ -79,6 +92,50 @@ const plugin: JupyterFrontEndPlugin<IRunningSessionSidebar> = {
     }
     app.shell.add(panel, 'left', { rank: 200, type: 'Sessions and Tabs' });
     labShell?.layoutModified.connect(() => panel.tabsChanged());
+
+    // a row handle dropped on a terminal pastes its text at the caret (ACC-DRAG-323-TEXT-DROP)
+    const pasteInto = (widget: MainAreaWidget<ITerminal.ITerminal>): void => {
+      // only this panel's raw-text payload is taken: PATH_MIME belongs to the advanced file browser's targets
+      const textOf = (event: Drag.Event): string | null => {
+        const text = event.mimeData.getData(TEXT_MIME);
+        return typeof text === 'string' ? text : null;
+      };
+      // the terminal node fills the tab, so it receives the drop
+      const node = widget.content.node;
+      node.addEventListener('lm-dragenter', (event: Event) => {
+        if (textOf(event as Drag.Event) === null) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      node.addEventListener('lm-dragover', (event: Event) => {
+        const drag = event as Drag.Event;
+        if (textOf(drag) === null) {
+          return;
+        }
+        drag.preventDefault();
+        drag.stopPropagation();
+        drag.dropAction = drag.proposedAction;
+      });
+      node.addEventListener('lm-drop', (event: Event) => {
+        const drag = event as Drag.Event;
+        const text = textOf(drag);
+        if (text === null) {
+          return;
+        }
+        drag.preventDefault();
+        drag.stopPropagation();
+        app.shell.activateById(widget.id);
+        if (typeof widget.content.paste === 'function') {
+          widget.content.paste(text);
+        } else {
+          widget.content.session.send({ type: 'stdin', content: [text] });
+        }
+      });
+    };
+    terminalTracker?.forEach(pasteInto);
+    terminalTracker?.widgetAdded.connect((_, widget) => pasteInto(widget));
 
     app.commands.addCommand('running:show-panel', {
       label: trans.__('Workspaces'),

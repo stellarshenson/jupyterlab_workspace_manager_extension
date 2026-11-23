@@ -36,6 +36,8 @@ export interface ITerminal {
  */
 export interface ITab {
   key: string;
+  /** the name the layout restorer saves this tab under, when it tracks the widget */
+  savedKey?: string;
   path?: string;
   name?: string;
   title?: string;
@@ -202,8 +204,9 @@ export function tabsOf(data: Workspace.IWorkspace['data']): ITab[] {
       key,
       path: saved.path,
       name: saved.name,
-      // a code viewer saves its name as label
+      // a page tab's document title outranks the title it was opened with; a code viewer saves its name as label
       title:
+        saved.documentTitle ??
         saved.title ??
         saved.text ??
         saved.label ??

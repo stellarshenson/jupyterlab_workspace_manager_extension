@@ -97,17 +97,22 @@ function descriptionField(parent: HTMLElement, value: string) {
   return area;
 }
 
-class NewWorkspaceBody extends Widget {
-  constructor(private _existing: string[]) {
+class WorkspaceFormBody extends Widget {
+  constructor(
+    private _existing: string[],
+    name = '',
+    purpose = ''
+  ) {
     super();
     this.addClass('jp-WorkspaceManager-form');
     const label = element('label', 'jp-WorkspaceManager-fieldLabel', 'Name');
     this.name = element('input', 'jp-mod-styled jp-WorkspaceManager-name');
     this.name.spellcheck = false;
+    this.name.value = name;
     label.appendChild(this.name);
     this._rule = element('div', 'jp-WorkspaceManager-rule');
     this.node.append(label, this._rule);
-    this.area = descriptionField(this.node, '');
+    this.area = descriptionField(this.node, purpose);
     this.name.addEventListener('input', () => this._check());
   }
 
@@ -154,7 +159,7 @@ export async function newWorkspaceDialog(
   existing: string[],
   trans: TranslationBundle
 ): Promise<{ name: string; purpose: string } | null> {
-  const body = new NewWorkspaceBody(existing);
+  const body = new WorkspaceFormBody(existing);
   const dialog = new FormDialog(
     {
       title: trans.__('New workspace'),
@@ -175,30 +180,26 @@ export async function newWorkspaceDialog(
   return result.button.accept ? result.value : null;
 }
 
-class DescriptionBody extends Widget {
-  constructor(value: string) {
-    super();
-    this.addClass('jp-WorkspaceManager-form');
-    this._area = descriptionField(this.node, value);
-  }
-
-  getValue(): string {
-    return this._area.value;
-  }
-
-  private _area: HTMLTextAreaElement;
-}
-
-/** Set description: the field holds the current purpose; null on Cancel. */
+/**
+ * Set description: the Name field holds the workspace's name and the Short
+ * description its purpose; null on Cancel. The name may stay as it is; every
+ * other workspace's id is a problem.
+ */
 export async function descriptionDialog(
   name: string,
   purpose: string,
+  existing: string[],
   trans: TranslationBundle
-): Promise<string | null> {
+): Promise<{ name: string; purpose: string } | null> {
+  const body = new WorkspaceFormBody(
+    existing.filter(id => id !== name),
+    name,
+    purpose
+  );
   const dialog = new FormDialog(
     {
       title: `Set description of ${name}`,
-      body: new DescriptionBody(purpose),
+      body,
       buttons: [
         Dialog.cancelButton({ className: `${BUTTON} ${SECONDARY}` }),
         Dialog.okButton({
@@ -208,7 +209,7 @@ export async function descriptionDialog(
       ],
       focusNodeSelector: 'textarea'
     },
-    () => true
+    () => body.valid
   );
   dialog.addClass('jp-WorkspaceManager-dialog');
   const result = await dialog.launch();

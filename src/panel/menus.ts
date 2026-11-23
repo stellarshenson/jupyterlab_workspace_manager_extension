@@ -220,7 +220,6 @@ export function workspaceMenu(
       arm.armed ? trans.__('Confirm delete') : trans.__('Delete workspace'),
     icon: () => (arm.armed ? warningIcon : deleteIcon),
     className: () => `${DANGER}${arm.armed ? ' jp-mod-confirm' : ''}`,
-    isEnabled: () => !current,
     describedBy: { args: null },
     execute: () => undefined
   });
