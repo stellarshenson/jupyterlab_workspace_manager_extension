@@ -832,6 +832,16 @@ export class WorkspacePanel
     }
     try {
       const data = await this._state.toJSON();
+      // a terminal tab's title lives only in the live widget; write it into the save so the cards this window leaves keep it (DEF-PANEL-111-TABNAMES-LEFT)
+      const entries = data as any;
+      for (const tab of this._liveTabs()) {
+        const entry = entries[tab.key];
+        if (tab.key.startsWith('terminal:') && entry?.data) {
+          entry.data.title = tab.title;
+          // mirror the entry into the host state DB, so JupyterLab's own debounced save carries the title too
+          await this._state.save(tab.key, entry);
+        }
+      }
       await this._app.serviceManager.workspaces.save(id, {
         data,
         metadata: { id }

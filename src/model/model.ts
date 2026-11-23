@@ -255,7 +255,7 @@ export function buildModel(input: IModelInput): IModel {
   const held = workspaces.map(ws => {
     const id = ws.metadata.id;
     const tabs = id === current ? input.liveTabs : tabsOf(ws.data);
-    const terminals = new Set<string>();
+    const terminals = new Map<string, string | undefined>();
     const kernels = new Map<string, Session.IModel>();
     const docs: ITabRow[] = [];
     for (const tab of tabs) {
@@ -265,7 +265,8 @@ export function buildModel(input: IModelInput): IModel {
         continue;
       }
       if (kind === 'terminal') {
-        terminals.add(suffix(tab.key));
+        // keep the title a left workspace's window wrote into its save (DEF-PANEL-111-TABNAMES-LEFT)
+        terminals.set(suffix(tab.key), tab.title);
         continue;
       }
       const path = tab.path ?? suffix(tab.key);
@@ -285,19 +286,25 @@ export function buildModel(input: IModelInput): IModel {
         }
       }
     }
-    terminals.forEach(name => add(termHolders, name, id));
+    terminals.forEach((_title, name) => add(termHolders, name, id));
     kernels.forEach((_, kernelId) => add(kernelHolders, kernelId, id));
     return { ws, docs, terminals, kernels };
   });
 
-  const terminalRow = (t: ITerminal, holders: string[], id?: string) => ({
+  const terminalRow = (
+    t: ITerminal,
+    holders: string[],
+    id?: string,
+    savedTitle?: string
+  ) => ({
     name: t.name,
     process: t.process ?? null,
     cwd: t.cwd ?? null,
     command: t.command ?? null,
     memory: t.memory ?? null,
     lastActivity: t.last_activity,
-    title: titles.get(t.name),
+    // a live tab's title is current; the saved one names a terminal this window left behind
+    title: titles.get(t.name) ?? savedTitle,
     alsoIn: holders.filter(h => h !== id)
   });
   const kernelRow = (
@@ -347,7 +354,9 @@ export function buildModel(input: IModelInput): IModel {
       tabs: docs,
       terminals: input.terminals
         .filter(t => terminals.has(t.name))
-        .map(t => terminalRow(t, termHolders.get(t.name)!, id)),
+        .map(t =>
+          terminalRow(t, termHolders.get(t.name)!, id, terminals.get(t.name))
+        ),
       kernels: rows
     };
   });

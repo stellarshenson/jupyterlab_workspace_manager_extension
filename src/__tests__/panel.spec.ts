@@ -2122,6 +2122,54 @@ describe('panel', () => {
     expect(restorer.save).toHaveBeenCalledTimes(2);
   });
 
+  it('DEF-PANEL-111-TABNAMES-LEFT: the departure save writes each live terminal title into its saved entry', async () => {
+    const server = standard();
+    server.workspaces[0] = workspace('default', 1, ['terminal:1']);
+    const tab = new Widget();
+    tab.title.label = 'wm-live-title';
+    (tab as any).content = {
+      hasClass: () => true,
+      session: { name: '1' }
+    };
+    const entries = {
+      'layout-restorer:data': {
+        main: {
+          dock: { type: 'tab-area', currentIndex: 0, widgets: ['terminal:1'] }
+        }
+      },
+      'terminal:1': { data: { name: '1' } }
+    };
+    const state = {
+      toJSON: async () => JSON.parse(JSON.stringify(entries)),
+      save: jest.fn(async () => undefined)
+    };
+    const { panel, app, fake, settings } = await mount(server, {
+      live: [tab],
+      state
+    });
+    app.serviceManager.workspaces = new WorkspaceManager({
+      serverSettings: settings
+    });
+    const url = jest
+      .spyOn(panel as any, '_url')
+      .mockImplementation(() => '#switched-auto-6');
+
+    header(panel, 'w:auto-6').click();
+    await settle();
+
+    expect(url).toHaveBeenCalledWith('auto-6');
+    const put = fake.log.indexOf('PUT /lab/api/workspaces/default');
+    expect(put).toBeGreaterThanOrEqual(0);
+    // the title the process wrote into the tab bar is saved; the name stays
+    expect(server.saved!.default.data['terminal:1']).toEqual({
+      data: { name: '1', title: 'wm-live-title' }
+    });
+    // the host state DB holds the same entry, so JupyterLab's own save carries the title
+    expect(state.save).toHaveBeenCalledWith('terminal:1', {
+      data: { name: '1', title: 'wm-live-title' }
+    });
+  });
+
   it('ACC-HIDDEN-53-UNHIDE: a reload that started before Show workspace again does not hide the card again', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     const server = standard();

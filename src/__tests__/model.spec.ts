@@ -520,6 +520,28 @@ describe('model', () => {
     ]);
   });
 
+  it('DEF-PANEL-111-TABNAMES-LEFT: a saved terminal title names its row on a card this window does not show; without one the row keeps no title', () => {
+    const model = buildModel(
+      input({
+        current: 'default',
+        workspaces: [
+          ws('default', '2026-11-23T10:00:00Z'),
+          ws('left', '2026-11-23T10:00:00Z', ['terminal:3', 'terminal:4'], {
+            'terminal:3': { data: { name: '3', title: 'wm-live-title' } },
+            'terminal:4': { data: { name: '4' } }
+          })
+        ],
+        terminals: [{ name: '3' }, { name: '4' }]
+      })
+    );
+    expect(
+      byId(model.sections, 'left').terminals.map(t => [t.name, t.title])
+    ).toEqual([
+      ['3', 'wm-live-title'],
+      ['4', undefined]
+    ]);
+  });
+
   it("gives this window's workspace a card before its first save", () => {
     const sections = buildSections(
       input({

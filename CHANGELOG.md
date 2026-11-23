@@ -2,6 +2,16 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.18] - 2026-11-23
+
+### Added
+
+- A Galata switch test sets a terminal's OSC title in one workspace, leaves through another workspace's card header, and reads the title back from the left card
+
+### Fixed
+
+- A left workspace's card keeps each terminal row's tab name, saved with the workspace at every departure and carried by JupyterLab's own debounced save, instead of falling back to the process name and cwd (DEF-PANEL-111-TABNAMES-LEFT)
+
 ## [1.0.17] - 2026-11-23
 
 ### Added

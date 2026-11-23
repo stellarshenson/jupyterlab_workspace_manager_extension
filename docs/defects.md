@@ -798,6 +798,14 @@ the sidebar panel, its header and its loads
   - test-tags: UNIT, FUNCTIONAL
   - log: 2026-11-22T22:47:01Z @kj added; reason: the report names the symptom, the right-panel context and the restore expectation in one line
   - log: 2026-11-23T05:51:42Z @kj closed
+- [x] `DEF-PANEL-111-TABNAMES-LEFT` **A left workspace's terminal rows lose their tab names** - MAJOR; a left workspace's card shows a terminal row with its process and cwd where the tab title stood; the title the running process set in the tab bar is not saved in the workspace, so the card falls back to the process. ACC-PANEL-326-TABNAMES-LIVE names a terminal's process among the titles a left card keeps current.
+  - evidence: a terminal title lives only in the live widget and the workspace saved {name} without it; buildModel carries the saved title and _saveState writes each live title before departure; Jest model and panel 189/189, make test 260/260 and 167 pytest, focused Galata 44/44 and 2/2 final, full suite 303/303
+  - related: ACC-PANEL-326-TABNAMES-LIVE
+  - repro: open a terminal in workspace A and let its process set the tab title, switch this window to workspace B through B's card header, open A's card: its terminal rows read the process and the cwd, not the title
+  - test-tags: UNIT, FUNCTIONAL
+  - root-cause: 2026-11-23T10:12:14Z @kj a terminal tab's title is the OSC title the running process writes (JupyterLab's Terminal widget sets title.label on xterm's onTitleChange) and lives only in the live widget; the workspace file saves the terminal entry as {name} with no title, and buildModel fills a row's title from the current window's live tabs only
+  - log: 2026-11-23T10:12:14Z @kj added; reason: names the symptom, the missing saved title and the criterion clause; each is a separate fact, shortening would drop one
+  - log: 2026-11-23T12:10:18Z @kj closed
 
 ## Functional tests `GALATA`
 

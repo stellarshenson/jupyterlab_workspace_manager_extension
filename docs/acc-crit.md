@@ -1126,12 +1126,16 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - log: 2026-11-22T21:20:20Z @kj added
   - log: 2026-11-23T05:51:38Z @kj closed
 - [x] `ACC-PANEL-326-TABNAMES-LIVE` **A left workspace's tab names stay current** - HIGH; a card of a workspace this window does not show keeps its tab names current: a tab whose title changes while the workspace is left - a page tab's document title, a console or notebook renamed, a terminal's process - shows the new name without switching back; the refresh is asynchronous and batched, with at most one request in flight and no scan of the tabs in a render or a switch, so many tabs add no blocking work to the main event loop
-  - evidence: Jest panel.spec.ts and page.spec.ts ACC-PANEL-326-TABNAMES-LIVE passed (w3f-make-test.log, 248/248); Galata switch.spec.ts ACC-PANEL-326-TABNAMES-LIVE passed (w3f-focused-galata.log 10/10; k3-final-galata.log 302/302).
-  - test: src/__tests__/panel.spec.ts: with fake timers a scheduled refresh applies changed titles in one batch and a render performs none; ui-tests/tests/switch.spec.ts: change a page tab's title in workspace A, switch to B, and A's card shows the new name after the refresh interval
+  - evidence: panel.spec.ts:1899 shows a left card's new page title and renamed tab in one reload; switch.spec.ts:881 page title and switch.spec.ts:974 terminal title passed at 235/303 and 236/303 in the full Galata run; make test Jest 260/260 and pytest 167; full suite 303/303
+  - test: ui-tests/tests/switch.spec.ts: change a page tab's title in workspace A and a terminal's OSC title in A, switch to B, and A's card shows both new names; src/__tests__/panel.spec.ts: a render sends no request
   - test-tags: UNIT, FUNCTIONAL
   - mechanism: 2026-11-22T21:22:25Z @kj a debounced asynchronous refresh outside the render path reads the changed titles in batches, one request in flight, and merges them by tab key
   - log: 2026-11-22T21:22:25Z @kj added; reason: the criterion states the stale-name cases, the render and switch exclusion and the one-request bound in one line
   - log: 2026-11-23T05:51:38Z @kj closed
+  - log: 2026-11-23T10:12:18Z @kj reopened; evidence retired: Jest panel.spec.ts and page.spec.ts ACC-PANEL-326-TABNAMES-LIVE passed (w3f-make-test.log, 248/248); Galata switch.spec.ts ACC-PANEL-326-TABNAMES-LIVE passed (w3f-focused-galata.log 10/10; k3-final-galata.log 302/302).; reason: closed on a Galata test that never created a terminal: the terminal clause of the criterion is unmet; DEF-PANEL-111-TABNAMES-LEFT covers it
+  - log: 2026-11-23T11:23:09Z @kj known limit: a title saved at departure is dropped from the file when any window loads that workspace, because the terminal tracker rewrites the entry as {name}; another window card falls back to the process until the next departure
+  - log: 2026-11-23T12:10:06Z @kj edited test "src/__tests__/panel.spec.ts: with fake timers a scheduled refresh applies changed titles in one batch and a render performs none; ui-tests/tests/switch.spec.ts: change a page tab's title in workspace A, switch to B, and A's card shows the new name after the refresh interval" -> "ui-tests/tests/switch.spec.ts: change a page tab's title in workspace A and a terminal's OSC title in A, switch to B, and A's card shows both new names; src/__tests__/panel.spec.ts: a render sends no request"
+  - log: 2026-11-23T12:10:22Z @kj closed
 - [x] `ACC-PANEL-327-TERM-CLEAN` **The TERMINALS band cleans its unattached terminals** - MEDIUM; the TERMINALS band carries the clean eraser beside its power button; it is disabled while no terminal is unattached, and a click asks the same confirmation as Shut down detached and then stops every terminal no workspace holds, re-reading the list after the dialog so a terminal attached meanwhile stays; the power menu keeps Shut down all and Shut down detached
   - evidence: Jest panel.spec.ts ACC-PANEL-327-TERM-CLEAN passed (w4-make-test.log, 250/250); Galata terminals.spec.ts ACC-PANEL-327-TERM-CLEAN passed (w4-focused-galata.log 43/43; k3-final-galata.log 302/302).
   - test: src/__tests__/panel.spec.ts: the TERMINALS band renders the eraser beside the power button and disables it with no unattached terminal; with confirm mocked true, a click shuts down exactly the unattached ones and none attached during the dialog; ui-tests/tests/terminals.spec.ts: a detached terminal and a held one, click clean, the detached goes and the held stays
@@ -1161,6 +1165,17 @@ The workspace panel in place of the built-in Running panel, its header and its r
   - mechanism: 2026-11-22T22:13:42Z @kj the dialog's Save runs the workspace rename through JupyterLab's own action (write the Workspace under the new id and remove the old), moves the extension's meta record to the new id, and updates this window's workspace parameter
   - log: 2026-11-22T22:13:42Z @kj added; reason: the criterion states the action, its fallback and the record handling in one line
   - log: 2026-11-23T05:51:39Z @kj closed
+- [x] `ACC-PANEL-331-TABNAMES-CHECKER` **The tab-name checker stays off the main event loop** - HIGH; the check that keeps a left workspace's tab names current runs outside the main event loop where the platform allows and stays very lightweight: no work in a render, one request in flight at most, and one pass over the open terminals when a switch saves state
+  - evidence: panel.spec.ts:1899 asserts a render sends no request; panel.spec.ts:2125 asserts the departure save reads each live terminal title once and writes it to the entry and state DB; switch.spec.ts:974 passes in the full 303/303 Galata run; the change adds no timer and no render-path work
+  - related: ACC-PANEL-326-TABNAMES-LIVE
+  - related: DEF-PANEL-111-TABNAMES-LEFT
+  - test: src/__tests__/panel.spec.ts: a render sends no request and the departure save writes each live terminal title into its entry; ui-tests/tests/switch.spec.ts: the title appears on a left card with no timer added
+  - test-tags: UNIT, FUNCTIONAL
+  - mechanism: 2026-11-23T12:10:12Z @kj the departure save reads each live terminal title once, writes it into its entry and mirrors the entry into the state DB so JupyterLab's own debounced save carries it; no new timer and no render-path work
+  - mechanism: 2026-11-23T10:16:12Z @kj the panel reloads on a timer outside the render path with one request in flight; terminal titles are read once from the live widgets in the save that already precedes a switch; a browser worker cannot read an xterm title, so no off-thread check is added and no new timer exists
+  - log: 2026-11-23T10:16:12Z @kj added; reason: owner constraint recorded verbatim
+  - log: 2026-11-23T12:10:10Z @kj edited test "src/__tests__/panel.spec.ts: a render schedules no title scan or timer and the departure save reads each live terminal title once; ui-tests/tests/switch.spec.ts proves the title end to end" -> "src/__tests__/panel.spec.ts: a render sends no request and the departure save writes each live terminal title into its entry; ui-tests/tests/switch.spec.ts: the title appears on a left card with no timer added"
+  - log: 2026-11-23T12:10:24Z @kj closed
 
 ## Workspace sections `ACCORD`
 

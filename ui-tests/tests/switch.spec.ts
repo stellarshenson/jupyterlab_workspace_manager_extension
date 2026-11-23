@@ -10,6 +10,7 @@ import {
   cardHeader,
   closeLauncher,
   countOf,
+  cwdOf,
   deleteWorkspaces,
   enterWorkspace,
   expectCurrent,
@@ -23,6 +24,7 @@ import {
   openCard,
   openDocument,
   openPanel,
+  PROCESS_START,
   putNotebook,
   putWorkspace,
   refresh,
@@ -30,6 +32,7 @@ import {
   saved,
   savedTabs,
   secondWindow,
+  sendToTerminal,
   startTerminal,
   UNDER_LOAD
 } from './helpers';
@@ -965,5 +968,52 @@ test("ACC-PANEL-326-TABNAMES-LIVE: a left workspace's card shows a page tab's sa
     await deleteWorkspaces(page, [a, b]);
     await page.contents.deleteFile(doc);
     await page.contents.deleteFile(renamed);
+  }
+});
+
+test("DEF-PANEL-111-TABNAMES-LEFT, ACC-PANEL-326-TABNAMES-LIVE: a left workspace's card keeps the terminal tab title its window saved, with the cwd in its path slot", async ({
+  page
+}) => {
+  const a = fresh('swtitle');
+  const b = `${a}-b`;
+  let terminal: string | undefined;
+  // B exists before A is created, so the panel lists it beside the workspace entered
+  await putWorkspace(page, b);
+  try {
+    await enterWorkspace(page, a);
+    terminal = await newTerminalTab(page);
+
+    // the process sets the tab title, which lives only in the live widget
+    await sendToTerminal(
+      page,
+      terminal,
+      "printf '\\033]2;wm-live-title\\007'\n"
+    );
+    await expect(
+      page.locator('#jp-main-dock-panel .lm-TabBar-tab', {
+        hasText: 'wm-live-title'
+      })
+    ).toHaveCount(1, PROCESS_START);
+
+    // leave A through B's card header: the _openWorkspace path that saves A first
+    await cardHeader(page, b).click();
+    await switchedTo(page, b);
+
+    // the window shows B, so A's terminal row can come only from A's save
+    await expect.poll(() => cwdOf(page, terminal!), UNDER_LOAD).toBeTruthy();
+    const cwd = (await cwdOf(page, terminal!))!;
+    await openCard(page, a);
+    const row = card(page, a).locator(
+      `.jp-WorkspaceManager-row[data-row-key="terminal:${terminal}"]`
+    );
+    await expect(row).toBeVisible(NEXT_POLL);
+    await expect(row).toContainText('wm-live-title');
+    // the title stands in the process slot and leaves the cwd in the path slot
+    await expect(row.locator('.jp-WorkspaceManager-rowPath')).toHaveText(cwd);
+  } finally {
+    if (terminal !== undefined) {
+      await page.request.delete(`/api/terminals/${terminal}`);
+    }
+    await deleteWorkspaces(page, [a, b]);
   }
 });
