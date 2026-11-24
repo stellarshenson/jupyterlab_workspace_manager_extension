@@ -3004,30 +3004,17 @@ test('LEG-05 ACC-PANEL-93-FOCUS: keyboard focus on a card header, a triangle, a 
         )
         .toEqual(['solid', '1px', outline, offset]);
       if (name.endsWith('row')) {
-        // the card has no right border; a row of this window's card gives up 2 px of right
-        // padding to its margin, so it ends 2 px from the card's edge, at the inner edge of
-        // the 2 px outline, and its content stands where it does in another card; the
-        // padding also keeps room for the scrollbar its list may draw, --wm-gutter less the
-        // scrollbar it draws (ACC-PANEL-313-HARMONICA-EDGE), which is taken off here
+        // a row's content stands 10 px inside the card's right edge, and the 2 px margin plus
+        // the 8 px padding of the current card's row keeps it at the outline's inner edge
+        // (ACC-PANEL-313-HARMONICA-EDGE, DQ-26)
         expect
           .soft(
             await target.evaluate(n => {
               const edge = n
                 .closest('.jp-WorkspaceManager-card')!
                 .getBoundingClientRect().right;
-              const list = n.closest<HTMLElement>(
-                '.jp-WorkspaceManager-sectionBody'
-              )!;
-              const room =
-                (parseFloat(
-                  getComputedStyle(n).getPropertyValue('--wm-gutter')
-                ) || 0) -
-                (list.offsetWidth - list.clientWidth);
               const gap = edge - n.getBoundingClientRect().right;
-              return [
-                gap,
-                gap + parseFloat(getComputedStyle(n).paddingRight) - room
-              ];
+              return [gap, gap + parseFloat(getComputedStyle(n).paddingRight)];
             }),
             `${name}: the row's right edge and its content edge, from the card's right edge`
           )

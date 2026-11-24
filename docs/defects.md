@@ -806,6 +806,14 @@ the sidebar panel, its header and its loads
   - root-cause: 2026-11-23T10:12:14Z @kj a terminal tab's title is the OSC title the running process writes (JupyterLab's Terminal widget sets title.label on xterm's onTitleChange) and lives only in the live widget; the workspace file saves the terminal entry as {name} with no title, and buildModel fills a row's title from the current window's live tabs only
   - log: 2026-11-23T10:12:14Z @kj added; reason: names the symptom, the missing saved title and the criterion clause; each is a separate fact, shortening would drop one
   - log: 2026-11-23T12:10:18Z @kj closed
+- [x] `DEF-PANEL-112-HEADER-INSET` **Card header eye keeps an empty scrollbar band** - MINOR; with the WORKSPACES list too short to scroll, the eye sits 21 px from the card's right edge (6 px padding plus the 15 px --wm-gutter reservation) while the caret sits 6 px from the left; the empty band shows in the owner's screenshot of 2026-11-23.
+  - evidence: fixed: eye 6 px and row time 10 px inside the visible edge; red on the old build then green after the rebuild (galata-red.log, galata-change.log); full suite 304 of 304, exit 0 (galata-full.log); Jest 262, pytest 179 (make-test.log)
+  - related: ACC-PANEL-313-HARMONICA-EDGE, ACC-PANEL-324-HEADER-END
+  - repro: open the panel with two workspaces, WORKSPACES open and short enough to draw no scrollbar: the eye ends 21 px from the card's right edge instead of 6 px
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-24T06:25:34Z @kj the header's right padding is 6px + --wm-gutter - 100cqw + 100% + 8px, which leaves room for the 15 px scrollbar; with scrollbar-gutter: auto and a short list no scrollbar is drawn, so the room stays empty
+  - log: 2026-11-24T06:25:34Z @kj added
+  - log: 2026-11-24T07:15:44Z @kj closed
 
 ## Functional tests `GALATA`
 

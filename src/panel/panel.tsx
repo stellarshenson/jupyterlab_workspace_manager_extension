@@ -522,10 +522,6 @@ export class WorkspacePanel
       SECTION_KEYS.length,
       this._open
     );
-    // the scrollbar every row keeps room for, from a probe that always shows one
-    this._probe.className = 'jp-WorkspaceManager-gutterProbe';
-    this._probe.setAttribute('aria-hidden', 'true');
-    this.node.appendChild(this._probe);
     // the wheel anywhere over the panel drives the open section, never the one under the pointer;
     // over the open list the browser scrolls it natively until its end
     this.node.addEventListener(
@@ -1359,10 +1355,6 @@ export class WorkspacePanel
       target.scrollIntoView?.({ block: 'nearest' });
       this._scrollTo = null;
     }
-    this.node.style.setProperty(
-      '--wm-gutter',
-      `${this._probe.offsetWidth - this._probe.clientWidth}px`
-    );
     // the selection lasts while its row is shown
     if (
       this._selected &&
@@ -2954,8 +2946,6 @@ export class WorkspacePanel
   /** the lists a pull or a fold moves, by index, in px; null at rest */
   private _heights: Record<number, number> | null = null;
   private _harmonica: Harmonica;
-  /** a hidden element that always shows a classic scrollbar */
-  private _probe = document.createElement('div');
   /** the cards this page shows open; a card keeps its state while another opens (DQ-28) */
   private _openCards = new Set(storedCards().map(id => `w:${id}`));
   /** the first workspace list has dropped the stored cards it does not hold */

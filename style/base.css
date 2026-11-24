@@ -153,15 +153,13 @@
     One flex column of the panel's height (DQ-23), the harmonica of the design system's
     Harmonica navigation: the four bands keep their order and stay on screen, the open
     section takes the height they leave, so the bands above it stand at the top and the
-    bands below it at the panel bottom, and no section scrolls the panel. In a row 100cqw
-    is this column's width.
+    bands below it at the panel bottom, and no section scrolls the panel.
 */
 .jp-WorkspaceManager-list {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  container-type: inline-size;
 }
 
 .jp-WorkspaceManager-section {
@@ -261,19 +259,6 @@
 .jp-WorkspaceManager-section:not(.jp-mod-open)
   > .jp-WorkspaceManager-sectionBody {
   overflow: hidden;
-}
-
-/* A hidden probe that always shows a classic scrollbar: its width is --wm-gutter, 0 where the browser overlays its scrollbars (design system, Harmonica navigation) */
-.jp-WorkspaceManager-gutterProbe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 50px;
-  height: 50px;
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-  visibility: hidden;
-  pointer-events: none;
 }
 
 .jp-WorkspaceManager-filter {
@@ -425,9 +410,9 @@
   box-shadow: 0 3px 0 var(--jp-brand-color1);
 }
 
-/* the header carries the card's 24 % tint, meeting the body's 9.6 % tint with no rule between them (DQ-02, DQ-28, ACC-PANEL-278-TINT-ALPHA); the 6 px left padding starts the name and the purpose at the row label's left edge; the right padding ends the eye at the caret's 6 px inset, 4 px inside the rows' 10 px (ACC-PANEL-324-HEADER-END) (100% is the card's content width, 8 px of margins and strip inside the list's) */
+/* the header carries the card's 24 % tint, meeting the body's 9.6 % tint with no rule between them (DQ-02, DQ-28, ACC-PANEL-278-TINT-ALPHA); the 6 px left padding starts the name and the purpose at the row label's left edge; the 6 px right padding ends the eye at the caret's 6 px inset, 4 px inside the rows' 10 px, and a list scrollbar moves the header's content with the card's edge (ACC-PANEL-324-HEADER-END) */
 .jp-WorkspaceManager-cardHeader {
-  padding: 6px calc(6px + var(--wm-gutter, 0px) - 100cqw + 100% + 8px) 6px 6px;
+  padding: 6px;
   background: var(--wm-shade);
   cursor: pointer;
 }
@@ -650,19 +635,8 @@
   background: var(--jp-layout-color2);
 }
 
-/*
- * A row's fill reaches the panel's right edge, or the scrollbar where its list draws one; its right
- * padding is 10 px and --wm-gutter less that scrollbar (the column's width, 100cqw, less the list's
- * content width, 100%), so its time and buttons keep their x and nothing reflows when the scrollbar
- * appears (design system, Harmonica navigation; ACC-PANEL-313-HARMONICA-EDGE)
- */
-.jp-WorkspaceManager-sectionBody > .jp-WorkspaceManager-row {
-  padding-right: calc(10px + var(--wm-gutter, 0px) - 100cqw + 100%);
-}
-
-/* in a card 100% is the card's content width, 8 px of margins and strip inside the list's */
+/* in a card a row's content ends 10 px inside the card's right edge, and a list scrollbar moves it left with the card's edge (ACC-PANEL-313-HARMONICA-EDGE) */
 .jp-WorkspaceManager-cardBody .jp-WorkspaceManager-row {
-  padding-right: calc(10px + var(--wm-gutter, 0px) - 100cqw + 100% + 8px);
   padding-left: 14px;
 }
 
@@ -762,12 +736,12 @@
   white-space: nowrap;
 }
 
-/* In this window's card the 2 px outline is painted inside the card's edge, where it would cover the right side of a row's focus ring: the row ends 2 px short of the edge, at the outline's inner edge, with a 2 px right margin in place of the removed right border, and the right padding gives up 2 px so no content moves (DQ-26, DEF-PANEL-72-RING-ROW) */
+/* In this window's card the 2 px outline is painted inside the card's edge, where it would cover the right side of a row's focus ring: the row ends 2 px short of the edge, at the outline's inner edge, with a 2 px right margin in place of the removed right border and 8 px of right padding, so its content still ends 10 px inside the card's edge; a list scrollbar moves the row left with the card's edge (DQ-26, DEF-PANEL-72-RING-ROW, ACC-PANEL-313-HARMONICA-EDGE) */
 .jp-WorkspaceManager-card.jp-mod-current
   > .jp-WorkspaceManager-cardBody
   .jp-WorkspaceManager-row {
   margin-right: 2px;
-  padding-right: calc(8px + var(--wm-gutter, 0px) - 100cqw + 100% + 8px);
+  padding-right: 8px;
 }
 
 /* In a coloured card the surface keeps the card's hue: the hue at 9.6 % over layout colour 2 (DQ-10, ACC-PANEL-278-TINT-ALPHA) */

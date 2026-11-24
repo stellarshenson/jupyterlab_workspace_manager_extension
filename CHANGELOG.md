@@ -2,6 +2,16 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.20] - 2026-11-24
+
+### Changed
+
+- The panel's right-aligned content sits at a fixed inset from the visible right edge instead of a fixed screen position: the card header's eye ends 6 px and a row's time 10 px inside the edge, and a list scrollbar moves the content left by its width (ACC-PANEL-313-HARMONICA-EDGE, ACC-PANEL-324-HEADER-END)
+
+### Fixed
+
+- The card header's eye no longer keeps an empty band the width of the scrollbar a short WORKSPACES list does not draw (DEF-PANEL-112-HEADER-INSET)
+
 ## [1.0.19] - 2026-11-23
 
 ### Added

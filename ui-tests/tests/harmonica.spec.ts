@@ -1091,7 +1091,7 @@ test.describe('in a 520 px window', () => {
     viewport: { width: 1024, height: 520 }
   });
 
-  test('ACC-PANEL-313-HARMONICA-EDGE: the open list reserves no strip; a row keeps its time x and content width when its list starts to draw a scrollbar, and its fill reaches the panel edge without one and the scrollbar with one; a card header keeps its eye and time x', async ({
+  test("ACC-PANEL-313-HARMONICA-EDGE: the open list reserves no strip; a row's time ends 10 px inside its row's right edge and a card header's eye 6 px inside the header's right edge, with and without a scrollbar, and the row content and the header's eye and age move left by the scrollbar's width when the list draws one; a row's fill reaches the panel edge without one and the scrollbar with one", async ({
     page
   }) => {
     test.setTimeout(300000);
@@ -1140,6 +1140,11 @@ test.describe('in a 520 px window', () => {
           const header = panel.querySelector(
             '.jp-WorkspaceManager-card.jp-mod-current .jp-WorkspaceManager-cardHeader'
           );
+          const eye =
+            header &&
+            header.querySelector<HTMLElement>(
+              '.jp-WorkspaceManager-cardActions button'
+            );
           return {
             bar: (list as HTMLElement).offsetWidth - list.clientWidth,
             gutter: getComputedStyle(list).scrollbarGutter,
@@ -1149,11 +1154,9 @@ test.describe('in a 520 px window', () => {
               list.clientLeft +
               list.clientWidth,
             rows,
-            eye:
-              header &&
-              right(
-                header.querySelector('.jp-WorkspaceManager-cardActions button')!
-              ),
+            headerRight: header && right(header),
+            eye: eye && right(eye),
+            eyeLeft: eye && eye.getBoundingClientRect().left,
             age:
               header && right(header.querySelector('.jp-WorkspaceManager-age')!)
           };
@@ -1167,12 +1170,21 @@ test.describe('in a 520 px window', () => {
         ]);
       };
 
-      // TERMINALS with 3 rows draws no scrollbar: the fill reaches the panel edge
+      // TERMINALS with 3 rows draws no scrollbar: each time ends 10 px inside its row,
+      // and the fill reaches the panel edge
       await openSection(page, 'terminals');
       await expect(sectionBody(page, 'terminals').locator(ROW)).toHaveCount(3);
       const fit = await measure('terminals');
       expect(fit.bar).toBe(0);
       expect(fit.gutter).toBe('auto');
+      for (const key of Object.keys(fit.rows)) {
+        expect
+          .soft(
+            Math.abs(fit.rows[key][2] - fit.rows[key][0] - 10),
+            `${key} time inset without a scrollbar`
+          )
+          .toBeLessThanOrEqual(0.5);
+      }
       const [fill, edge] = await hovered('terminals');
       expect(fill).not.toBe('rgba(0, 0, 0, 0)');
       expect(Math.abs((edge as number) - fit.panelRight)).toBeLessThanOrEqual(
@@ -1198,14 +1210,25 @@ test.describe('in a 520 px window', () => {
       expect(over.bar).toBeGreaterThan(0);
       for (const key of Object.keys(fit.rows)) {
         const [time, width] = fit.rows[key];
-        expect(
-          Math.abs(over.rows[key][0] - time),
-          `${key} time`
-        ).toBeLessThanOrEqual(0.5);
-        expect(
-          Math.abs(over.rows[key][1] - width),
-          `${key} width`
-        ).toBeLessThanOrEqual(0.5);
+        const [overTime, overWidth, overRowRight] = over.rows[key];
+        expect
+          .soft(
+            Math.abs(overRowRight - overTime - 10),
+            `${key} time inset with a scrollbar`
+          )
+          .toBeLessThanOrEqual(0.5);
+        expect
+          .soft(
+            Math.abs(time - overTime - over.bar),
+            `${key} time moved left by the scrollbar's width`
+          )
+          .toBeLessThanOrEqual(0.5);
+        expect
+          .soft(
+            Math.abs(width - overWidth - over.bar),
+            `${key} content width shrank by the scrollbar's width`
+          )
+          .toBeLessThanOrEqual(0.5);
       }
       const [overFill, overEdge] = await hovered('terminals');
       expect(overFill).not.toBe('rgba(0, 0, 0, 0)');
@@ -1213,11 +1236,24 @@ test.describe('in a 520 px window', () => {
         Math.abs((overEdge as number) - over.clientRight)
       ).toBeLessThanOrEqual(0.5);
 
-      // a card header keeps its eye and time x when WORKSPACES starts to draw a scrollbar
+      // the card header's eye ends 6 px inside the header edge and the age keeps its 6 px
+      // flex gap to it; a WORKSPACES scrollbar moves both left by its width
       await openSection(page, 'workspaces');
       const card1 = await measure('workspaces');
       expect(card1.bar).toBe(0);
       expect(card1.eye).not.toBeNull();
+      expect
+        .soft(
+          Math.abs(card1.headerRight! - card1.eye! - 6),
+          'the eye inset from the card header edge without a scrollbar'
+        )
+        .toBeLessThanOrEqual(0.5);
+      expect
+        .soft(
+          Math.abs(card1.eyeLeft! - card1.age! - 6),
+          `the age's flex gap to the eye control without a scrollbar, measured ${card1.eyeLeft! - card1.age!}`
+        )
+        .toBeLessThanOrEqual(0.5);
       await Promise.all(others.map(id => putWorkspace(page, id)));
       shown = others.length + 1;
       await refresh(page);
@@ -1227,8 +1263,30 @@ test.describe('in a 520 px window', () => {
       );
       const cards = await measure('workspaces');
       expect(cards.bar).toBeGreaterThan(0);
-      expect(Math.abs(cards.eye! - card1.eye!)).toBeLessThanOrEqual(0.5);
-      expect(Math.abs(cards.age! - card1.age!)).toBeLessThanOrEqual(0.5);
+      expect
+        .soft(
+          Math.abs(cards.headerRight! - cards.eye! - 6),
+          'the eye inset from the card header edge with a scrollbar'
+        )
+        .toBeLessThanOrEqual(0.5);
+      expect
+        .soft(
+          Math.abs(cards.eyeLeft! - cards.age! - 6),
+          `the age's flex gap to the eye control with a scrollbar, measured ${cards.eyeLeft! - cards.age!}`
+        )
+        .toBeLessThanOrEqual(0.5);
+      expect
+        .soft(
+          Math.abs(card1.eye! - cards.eye! - cards.bar),
+          "the eye moved left by the scrollbar's width"
+        )
+        .toBeLessThanOrEqual(0.5);
+      expect
+        .soft(
+          Math.abs(card1.age! - cards.age! - cards.bar),
+          "the age moved left by the scrollbar's width"
+        )
+        .toBeLessThanOrEqual(0.5);
     } finally {
       await Promise.all(
         terminals.map(t => page.request.delete(`/api/terminals/${t}`))
