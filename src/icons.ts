@@ -119,3 +119,11 @@ for (const colour of COLOURS) {
     )
   });
 }
+
+/** A holder workspace with no colour: the plain swatch (ACC-TERM-333-HOLDER-SWATCH). */
+export const plainSwatchIcon = new LabIcon({
+  name: `${NS}:swatch-plain`,
+  svgstr: svg(
+    '<rect class="jp-WorkspaceManager-swatch jp-mod-plain" x="2" y="2" width="12" height="12" rx="2"/>'
+  )
+});

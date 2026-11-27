@@ -2,6 +2,21 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## [1.0.21] - 2026-11-27
+
+### Added
+
+- A TERMINALS row draws one swatch per workspace that holds its terminal, in that workspace's colour, with a plain chip for a workspace without one, and its tooltip names every holder (ACC-TERM-333-HOLDER-SWATCH)
+
+### Changed
+
+- A click on a row of another workspace's card opens that item in this window too - a document, a terminal, a console, a web page or a kernel's document - instead of switching the window, and the source workspace keeps it, so a terminal opened here is held by both workspaces; the header click and Open workspace still switch, and still refuse while another window shows the workspace (ACC-LISTS-40-ROW-OTHER, ACC-ACCORD-28-CLOSE-ELSEWHERE, ACC-KERNEL-151-ROW-CLICK, DEF-PANEL-113-CARD-SWITCH)
+
+### Fixed
+
+- A KERNELS row of a workspace holding both a notebook and its console opened whichever tab came first in the layout instead of the document its kernel session belonged to
+- A repeated click on another workspace's console row opened a second console tab instead of the console already open here
+
 ## [1.0.20] - 2026-11-24
 
 ### Changed

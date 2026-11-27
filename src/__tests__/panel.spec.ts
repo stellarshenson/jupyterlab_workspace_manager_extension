@@ -1511,17 +1511,31 @@ describe('panel', () => {
     expect(count('w:default')).toBe('(1)');
   });
 
-  it('ACC-KERNEL-151-ROW-CLICK, ACC-LISTS-195-ALL-KERNELS: a KERNELS row of a console kernel held by another workspace switches to that workspace', async () => {
+  it('ACC-KERNEL-151-ROW-CLICK, ACC-LISTS-195-ALL-KERNELS: a KERNELS row of a console kernel held by another workspace opens the console here with console:create and its saved data, and does not switch', async () => {
     const server = standard();
+    const path = 'console-1-7f3a';
+    const data = {
+      path,
+      name: 'Console 1',
+      kernelPreference: { name: 'python3' }
+    };
     server.sessions.push({
       id: 's1',
       name: 'Console 1',
-      path: 'console-1-7f3a',
+      path,
       type: 'console',
       kernel: server.kernels[0]
     });
-    server.workspaces[1] = workspace('auto-6', 60, ['console:console-1-7f3a']);
-    const { panel } = await mount(server);
+    server.workspaces[1] = workspace('auto-6', 60, [`console:${path}`]);
+    server.workspaces[1].data[`console:${path}`].data = data;
+    const { panel, app } = await mount(server);
+    const create = jest.fn();
+    app.commands.addCommand('console:create', {
+      execute: (args: any) => {
+        create(args);
+        return new Widget();
+      }
+    });
     const rows = Array.from(
       openSection(panel, 'kernels').querySelectorAll<HTMLElement>(
         '.jp-WorkspaceManager-row'
@@ -1532,20 +1546,299 @@ describe('panel', () => {
         r => r.querySelector('.jp-WorkspaceManager-rowLabel')!.textContent
       )
     ).toEqual(['Console 1']);
-    // a console has no tab here: the row switches to the workspace that holds it
+    // a console has no tab here: the row opens it here from the source's saved entry
     const openWorkspace = jest
       .spyOn(panel as any, '_openWorkspace')
       .mockResolvedValue(undefined);
     rows[0].click();
-    expect(openWorkspace).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'auto-6' })
-    );
+    await settle();
+    expect(create).toHaveBeenCalledWith(data);
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dialogText()).toBeUndefined();
   });
 
-  it("ACC-LISTS-40-ROW-OTHER, ACC-TERM-215-TAB-MATCH: a terminal row of another workspace's card opens that workspace without activating the terminal's tab, while a row of this window's card activates it", async () => {
+  it("ACC-LISTS-40-ROW-OTHER: a document row of another workspace's card opens the file here with its saved factory, and writes no workspace", async () => {
     const server = standard();
-    // this window's workspace holds the same terminal as auto-6
-    server.workspaces[0] = workspace('default', 1, ['terminal:1']);
+    // a second window on auto-6 must not turn the row click into a refusal
+    server.presence = ['auto-6'];
+    server.workspaces[1].data['editor:docs/README.md'].data.factory = 'Editor';
+    const { panel, app, log } = await mount(server);
+    const open = jest.fn();
+    app.commands.addCommand('docmanager:open', {
+      execute: (args: any) => {
+        open(args);
+        return new Widget();
+      }
+    });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    const refused = jest.spyOn(panel as any, '_refused');
+    const rowOfKey = (key: string) =>
+      $$(panel, '[data-key="w:auto-6"] .jp-WorkspaceManager-row').find(
+        r => r.dataset.rowKey === key
+      )!;
+    triangle(panel, 'w:auto-6').click();
+    // the panel's own load writes colours and positions; the click must add no write
+    const before = log.length;
+    rowOfKey('editor:docs/README.md').click();
+    await settle();
+    expect(open).toHaveBeenCalledWith({
+      path: 'docs/README.md',
+      factory: 'Editor'
+    });
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(refused).not.toHaveBeenCalled();
+    expect(dialogText()).toBeUndefined();
+    expect(log.slice(before)).not.toContain(
+      'POST /jupyterlab-workspace-manager-extension/presence'
+    );
+    expect(log.slice(before)).not.toContain('PUT /lab/api/workspaces/auto-6');
+    expect(log.slice(before)).not.toContain(
+      'PATCH /jupyterlab-workspace-manager-extension/meta/auto-6'
+    );
+    expect(server.saved?.['auto-6']).toBeUndefined();
+  });
+
+  it("ACC-LISTS-40-ROW-OTHER: a console row of another workspace's card opens the console here with console:create and its saved data", async () => {
+    const server = standard();
+    const path = 'dir/console-1-0b1c2d3e';
+    const data = {
+      path,
+      name: 'Console 1',
+      kernelPreference: { name: 'python3' }
+    };
+    server.workspaces[1] = workspace('auto-6', 60, [`console:${path}`]);
+    server.workspaces[1].data[`console:${path}`].data = data;
+    const live: Widget[] = [];
+    const { panel, app } = await mount(server, { live });
+    const create = jest.fn();
+    app.commands.addCommand('console:create', {
+      execute: (args: any) => {
+        create(args);
+        return new Widget();
+      }
+    });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    triangle(panel, 'w:auto-6').click();
+    const row = () =>
+      $$(panel, '[data-key="w:auto-6"] .jp-WorkspaceManager-row').find(
+        r => r.dataset.rowKey === `console:${path}`
+      )!;
+    row().click();
+    await settle();
+    expect(create).toHaveBeenCalledWith(data);
+    // a second click with that console live here activates its tab, never opens a second
+    const console = new Widget();
+    console.addClass('jp-ConsolePanel');
+    (console as any).sessionContext = { path };
+    live.push(console);
+    (panel as any)._liveTabs();
+    row().click();
+    await settle();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(app.shell.activateById).toHaveBeenCalledWith(console.id);
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dialogText()).toBeUndefined();
+  });
+
+  it("ACC-LISTS-40-ROW-OTHER: a web page row of another workspace's card runs its restore command with the saved data", async () => {
+    const server = standard();
+    const key = 'workspace-page:page-1';
+    const data = {
+      url: 'https://example.com/row',
+      title: 'Page 1',
+      id: 'page-1'
+    };
+    server.workspaces[1] = workspace('auto-6', 60, [key]);
+    server.workspaces[1].data[key].data = data;
+    const { panel, app } = await mount(server);
+    const open = jest.fn();
+    app.commands.addCommand('workspace-page:open', {
+      execute: (args: any) => {
+        open(args);
+        return new Widget();
+      }
+    });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    triangle(panel, 'w:auto-6').click();
+    const row = $$(
+      panel,
+      '[data-key="w:auto-6"] .jp-WorkspaceManager-row'
+    ).find(r => r.dataset.rowKey === key)!;
+    row.click();
+    await settle();
+    expect(open).toHaveBeenCalledWith(data);
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dialogText()).toBeUndefined();
+  });
+
+  it('ACC-LISTS-40-ROW-OTHER, ACC-KERNEL-151-ROW-CLICK: a KERNELS row of a notebook kernel held by another workspace opens its notebook here with its saved factory, not that workspace', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    server.workspaces[1] = workspace('auto-6', 60, ['notebook:a.ipynb']);
+    server.workspaces[1].data['notebook:a.ipynb'].data.factory = 'Notebook';
+    const { panel, app } = await mount(server);
+    const open = jest.fn();
+    app.commands.addCommand('docmanager:open', {
+      execute: (args: any) => {
+        open(args);
+        return new Widget();
+      }
+    });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    const row = openSection(panel, 'kernels').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!;
+    expect(row.title.startsWith(PYTHON)).toBe(true);
+    row.click();
+    await settle();
+    expect(open).toHaveBeenCalledWith({
+      path: 'a.ipynb',
+      factory: 'Notebook'
+    });
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dialogText()).toBeUndefined();
+  });
+
+  it('ACC-LISTS-40-ROW-OTHER, ACC-KERNEL-151-ROW-CLICK: a kernel row of a card holding a console before its notebook opens the notebook, never console:create', async () => {
+    const server = standard();
+    server.sessions.push({
+      id: 's1',
+      name: 'a.ipynb',
+      path: 'a.ipynb',
+      type: 'notebook',
+      kernel: server.kernels[0]
+    });
+    // the card saves the console first: the first saved key must not take the kernel's click
+    server.workspaces[1] = workspace('auto-6', 60, [
+      'console:a.ipynb',
+      'notebook:a.ipynb'
+    ]);
+    server.workspaces[1].data['console:a.ipynb'].data = {
+      path: 'a.ipynb',
+      name: 'Console 1',
+      kernelPreference: { name: 'python3' }
+    };
+    server.workspaces[1].data['notebook:a.ipynb'].data.factory = 'Notebook';
+    const { panel, app } = await mount(server);
+    const open = jest.fn();
+    app.commands.addCommand('docmanager:open', {
+      execute: (args: any) => {
+        open(args);
+        return new Widget();
+      }
+    });
+    const create = jest.fn();
+    app.commands.addCommand('console:create', {
+      execute: (args: any) => {
+        create(args);
+        return new Widget();
+      }
+    });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    const row = openSection(panel, 'kernels').querySelector<HTMLElement>(
+      '.jp-WorkspaceManager-row'
+    )!;
+    expect(row).toBeDefined();
+    row.click();
+    await settle();
+    expect(open).toHaveBeenCalledWith({
+      path: 'a.ipynb',
+      factory: 'Notebook'
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dialogText()).toBeUndefined();
+  });
+
+  it('ACC-LISTS-40-ROW-OTHER: a saved entry this window cannot open names it and switches nothing', async () => {
+    const server = standard();
+    const key = 'setting-editor:setting-editor';
+    server.workspaces[1] = workspace('auto-6', 60, [key]);
+    const { panel } = await mount(server);
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    triangle(panel, 'w:auto-6').click();
+    const row = $$(
+      panel,
+      '[data-key="w:auto-6"] .jp-WorkspaceManager-row'
+    ).find(r => r.dataset.rowKey === key)!;
+    expect(row).toBeDefined();
+    row.click();
+    await waitForDialog();
+    try {
+      expect(dialogText()).toContain('Workspace manager');
+      expect(dialogText()).toContain('Settings');
+      expect(dialogText()).not.toContain(key);
+      expect(dialogText()).toContain('auto-6');
+      expect(openWorkspace).not.toHaveBeenCalled();
+    } finally {
+      await dismissDialog();
+    }
+  });
+
+  it("ACC-LISTS-40-ROW-OTHER, ACC-TERM-215-TAB-MATCH: a terminal row of another workspace's card opens the terminal here, never switching, claiming or writing the source; a terminal already open here is activated, and a row of this window's card activates it", async () => {
+    const server = standard();
+    const { panel, app, log } = await mount(server);
+    const created: any[] = [];
+    app.commands.addCommand('terminal:create-new', {
+      execute: (args: any) => {
+        created.push(args);
+        const tab = new Widget();
+        tab.id = `new-${args.name}`;
+        (tab as any).content = {
+          hasClass: (name: string) => name === 'jp-Terminal',
+          session: { name: args.name }
+        };
+        return tab;
+      }
+    });
+    const openWorkspace = jest
+      .spyOn(panel as any, '_openWorkspace')
+      .mockResolvedValue(undefined);
+    const refused = jest.spyOn(panel as any, '_refused');
+    const terminalRow = (scope: Widget, key: string) =>
+      $$(scope, `[data-key="${key}"] .jp-WorkspaceManager-row`).find(r =>
+        r.title.startsWith('terminal 1\n')
+      )!;
+    // another workspace's card: the row opens the terminal here, with no claim and no save of the source
+    triangle(panel, 'w:auto-6').click();
+    const other = terminalRow(panel, 'w:auto-6');
+    expect(other).toBeDefined();
+    // the panel's own load writes colours and positions; the click must add no write
+    const before = log.length;
+    other.click();
+    await settle();
+    expect(created).toEqual([{ name: '1' }]);
+    expect(app.shell.activateById).toHaveBeenCalledWith('new-1');
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(refused).not.toHaveBeenCalled();
+    expect(log.slice(before)).not.toContain(
+      'POST /jupyterlab-workspace-manager-extension/presence'
+    );
+    expect(log.slice(before)).not.toContain('PUT /lab/api/workspaces/auto-6');
+    expect(log.slice(before)).not.toContain(
+      'PATCH /jupyterlab-workspace-manager-extension/meta/auto-6'
+    );
+    expect(dialogText()).toBeUndefined();
+
+    // a terminal already open here: the row activates that tab and opens no second one
     const terminal = new Widget();
     terminal.id = 'terminal-1';
     terminal.title.label = 'terminal 1';
@@ -1553,29 +1846,23 @@ describe('panel', () => {
       hasClass: (name: string) => name === 'jp-Terminal',
       session: { name: '1' }
     };
-    const { panel, app } = await mount(server, { live: [terminal] });
-    const openWorkspace = jest
-      .spyOn(panel as any, '_openWorkspace')
+    const second = await mount(server, { live: [terminal] });
+    const openAgain = jest
+      .spyOn(second.panel as any, '_openWorkspace')
       .mockResolvedValue(undefined);
-    const terminalRow = (key: string) =>
-      $$(panel, `[data-key="${key}"] .jp-WorkspaceManager-row`).find(r =>
-        r.title.startsWith('terminal 1\n')
-      )!;
-    // another workspace's card: the row opens that workspace and leaves the tab alone
-    triangle(panel, 'w:auto-6').click();
-    const other = terminalRow('w:auto-6');
-    expect(other).toBeDefined();
-    other.click();
-    expect(openWorkspace).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'auto-6' })
-    );
-    expect(app.shell.activateById).not.toHaveBeenCalled();
+    // the first panel kept auto-6's card open, and the second panel reads that stored state
+    if (!card(second.panel, 'w:auto-6').classList.contains('jp-mod-open')) {
+      triangle(second.panel, 'w:auto-6').click();
+    }
+    terminalRow(second.panel, 'w:auto-6').click();
+    await settle();
+    expect(second.app.shell.activateById).toHaveBeenCalledWith('terminal-1');
+    expect(created).toEqual([{ name: '1' }]);
+    expect(openAgain).not.toHaveBeenCalled();
     // this window's card: the row activates the terminal's tab
-    triangle(panel, 'w:default').click();
-    const mine = terminalRow('w:default');
-    expect(mine).toBeDefined();
-    mine.click();
-    expect(app.shell.activateById).toHaveBeenCalledWith('terminal-1');
+    triangle(second.panel, 'w:default').click();
+    terminalRow(second.panel, 'w:default').click();
+    expect(second.app.shell.activateById).toHaveBeenCalledWith('terminal-1');
   });
 
   it('ACC-TERM-215-TAB-MATCH: a terminal row activates the tab of its running terminal, never the kept tab of an ended one; without such a tab it opens one', async () => {
@@ -4377,6 +4664,48 @@ describe('panel', () => {
     // ACC-TERM-259-TOOLTIP-DETAILS: the terminal's own Workspaces line
     for (const r of [listed, inCard]) {
       expect(r.title.split('\n').pop()).toBe('Workspaces: auto-6, auto-7');
+    }
+  });
+
+  it("ACC-TERM-333-HOLDER-SWATCH, ACC-LISTS-37-TWO-WORKSPACES: a TERMINALS row draws one swatch per holder in the model's order, each in its holder's colour, and a holder with no colour the plain chip", async () => {
+    const server = standard();
+    server.workspaces.push(workspace('auto-7', 30, ['terminal:1']));
+    server.records['auto-7'] = { colour: 'mint' };
+    const { panel } = await mount(server);
+    const listed = () =>
+      openSection(panel, 'terminals').querySelector<HTMLElement>(
+        '.jp-WorkspaceManager-row'
+      )!;
+    const swatches = () =>
+      Array.from(
+        listed().querySelectorAll<HTMLElement>(
+          '.jp-WorkspaceManager-holderSwatch'
+        )
+      );
+    // auto-6 is peach and auto-7 mint; the model lists them in this order
+    expect(swatches().map(s => s.getAttribute('aria-label'))).toEqual([
+      'auto-6',
+      'auto-7'
+    ]);
+    expect(swatches().map(s => s.title)).toEqual(['auto-6', 'auto-7']);
+    const chips = swatches().map(s => s.querySelector('rect')!);
+    expect(chips[0].classList.contains('jp-WorkspaceManager-swatch')).toBe(
+      true
+    );
+    expect(chips[0].classList.contains('jp-mod-peach')).toBe(true);
+    expect(chips[1].classList.contains('jp-mod-mint')).toBe(true);
+    expect(listed().title.split('\n').pop()).toBe('Workspaces: auto-6, auto-7');
+
+    // a holder with no colour draws the plain chip
+    (panel as any)._colours = {};
+    (panel as any)._data.records = {};
+    (panel as any)._render();
+    for (const chip of swatches().map(s => s.querySelector('rect')!)) {
+      expect(chip.classList.contains('jp-WorkspaceManager-swatch')).toBe(true);
+      expect(chip.classList.contains('jp-mod-plain')).toBe(true);
+      expect(
+        Array.from(chip.classList).filter(c => c.startsWith('jp-mod-'))
+      ).toEqual(['jp-mod-plain']);
     }
   });
 

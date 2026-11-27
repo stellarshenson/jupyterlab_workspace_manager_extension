@@ -712,12 +712,40 @@
   opacity: 1;
 }
 
+/* A TERMINALS row's holder swatches: one chip per holding workspace, in the model's order, after the row name (ACC-TERM-333-HOLDER-SWATCH) */
+.jp-WorkspaceManager-holderSwatches {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.jp-WorkspaceManager-holderSwatch {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+/* the chip's icon fills its holder's slot (ACC-TERM-333-HOLDER-SWATCH) */
+.jp-WorkspaceManager-holderSwatches > .jp-WorkspaceManager-holderSwatch svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+/* A holder with no colour: the chip in the theme's ink (ACC-TERM-333-HOLDER-SWATCH) */
+.jp-WorkspaceManager-swatch.jp-mod-plain {
+  fill: var(--jp-ui-font-color1);
+}
+
 /* A terminal row's process stands in one line between the name and the time (DQ-24): it takes the free width, and shrink shares are proportional to the width, so a factor of 1e5 keeps the name whole until the process has no width left */
 .jp-WorkspaceManager-row:has(> .jp-WorkspaceManager-rowProcess) {
   flex-wrap: nowrap;
 }
 
-.jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-rowProcess) {
+/* a name the process or a holder's swatches follow keeps its natural width, so the process takes the free width (DQ-24, ACC-TERM-333-HOLDER-SWATCH) */
+.jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-rowProcess),
+.jp-WorkspaceManager-rowLabel:has(+ .jp-WorkspaceManager-holderSwatches) {
   flex: 0 1 auto;
 }
 

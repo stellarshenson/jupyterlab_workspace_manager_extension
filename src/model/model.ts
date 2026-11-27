@@ -82,6 +82,8 @@ export interface IKernelRow {
   title: string;
   /** the session path of its notebook or console; empty without a session */
   path: string;
+  /** the tab key of its session: notebook:<path> or console:<path>; empty without a session */
+  tabKey: string;
   /** the notebook's file name or the console's name: the row's name; empty without a session */
   detail: string;
   /** the execution state: idle, busy, starting and so on */
@@ -323,6 +325,7 @@ export function buildModel(input: IModelInput): IModel {
       label,
       title: lines(label, session?.path, k.execution_state),
       path: session?.path ?? '',
+      tabKey: session ? `${session.type}:${session.path}` : '',
       detail: !session
         ? ''
         : session.type === 'console'

@@ -225,6 +225,7 @@ describe('model', () => {
         label: 'python3',
         title: 'python3\nwork/x.ipynb\nidle',
         path: 'work/x.ipynb',
+        tabKey: 'notebook:work/x.ipynb',
         detail: 'x.ipynb',
         state: 'idle',
         lastActivity: '2026-10-24T11:00:00.000000Z',

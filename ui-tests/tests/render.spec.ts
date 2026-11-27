@@ -2113,7 +2113,7 @@ test('ROW-09 ACC-LISTS-211-ROW-HOVER, ROW-10 ACC-LISTS-210-ROW-SELECT, ACC-TERM-
   }
 });
 
-test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-TAB-MATCH, ACC-TERM-216-TAB-KEPT: a click or Enter on a row opens its item; a terminal row activates the one tab it opened, in a card and in TERMINALS; another workspace's row switches this window", async ({
+test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-LISTS-40-ROW-OTHER, ACC-TERM-215-TAB-MATCH, ACC-TERM-216-TAB-KEPT: a click or Enter on a row opens its item; a terminal row activates the one tab it opened, in a card and in TERMINALS; another workspace's row opens its terminal here and this window stays", async ({
   page
 }) => {
   test.setTimeout(120000);
@@ -2150,11 +2150,13 @@ test("ROW-05 ACC-LISTS-38-NO-WORKSPACE, ACC-LISTS-39-ROW-CURRENT, ACC-TERM-215-T
     await openCard(page, current);
     await rowOf(card(page, current), rowLabel(terminal)).click();
     await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
-    // another workspace's card: its row switches this window to that workspace
+    // another workspace's card: its row opens the terminal here and this window stays
     await openCard(page, other);
     await rowOf(card(page, other), rowLabel(elsewhere)).click();
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(elsewhere);
+    await expect(dialog(page)).toHaveCount(0);
     await expect(page).toHaveURL(
-      new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+      new RegExp(`/lab/workspaces/${current}(\\?.*)?$`)
     );
   } finally {
     await page.request.delete(`/api/terminals/${terminal}`);

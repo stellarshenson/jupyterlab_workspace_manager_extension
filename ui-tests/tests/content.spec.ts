@@ -6,6 +6,7 @@ import {
   card,
   cardHeader,
   closeLauncher,
+  COLOURS,
   countOf,
   cut,
   deleteWorkspaces,
@@ -376,6 +377,67 @@ test('ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces is a row of both
   }
 });
 
+test('ACC-TERM-333-HOLDER-SWATCH, ACC-LISTS-37-TWO-WORKSPACES: a terminal of two workspaces draws one swatch per holder in that workspace colour in the TERMINALS row, and the row tooltip names both', async ({
+  page
+}) => {
+  const terminal = await startTerminal(page);
+  const current = fresh('swatch');
+  const [a, b] = [`${current}-a`, `${current}-b`];
+  await putWorkspace(page, a, layout([`terminal:${terminal}`]));
+  await putWorkspace(page, b, layout([`terminal:${terminal}`]));
+  await patchMeta(page, a, { colour: 'mint' });
+  await patchMeta(page, b, { colour: 'peach' });
+  try {
+    await enterWorkspace(page, current);
+    // the model's order is the order of the cards; each holder's colour is the one its card draws
+    const order = await page
+      .locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`)
+      .evaluateAll(
+        (nodes, ids) =>
+          nodes
+            .map(n => (n as HTMLElement).dataset.workspace!)
+            .filter(id => ids.includes(id)),
+        [a, b]
+      );
+    const colours: string[] = [];
+    for (const id of order) {
+      colours.push(
+        await card(page, id).evaluate(
+          (n, colours) =>
+            colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+          COLOURS
+        )
+      );
+    }
+    await openSection(page, 'terminals');
+    const listed = rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
+    await expect(listed).toBeVisible();
+    const swatches = listed.locator('.jp-WorkspaceManager-holderSwatch');
+    await expect(swatches).toHaveCount(2, UNDER_LOAD);
+    // one swatch per holder, in the model's order, each named by its holder
+    expect(
+      await swatches.evaluateAll(nodes =>
+        nodes.map(n => n.getAttribute('aria-label'))
+      )
+    ).toEqual(order);
+    expect(
+      await swatches.evaluateAll(nodes => nodes.map(n => n.title))
+    ).toEqual(order);
+    // each swatch in its holder's colour
+    for (const [i, colour] of colours.entries()) {
+      await expect(swatches.nth(i).locator('rect')).toHaveClass(
+        new RegExp(`jp-WorkspaceManager-swatch jp-mod-${colour}`)
+      );
+    }
+    expect((await listed.getAttribute('title'))!.split('\n').pop()).toBe(
+      `Workspaces: ${order.join(', ')}`
+    );
+  } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
+    await deleteWorkspaces(page, [current, a, b]);
+  }
+});
+
 test.describe('a kernel of the server in a narrow row', () => {
   // Galata lists only the kernels and sessions its page started; this test starts one by REST
   test.use({ kernels: null, sessions: null });
@@ -489,23 +551,127 @@ test("ACC-LISTS-39-ROW-CURRENT: a row click in this window's card activates its 
   }
 });
 
-test('ACC-LISTS-40-ROW-OTHER: a row click in the card of another workspace opens that workspace in this window', async ({
+test("ACC-LISTS-40-ROW-OTHER: a row click on another workspace's card opens the document and the terminal here, keeps this workspace, keeps the source layout and shows no refusal with a second window on it", async ({
   page,
   tmpPath
 }) => {
+  const terminal = await startTerminal(page);
   const current = fresh('rowother');
   const other = `${current}-other`;
   const doc = `${tmpPath}/elsewhere.txt`;
   await page.contents.uploadContent('text', 'text', doc);
-  await putWorkspace(page, other, layout([`editor:${doc}`]));
+  const docKey = `editor:${doc}`;
+  const termKey = `terminal:${terminal}`;
+  await putWorkspace(page, other, layout([docKey, termKey]));
+  // a document open in this window adds its tree path; the workspace in the URL must stay this one
+  const mine = new RegExp(`/lab/workspaces/${current}(/tree/.*)?(\\?.*)?$`);
   try {
     await enterWorkspace(page, current);
     await triangle(page, other).click();
-    await rowOf(card(page, other), 'elsewhere.txt').click();
-    await expect(page).toHaveURL(
-      new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+    const c = card(page, other);
+    const before = await saved(page, other);
+
+    // a document row opens the file here; the old row switches this window instead, which the URL assertion names
+    await rowOf(c, 'elsewhere.txt').click();
+    await expect
+      .poll(async () => {
+        if (!mine.test(page.url())) {
+          return true;
+        }
+        try {
+          return (await activeTab(page)) === doc;
+        } catch {
+          // the page is navigating
+          return false;
+        }
+      }, UNDER_LOAD)
+      .toBe(true);
+    await expect(page).toHaveURL(mine);
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(doc);
+    await expect(rowOf(c, 'elsewhere.txt')).toBeVisible();
+    await expect(rowOf(c, rowLabel(terminal))).toBeVisible();
+    expect(await savedTabs(page, other)).toEqual([docKey, termKey]);
+    expect(await saved(page, other)).toEqual(before);
+
+    // a terminal row attaches the terminal here
+    await rowOf(c, rowLabel(terminal)).click();
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
+    await expect(page).toHaveURL(mine);
+    expect(await terminalNames(page)).toContain(terminal);
+    expect(await savedTabs(page, other)).toEqual([docKey, termKey]);
+    expect(await saved(page, other)).toEqual(before);
+
+    // the terminal is now held by both workspaces: one swatch per holder, in its card's colour
+    await refresh(page);
+    const holders = await page
+      .locator(`${PANEL} .jp-WorkspaceManager-card[data-workspace]`)
+      .evaluateAll(
+        (nodes, ids) =>
+          nodes
+            .map(n => (n as HTMLElement).dataset.workspace!)
+            .filter(id => ids.includes(id)),
+        [current, other]
+      );
+    const colours: string[] = [];
+    for (const id of holders) {
+      colours.push(
+        await card(page, id).evaluate(
+          (n, colours) =>
+            colours.find(c => n.classList.contains(`jp-mod-${c}`))!,
+          COLOURS
+        )
+      );
+    }
+    await openSection(page, 'terminals');
+    const listed = rowOf(sectionBody(page, 'terminals'), rowLabel(terminal));
+    await expect(listed).toBeVisible();
+    const swatches = listed.locator('.jp-WorkspaceManager-holderSwatch');
+    await expect(swatches).toHaveCount(2, UNDER_LOAD);
+    expect(
+      await swatches.evaluateAll(nodes =>
+        nodes.map(n => n.getAttribute('aria-label'))
+      )
+    ).toEqual(holders);
+    for (const [i, colour] of colours.entries()) {
+      await expect(swatches.nth(i).locator('rect')).toHaveClass(
+        new RegExp(`jp-WorkspaceManager-swatch jp-mod-${colour}`)
+      );
+    }
+    expect((await listed.getAttribute('title'))!.split('\n').pop()).toBe(
+      `Workspaces: ${holders.join(', ')}`
     );
+
+    // a second window on the source: the row click opens here, shows no refusal and writes nothing
+    const second = await secondWindow(page, other);
+    try {
+      await openSection(page, 'workspaces');
+      await openCard(page, other);
+      // page 2 opens the source's saved document, which writes its own recents into the source:
+      // wait for that write to settle before the snapshot the row click is measured against
+      let source = await saved(page, other);
+      await expect
+        .poll(
+          async () => {
+            const next = await saved(page, other);
+            const stable = JSON.stringify(next) === JSON.stringify(source);
+            source = next;
+            return 'docmanager:recents' in next && stable;
+          },
+          { ...UNDER_LOAD, intervals: [500] }
+        )
+        .toBe(true);
+      await rowOf(card(page, other), rowLabel(terminal)).click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
+      // a refusal follows its presence request; give it that time, then find none
+      await page.waitForTimeout(1500);
+      await expect(dialog(page)).toHaveCount(0);
+      await expect(page).toHaveURL(mine);
+      expect(await saved(page, other)).toEqual(source);
+    } finally {
+      await second.close();
+    }
   } finally {
+    await page.request.delete(`/api/terminals/${terminal}`);
     await deleteWorkspaces(page, [current, other]);
   }
 });
@@ -1214,6 +1380,61 @@ test('DEF-PANEL-80-MOVE-CONSOLE: a console of a notebook path in another workspa
     await expect.poll(consolePaths, UNDER_LOAD).toEqual([notebook]);
     await expect.poll(() => savedTabs(page, source), UNDER_LOAD).toEqual([]);
     expect(Object.keys(await saved(page, source))).not.toContain(key);
+  } finally {
+    // deleting a session shuts down its kernel
+    for (const session of await serverList(page, '/api/sessions')) {
+      if (session.path === notebook) {
+        await page.request.delete(`/api/sessions/${session.id}`);
+      }
+    }
+    await deleteWorkspaces(page, [current, source]);
+  }
+});
+
+test("ACC-LISTS-40-ROW-OTHER: a console row of another workspace's card opens the console once, and a second click activates that console instead of opening a second, keeping the URL and the source key", async ({
+  page,
+  tmpPath
+}) => {
+  const current = fresh('rowconsole');
+  const source = `${current}-source`;
+  const notebook = `${tmpPath}/rowconsole.ipynb`;
+  await putNotebook(page, notebook);
+  const key = `console:${notebook}`;
+  // the entry the layout restorer saves for a console
+  const data = layout([key]);
+  data[key] = {
+    data: {
+      path: notebook,
+      name: 'Console 1',
+      kernelPreference: { name: 'python3' }
+    }
+  };
+  await putWorkspace(page, source, data);
+  /** The session paths of the console tabs of this window's main area. */
+  const consolePaths = (): Promise<string[]> =>
+    page.evaluate(() =>
+      Array.from((window as any).jupyterapp.shell.widgets('main'))
+        .filter((w: any) => w.hasClass('jp-ConsolePanel'))
+        .map((w: any) => w.console.sessionContext.path as string)
+    );
+  // the window stays on this workspace through both clicks
+  const mine = new RegExp(`/lab/workspaces/${current}(/tree/.*)?(\\?.*)?$`);
+  try {
+    await enterWorkspace(page, current);
+    await triangle(page, source).click();
+    const row = rowOf(card(page, source), 'Console 1');
+    await row.click();
+    await expect.poll(consolePaths, UNDER_LOAD).toEqual([notebook]);
+    await expect(page).toHaveURL(mine);
+    expect(await savedTabs(page, source)).toContain(key);
+    // the console is live here now: the same row opens no second tab
+    await row.click();
+    // a second console would appear within this settle; none does
+    await page.waitForTimeout(2000);
+    expect(await consolePaths()).toEqual([notebook]);
+    await expect(page).toHaveURL(mine);
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await savedTabs(page, source)).toContain(key);
   } finally {
     // deleting a session shuts down its kernel
     for (const session of await serverList(page, '/api/sessions')) {

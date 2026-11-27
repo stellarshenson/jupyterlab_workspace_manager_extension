@@ -32,6 +32,8 @@ import {
   removeRecorder,
   rgba,
   rowOf,
+  saved,
+  savedTabs,
   sectionBody,
   sectionCount,
   sectionHeader,
@@ -477,7 +479,7 @@ test.describe('kernels and sessions of the server', () => {
   // Galata lists only the kernels and sessions its page started; this test starts one by REST
   test.use({ kernels: null, sessions: null });
 
-  test('ACC-KERNEL-151-ROW-CLICK: a click or Enter on a kernel row opens its notebook: here, from the KERNELS section, or in its workspace', async ({
+  test("ACC-KERNEL-151-ROW-CLICK, ACC-LISTS-40-ROW-OTHER: a click or Enter on a kernel row opens its notebook here, from the KERNELS section, from this window's card or from another workspace's card, and this window stays", async ({
     page,
     tmpPath
   }) => {
@@ -509,19 +511,24 @@ test.describe('kernels and sessions of the server', () => {
       await refresh(page);
       await openSection(page, 'workspaces');
       await cardHeader(page, current).click();
-      const c = card(page, current);
-      await expect(rowOf(c, `${tag}-b.ipynb`)).toBeVisible();
-      await rowOf(c, `${tag}-a.ipynb`).focus();
+      const own = card(page, current);
+      await expect(rowOf(own, `${tag}-b.ipynb`)).toBeVisible();
+      await rowOf(own, `${tag}-a.ipynb`).focus();
       await page.keyboard.press('Enter');
       await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(a);
 
       await triangle(page, other).click();
+      const before = await saved(page, other);
       await rowOf(card(page, other), `${tag}-c.ipynb`).click();
+      await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(c);
+      // opening the notebook adds its tree path; the workspace in the URL must stay this one
       await expect(page).toHaveURL(
-        new RegExp(`/lab/workspaces/${other}(\\?.*)?$`)
+        new RegExp(`/lab/workspaces/${current}(/tree/.*)?(\\?.*)?$`)
       );
+      expect(await savedTabs(page, other)).toEqual([`notebook:${c}`]);
+      expect(await saved(page, other)).toEqual(before);
     } finally {
-      // the last click loads workspace other, whose notebook tab starts a session when it finds none;
+      // the last click opens notebook c here, whose tab joins the session started for it;
       // the deletes wait for every tab's session, so the page starts none after them
       await page.waitForFunction(
         () => typeof (window as any).jupyterapp === 'object'

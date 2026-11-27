@@ -527,6 +527,42 @@ test("DEF-PANEL-90-MOVE-WEBTAB: a saved page tab of another workspace's card mov
   }
 });
 
+test("ACC-LISTS-40-ROW-OTHER: a saved page tab row of another workspace's card opens the page here with its restore command and saved data, and the source keeps its entry", async ({
+  page
+}) => {
+  const current = fresh('webrow');
+  const source = `${current}-source`;
+  const key = 'workspace-page:wm-row-page';
+  // the entry the page tracker saves
+  await putWorkspace(page, source, {
+    'layout-restorer:data': {
+      main: { dock: { type: 'tab-area', currentIndex: 0, widgets: [key] } }
+    },
+    [key]: { data: { url, title: 'Row page', id: 'wm-row-page' } }
+  });
+  try {
+    await enterWorkspace(page, current);
+    await triangle(page, source).click();
+    const before = await saved(page, source);
+    await rowOf(card(page, source), 'Row page').click();
+    await expect(page.locator(TABS, { hasText: 'Row page' })).toHaveCount(
+      1,
+      UNDER_LOAD
+    );
+    await expect(page.locator(`${IFRAMES}[src="${url}"]`)).toHaveCount(
+      1,
+      UNDER_LOAD
+    );
+    await expect(page).toHaveURL(
+      new RegExp(`/lab/workspaces/${current}(\\?.*)?$`)
+    );
+    expect(await savedTabs(page, source)).toEqual([key]);
+    expect(await saved(page, source)).toEqual(before);
+  } finally {
+    await deleteWorkspaces(page, [current, source]);
+  }
+});
+
 test('ACC-OPEN-303-PAGE-RESTORE, DEF-PANEL-90-MOVE-WEBTAB: a page tab saves in its workspace and reopens after a page reload with its url, title, icon and sandbox', async ({
   page
 }) => {

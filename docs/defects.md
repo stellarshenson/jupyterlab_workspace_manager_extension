@@ -814,6 +814,14 @@ the sidebar panel, its header and its loads
   - root-cause: 2026-11-24T06:25:34Z @kj the header's right padding is 6px + --wm-gutter - 100cqw + 100% + 8px, which leaves room for the 15 px scrollbar; with scrollbar-gutter: auto and a short list no scrollbar is drawn, so the room stays empty
   - log: 2026-11-24T06:25:34Z @kj added
   - log: 2026-11-24T07:15:44Z @kj closed
+- [x] `DEF-PANEL-113-CARD-SWITCH` **A row of another workspace's card switches the window instead of opening the item here** - MAJOR; clicking a document, terminal, console, web page or kernel row on another workspace's card navigates this window to that workspace instead of opening the item here, and the layout the user was working in is lost; when another window shows that workspace, the click shows the open-in-another-window refusal and opens nothing; cause: _openRow sends every row of a non-current card to _openWorkspace, which switches and checks presence; fix: it opens the row's saved entry here and never claims or writes the source; src/panel/panel.tsx
+  - evidence: row-click Galata content, kernels, webtab, render, sections green in galata-fix3.log 6 passed; red jest-red.log 7 failed and galata-red.log 2 failed on the bug; triage galata-triage.log 3 of 3 passed; galata-full.log and galata-full4.log 306 passed exit 0; make test jest 269 pytest 179; confirming review SHIP
+  - related: ACC-LISTS-40-ROW-OTHER, ACC-ACCORD-28-CLOSE-ELSEWHERE
+  - repro: in workspace A open another workspace B's card and click its document row: the page navigates to /lab/workspaces/B and the document opens there, not in A; with a second window on B the click says B is open in another window and opens nothing
+  - test-tags: FUNCTIONAL
+  - root-cause: 2026-11-26T07:41:58Z @kj _openRow treats a non-current card as a switch request, a rule written for the header click, so the row's saved entry is never opened
+  - log: 2026-11-26T07:41:58Z @kj added; reason: the body names the five row kinds, both symptoms including the two-window refusal, and the exact code site
+  - log: 2026-11-26T18:39:32Z @kj closed: the row opens its item here and never switches
 
 ## Functional tests `GALATA`
 

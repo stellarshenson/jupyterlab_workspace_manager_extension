@@ -685,7 +685,7 @@ test('ACC-TERM-236-PROCESS-NARROW: at a 250 px sidebar the process of a terminal
   expect(long).toHaveLength(40);
   await processIs(page, () => long);
   // short enough to stand whole beside the icon and the time at this width
-  const short = `t${Math.floor(Math.random() * 46656).toString(36)}`;
+  const short = `t${Math.floor(Math.random() * 46656).toString(36)}a`; // a letter keeps it out of rowOf's t<digits> key pattern
   const terminal = (name: string) =>
     page.request.post('/api/terminals', { data: { name } });
   expect((await terminal(short)).ok()).toBe(true);
@@ -909,7 +909,7 @@ test('ACC-TERM-254-PATH-WIDTH: the path, in a card and in TERMINALS, stands afte
     () => cwd
   );
   // short enough to stand whole beside the icon, the process and the time at 250 px
-  const terminal = `t${Math.floor(Math.random() * 46656).toString(36)}`;
+  const terminal = `t${Math.floor(Math.random() * 46656).toString(36)}a`; // a letter keeps it out of rowOf's t<digits> key pattern
   expect(
     (
       await page.request.post('/api/terminals', { data: { name: terminal } })

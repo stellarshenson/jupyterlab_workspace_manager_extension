@@ -2,6 +2,7 @@ import { expect, type IJupyterLabPageFixture, test } from '@jupyterlab/galata';
 import type { Locator, Page } from '@playwright/test';
 
 import {
+  activeTab,
   card,
   cardHeader,
   colourOf,
@@ -1552,7 +1553,7 @@ test('ACC-ACCORD-27-CLOSE-WARN, ACC-ACCORD-284-CLEAR-WORKSPACE: Clear workspace 
 test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows are refused', async ({
   page
 }) => {
-  // three windows load and eight actions are refused
+  // three windows load and seven actions are refused
   test.setTimeout(120000);
   const terminal = await startTerminal(page);
   const current = fresh('elsewhere');
@@ -1587,10 +1588,13 @@ test('ACC-ACCORD-28-CLOSE-ELSEWHERE: actions on a workspace another window shows
     await card(page, x).locator('.jp-WorkspaceManager-name').click();
     await expectRefused(page, 'Open workspace');
 
-    // a row of the workspace opens it
+    // a row of the workspace opens its item here: no dialog, no refusal, this window stays
     await triangle(page, x).click();
     await card(page, x).locator('.jp-WorkspaceManager-row').first().click();
-    await expectRefused(page, 'Open workspace');
+    await expect.poll(() => activeTab(page), UNDER_LOAD).toBe(terminal);
+    // a refusal follows its presence request; give it that time, then find none
+    await page.waitForTimeout(1500);
+    await expect(dialog(page)).toHaveCount(0);
 
     expect(page.url()).toBe(url);
     expect(page.context().pages().length).toBe(pages);

@@ -53,7 +53,9 @@ import {
   eyeIcon,
   eyeOffIcon,
   pageIcon,
+  plainSwatchIcon,
   powerIcon,
+  swatchIcons,
   terminalGlyph
 } from '../icons';
 import { age, type IAge } from '../model/age';
@@ -135,7 +137,7 @@ const CLOSED_SECTIONS =
 const OPEN_CARDS =
   '@stellarshenson/jupyterlab-workspace-manager-extension:open-cards';
 
-/** The command that reopens a saved web page tab, by the namespace of its saved key; a move into this window runs it with the saved data. */
+/** The command that reopens a saved web page tab, by the namespace of its saved key; a move into this window and a row click run it with the saved data. */
 const WEB_OPEN = new Map([
   ['server-proxy', 'server-proxy:open'],
   ['help-doc', 'help:open'],
@@ -1910,8 +1912,13 @@ export class WorkspacePanel
         field(trans.__('Workspaces'), holders || trans.__('none'))
       ),
       when,
+      // a TERMINALS row names each holder with a colour chip, in the model's order (ACC-TERM-333-HOLDER-SWATCH)
+      swatches:
+        listed && held?.length
+          ? held.map(s => ({ colour: s.colour, id: s.id }))
+          : undefined,
       // this window's row or a TERMINALS row activates the tab of its terminal;
-      // a row of another workspace's card opens that workspace
+      // a row of another workspace's card opens its saved entry here (ACC-LISTS-40-ROW-OTHER)
       open: () =>
         section !== null && !listed && !section.current
           ? this._openRow(section, key)
@@ -1955,7 +1962,7 @@ export class WorkspacePanel
   ): React.ReactElement {
     const figures = this._data?.resources[k.id];
     const key = `kernel:${k.id}`;
-    const tabs = [`notebook:${k.path}`, `console:${k.path}`];
+    const keys = [k.tabKey];
     // a listed row's first holder in the model's order gives the icon its colour, as the terminal badge does (ACC-KERNEL-318-ICON-TINT)
     const held = listed
       ? this._sections.filter(s => k.alsoIn.includes(s.id))
@@ -1963,7 +1970,7 @@ export class WorkspacePanel
     const colour = held?.[0]?.colour ?? null;
     return row({
       key,
-      ...this._selection(listed ? 'kernels' : keyOf(section!), key, tabs),
+      ...this._selection(listed ? 'kernels' : keyOf(section!), key, keys),
       icon:
         listed && k.alsoIn.length > 0 ? (
           <span
@@ -2000,16 +2007,14 @@ export class WorkspacePanel
         k.title,
         field(this._translation.__('Memory'), formatMemory(figures?.memory))
       ),
+      // a card row activates its tab here or opens the saved entry of another workspace's card;
+      // a kernel in no workspace opens its notebook's path (ACC-KERNEL-151-ROW-CLICK)
       open: () => {
-        const session = this._data?.sessions.find(s => s.kernel?.id === k.id);
-        if (
-          section !== null &&
-          (!listed || section.current || session?.type !== 'notebook')
-        ) {
-          this._openRow(section, ...tabs);
+        if (section !== null) {
+          this._openRow(section, ...keys);
           return;
         }
-        if (session?.type === 'notebook' && k.path) {
+        if (k.tabKey.startsWith('notebook:')) {
           void this._app.commands.execute('docmanager:open', { path: k.path });
         }
       },
@@ -2382,16 +2387,103 @@ export class WorkspacePanel
     });
   }
 
-  /** A row click: activate the tab here, or open the row's workspace. */
+  /** A row click: activate the tab here, or open the row's saved entry of another workspace here (ACC-LISTS-40-ROW-OTHER). */
   private _openRow(section: ISection, ...keys: string[]): void {
     if (!section.current) {
-      void this._openWorkspace(section);
+      void this._openSaved(section, ...keys);
       return;
     }
     const widget = keys.map(k => this._live.get(k)).find(Boolean);
     if (widget) {
       this._app.shell.activateById(widget.id);
     }
+  }
+
+  /**
+   * Open a row of another workspace here: a terminal attaches by its name; a document, console
+   * or web page opens from the source's saved entry the card was drawn from. Read only: no
+   * claim, no save, no switch.
+   */
+  private async _openSaved(
+    section: ISection,
+    ...keys: string[]
+  ): Promise<void> {
+    try {
+      const terminal = keys.find(key => key.startsWith('terminal:'));
+      if (terminal) {
+        await this._openTerminal(terminal.slice('terminal:'.length));
+        return;
+      }
+      const ws = this._data?.workspaces.find(w => w.metadata.id === section.id);
+      const saved = ws
+        ? tabsOf(ws.data).find(tab => keys.includes(tab.key))
+        : undefined;
+      const entry = saved ? (ws!.data as any)[saved.key] : undefined;
+      // a tab already open here under the saved key is activated, never opened twice
+      const live = saved ? this._live.get(saved.key) : undefined;
+      if (live) {
+        this._app.shell.activateById(live.id);
+        return;
+      }
+      if (
+        !saved ||
+        !entry ||
+        !(await this._openEntry(saved.key, entry, saved.path))
+      ) {
+        this._cannotOpen(section, saved?.key ?? keys[0]);
+      }
+    } catch (reason) {
+      void showErrorMessage('Workspace manager', reason as Error);
+    }
+  }
+
+  /**
+   * Open one saved tab here: a terminal attaches, a web page runs its restore command with the
+   * saved data, a console opens by console:create with its saved data, a document by
+   * docmanager:open with its path and saved factory; whether it opened.
+   */
+  private async _openEntry(
+    key: string,
+    entry: any,
+    path?: string
+  ): Promise<boolean> {
+    if (key.startsWith('terminal:')) {
+      await this._openTerminal(key.slice('terminal:'.length));
+      return true;
+    }
+    const web = WEB_OPEN.get(key.split(':')[0]);
+    if (web) {
+      return !!(await this._app.commands.execute(web, entry?.data));
+    }
+    if (path && key.startsWith('console:')) {
+      return !!(await this._app.commands.execute(
+        'console:create',
+        entry?.data
+      ));
+    }
+    if (path && entry?.data?.factory) {
+      return !!(await this._app.commands.execute('docmanager:open', {
+        path,
+        factory: entry.data.factory
+      }));
+    }
+    // a saved notebook with no factory opens by its path, as a KERNELS row did (ACC-KERNEL-151-ROW-CLICK)
+    if (path && key.startsWith('notebook:')) {
+      await this._app.commands.execute('docmanager:open', { path });
+      return true;
+    }
+    return false;
+  }
+
+  /** A row this window cannot open: say so; never switch, never write the source (ACC-LISTS-40-ROW-OTHER). */
+  private _cannotOpen(section: ISection, key: string): void {
+    const label =
+      section.tabs.find(tab => tab.key === key)?.label ||
+      key.slice(key.indexOf(':') + 1);
+    void showErrorMessage(
+      'Workspace manager',
+      `This window cannot open ${label} from workspace ${section.id}.`
+    );
   }
 
   /** The terminal session of a shell widget, while its connection is open. */
@@ -2646,27 +2738,8 @@ export class WorkspacePanel
             moved
           )
         );
-      } else if (saved.key.startsWith('terminal:')) {
-        await this._openTerminal(saved.key.slice('terminal:'.length));
-      } else {
-        const web = WEB_OPEN.get(saved.key.split(':')[0]);
-        // a console saves no factory: it opens as the layout restorer opens it, by console:create with its saved data; a web page tab by its restore command
-        const opened = web
-          ? await this._app.commands.execute(web, (entry as any).data)
-          : saved.path &&
-            (saved.key.startsWith('console:')
-              ? await this._app.commands.execute(
-                  'console:create',
-                  (entry as any).data
-                )
-              : (entry as any).data?.factory &&
-                (await this._app.commands.execute('docmanager:open', {
-                  path: saved.path,
-                  factory: (entry as any).data.factory
-                })));
-        if (!opened) {
-          throw new Error(`This window cannot open ${saved.key}.`);
-        }
+      } else if (!(await this._openEntry(saved.key, entry, saved.path))) {
+        throw new Error(`This window cannot open ${saved.key}.`);
       }
       if (source.current) {
         await this._closeTab(source, key, true);
@@ -3221,6 +3294,8 @@ function row(props: {
   label: React.ReactNode;
   /** the label is an identifier: the code font */
   code?: boolean;
+  /** a TERMINALS row's holders: one colour chip per workspace, in the model's order (ACC-TERM-333-HOLDER-SWATCH) */
+  swatches?: { colour: Colour | null; id: string }[];
   /** a terminal's tab name, else its process (DQ-31): it stands in the line, selected or not (DQ-24) */
   process?: string | null;
   /** the working directory of the foreground process: it stands after the process, in the free width (DQ-30) */
@@ -3318,6 +3393,24 @@ function row(props: {
           {props.label}
         </span>
       )}
+      {props.swatches?.length ? (
+        <span className="jp-WorkspaceManager-holderSwatches">
+          {props.swatches.map(s => {
+            const chip = s.colour ? swatchIcons[s.colour] : plainSwatchIcon;
+            return (
+              <span
+                key={s.id}
+                className="jp-WorkspaceManager-holderSwatch"
+                role="img"
+                aria-label={s.id}
+                title={s.id}
+              >
+                <chip.react tag="span" />
+              </span>
+            );
+          })}
+        </span>
+      ) : null}
       {props.process && (
         <span className="jp-WorkspaceManager-rowProcess">{props.process}</span>
       )}
